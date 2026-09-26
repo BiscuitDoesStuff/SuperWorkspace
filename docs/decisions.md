@@ -107,6 +107,10 @@ managed blocks, and keeps nothing in a database.
 - **Turn off OpenCode Desktop automatic worktrees.** They create detached
   branches outside the branch policy.
 - **`opencode.jsonc` stays strict JSON** so the validator can parse it.
+- **Dotfiles are hidden on Linux and macOS.** Without `-Force`, `Get-ChildItem`
+  skips `.sw/`, `.claude/` and `.opencode/`, and `Remove-Item` refuses them. The
+  v0.1.0 CI failed on ubuntu for this reason. Windows only hides items that
+  have the Hidden attribute.
 - **Backups must exclude credential files.** The old backup script copied
   `service.json` and `.claude.json`. SuperWorkspace filters them out by name.
 

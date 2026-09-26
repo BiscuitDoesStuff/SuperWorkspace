@@ -229,10 +229,10 @@ function Test-SwProject {
             $dir = Join-Path $Root ".opencode/$kind"
             if (-not (Test-Path -LiteralPath $dir)) { $problems.Add("Missing directory: .opencode/$kind"); continue }
             if ($kind -eq 'skills') {
-                foreach ($flat in Get-ChildItem -LiteralPath $dir -Filter *.md -File) { Require $false "Unsupported flat skill: $($flat.Name)" }
-                $defs = @(Get-ChildItem -LiteralPath $dir -Recurse -Filter SKILL.md -File)
+                foreach ($flat in Get-ChildItem -LiteralPath $dir -Filter *.md -File -Force) { Require $false "Unsupported flat skill: $($flat.Name)" }
+                $defs = @(Get-ChildItem -LiteralPath $dir -Recurse -Filter SKILL.md -File -Force)
             } else {
-                $defs = @(Get-ChildItem -LiteralPath $dir -Recurse -Filter *.md -File)
+                $defs = @(Get-ChildItem -LiteralPath $dir -Recurse -Filter *.md -File -Force)
                 foreach ($nested in $defs | Where-Object { $_.Directory.FullName -ne (Get-Item -LiteralPath $dir).FullName }) { Require $false "Unsupported nested $kind definition: $($nested.FullName)" }
                 $defs = @($defs | Where-Object { $_.Directory.FullName -eq (Get-Item -LiteralPath $dir).FullName })
             }
@@ -359,7 +359,7 @@ function Test-SwProject {
             if (Test-Path -LiteralPath $full -PathType Leaf) { $hygiene.Add($full) }
         }
         $plugins = Join-Path $Root '.opencode/plugins'
-        if (Test-Path -LiteralPath $plugins) { Get-ChildItem -LiteralPath $plugins -Recurse -File | ForEach-Object { $hygiene.Add($_.FullName) } }
+        if (Test-Path -LiteralPath $plugins) { Get-ChildItem -LiteralPath $plugins -Recurse -File -Force | ForEach-Object { $hygiene.Add($_.FullName) } }
         foreach ($file in $hygiene | Select-Object -Unique) {
             $counts.HygieneFiles++
             $n = 0
@@ -408,7 +408,7 @@ function Get-SwClaudeFiles([string]$Root) {
         if ($roles[$role]['claudeTools']) { $fm += "tools: $($roles[$role]['claudeTools'])`n" }
         $out[".claude/agents/$role.md"] = $fm + "---`n`n$note`nYou are ``$role``. Your role contract is ``.opencode/agents/$role.md``: read it first and follow its body. Treat its OpenCode ``permissions`` as binding intent; Claude enforces only this file's ``tools`` and ``.claude/settings.json``, so honor the rest yourself. Project rules are in ``AGENTS.md``, already loaded.`n`nLoad a skill it names with the Skill tool, or Read ``.claude/skills/<name>/SKILL.md``. You cannot spawn agents or ask the user; return questions and blockers to the main session (Project Leader).`n"
     }
-    foreach ($file in Get-ChildItem -LiteralPath (Join-Path $Root '.opencode/commands') -Filter *.md -File | Sort-Object Name) {
+    foreach ($file in Get-ChildItem -LiteralPath (Join-Path $Root '.opencode/commands') -Filter *.md -File -Force | Sort-Object Name) {
         $cmd = Read-SwFrontmatter $file.FullName @('description', 'agent', 'subagent')
         $name = $file.BaseName; $agent = $cmd['agent']; $srcPath = ".opencode/commands/$name.md"
         $body = if ($cmd['subagent'] -eq 'true') {
@@ -420,8 +420,8 @@ function Get-SwClaudeFiles([string]$Root) {
         }
         $out[".claude/commands/$name.md"] = "---`ndescription: $($cmd['description'])`n---`n`n$note`n$body`n"
     }
-    foreach ($skillDir in Get-ChildItem -LiteralPath (Join-Path $Root '.opencode/skills') -Directory | Sort-Object Name) {
-        foreach ($f in Get-ChildItem -LiteralPath $skillDir.FullName -Recurse -File) {
+    foreach ($skillDir in Get-ChildItem -LiteralPath (Join-Path $Root '.opencode/skills') -Directory -Force | Sort-Object Name) {
+        foreach ($f in Get-ChildItem -LiteralPath $skillDir.FullName -Recurse -File -Force) {
             $rel = [IO.Path]::GetRelativePath($skillDir.FullName, $f.FullName).Replace('\', '/')
             $out[".claude/skills/$($skillDir.Name)/$rel"] = Read-SwText $f.FullName
         }
@@ -462,7 +462,7 @@ function Invoke-SwClaude {
     if ($Action -eq 'disable') {
         foreach ($rel in $files.Keys) {
             $t = Join-Path $Root $rel
-            if ((Test-Path -LiteralPath $t) -and $PSCmdlet.ShouldProcess($rel, 'remove')) { Remove-Item -LiteralPath $t }
+            if ((Test-Path -LiteralPath $t) -and $PSCmdlet.ShouldProcess($rel, 'remove')) { Remove-Item -LiteralPath $t -Force }
         }
         Write-Output 'Claude adapter files removed (settings.local.json and your own files kept).'
         return
@@ -472,9 +472,9 @@ function Invoke-SwClaude {
     foreach ($sub in 'agents', 'commands', 'skills') {
         $dir = Join-Path $Root ".claude/$sub"
         if (-not (Test-Path -LiteralPath $dir)) { continue }
-        foreach ($f in Get-ChildItem -LiteralPath $dir -Recurse -File) {
+        foreach ($f in Get-ChildItem -LiteralPath $dir -Recurse -File -Force) {
             $rel = [IO.Path]::GetRelativePath($Root, $f.FullName).Replace('\', '/')
-            if (-not $files.Contains($rel) -and (Read-SwText $f.FullName).Contains('Generated by SuperWorkspace') -and $PSCmdlet.ShouldProcess($rel, 'remove stale')) { Remove-Item -LiteralPath $f.FullName }
+            if (-not $files.Contains($rel) -and (Read-SwText $f.FullName).Contains('Generated by SuperWorkspace') -and $PSCmdlet.ShouldProcess($rel, 'remove stale')) { Remove-Item -LiteralPath $f.FullName -Force }
         }
     }
     foreach ($e in $files.GetEnumerator()) {
@@ -532,7 +532,7 @@ function Invoke-SwComms {
         'inbox' {
             if (-not $User) { $User = Get-SwUser $Root }
             $dir = Join-Path $comms "inbox/$User"
-            $items = @(if (Test-Path -LiteralPath $dir) { Get-ChildItem -LiteralPath $dir -Filter *.md -File | Sort-Object Name })
+            $items = @(if (Test-Path -LiteralPath $dir) { Get-ChildItem -LiteralPath $dir -Filter *.md -File -Force | Sort-Object Name })
             if (-not $items.Count) { Write-Output "Inbox empty: $User"; return }
             foreach ($i in $items) { Write-Output "$($i.Name)`t$(((Read-SwText $i.FullName) -split "`n")[0].TrimStart('# '))" }
         }
@@ -576,14 +576,14 @@ function Invoke-SwComms {
             $src = Join-Path $comms "tasks/$Task"
             if (-not (Test-Path -LiteralPath $src)) { throw "No task record: .sw/comms/tasks/$Task" }
             $dst = Join-Path $comms "archive/$Task"
-            $events = @(Get-ChildItem -LiteralPath $src -Filter *.md -File | Sort-Object Name)
+            $events = @(Get-ChildItem -LiteralPath $src -Filter *.md -File -Force | Sort-Object Name)
             $head = (& git -C $Root rev-parse HEAD 2>$null)
             $summary = "# $Task - summary`n`n- **Outcome:** $Outcome`n- **Closed:** $([DateTime]::UtcNow.ToString('u')) by $(Get-SwUser $Root) at $head`n- **Events:** $($events.Count), kept in ``events/`` for evidence; read this summary instead.`n`n" +
                 (($events | ForEach-Object { "- $($_.Name)" }) -join "`n") + "`n"
             if ($PSCmdlet.ShouldProcess($dst, 'archive task')) {
                 New-Item -ItemType Directory -Force (Join-Path $dst 'events') | Out-Null
                 foreach ($e in $events) { Move-Item -LiteralPath $e.FullName -Destination (Join-Path $dst "events/$($e.Name)") }
-                Remove-Item -LiteralPath $src -Recurse
+                Remove-Item -LiteralPath $src -Recurse -Force
                 Write-SwFile (Join-Path $dst 'SUMMARY.md') $summary
             }
             Write-Output "Closed $Task -> .sw/comms/archive/$Task/SUMMARY.md"

@@ -133,7 +133,7 @@ Describe 'Sync and init lifecycle' {
         Write-SwFile (Join-Path $dir '.sw/workspace.md') 'not managed by sw'
         Initialize-SwProject -Path $dir -Profile generic -Name Adopt -Adopt | Out-Null
 
-        $backups = @(Get-ChildItem -Path (Join-Path $dir '.sw/backup') -Recurse -Filter 'workspace.md')
+        $backups = @(Get-ChildItem -Path (Join-Path $dir '.sw/backup') -Recurse -Filter 'workspace.md' -Force)
         $backups.Count | Should -Be 1
         (Get-Content -LiteralPath $backups[0].FullName -Raw) | Should -Match 'not managed by sw'
         (Read-SwText (Join-Path $dir '.sw/workspace.md')) | Should -Not -Match 'not managed by sw'

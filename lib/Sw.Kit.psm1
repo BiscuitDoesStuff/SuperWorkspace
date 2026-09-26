@@ -123,7 +123,7 @@ function Sync-SwProject {
                     if ($p.Action -eq 'adopt') {
                         $bak = Join-Path $Root ".sw/backup/$stamp/$($p.Path)"
                         New-Item -ItemType Directory -Force (Split-Path $bak) | Out-Null
-                        Copy-Item -LiteralPath $target -Destination $bak
+                        Copy-Item -LiteralPath $target -Destination $bak -Force
                     }
                     Write-SwFile $target $render.Files[$p.Path]
                 }
@@ -131,7 +131,7 @@ function Sync-SwProject {
             }
             'same' { $manifest.files[$p.Path] = $p.Hash }
             'skip-modified' { $manifest.files[$p.Path] = $old[$p.Path] }  # keep old hash so the edit stays detected
-            'remove' { if ($PSCmdlet.ShouldProcess($p.Path, 'remove (dropped from kit)')) { Remove-Item -LiteralPath $target } }
+            'remove' { if ($PSCmdlet.ShouldProcess($p.Path, 'remove (dropped from kit)')) { Remove-Item -LiteralPath $target -Force } }
         }
     }
 
@@ -234,7 +234,7 @@ function Backup-SwGlobal {
         $dst = Join-Path $Destination $rel
         if ($PSCmdlet.ShouldProcess($src, "back up to $dst")) {
             New-Item -ItemType Directory -Force (Split-Path $dst) | Out-Null
-            Copy-Item -LiteralPath $src -Destination $dst
+            Copy-Item -LiteralPath $src -Destination $dst -Force
         }
         $copied.Add($rel)
     }

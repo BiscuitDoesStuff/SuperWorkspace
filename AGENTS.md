@@ -23,6 +23,9 @@ it before changing a rule.
 - **Every writing function supports `-WhatIf`.** Anything that touches the
   user profile backs up first. Backups never copy credential files (see
   `$script:SecretName`).
+- **Pass `-Force` to `Get-ChildItem`, `Remove-Item` and `Copy-Item` on project
+  paths.** On Linux and macOS, PowerShell treats dotfiles as hidden. Without
+  `-Force` they are skipped or refused (CI runs on ubuntu).
 - **The kit writes files; it never runs security or account changes.**
   Examples: firewall rules, GitHub writes, pushes. It prints the exact command
   for the human to run instead.
