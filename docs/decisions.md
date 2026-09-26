@@ -4,6 +4,39 @@ Format: `YYYY-MM-DD: Title (status)`. Newest first. Record no secret values.
 The earlier decision logs (ai-environment-foundation, MyMMO) are summarized
 here. Their repositories keep the full history.
 
+## 2026-09-26: v0.2.0 hardening and contributor onboarding (accepted)
+
+**Runtime verification of 0.1.0 is complete.** On OpenCode 2.0.17:
+- `/api/agent`, `/api/command` and `/api/skill` list every role, command and
+  skill;
+- the Desktop UI checks pass;
+- a headless Claude Code session loads the Leader hook, the agents and the
+  commands.
+
+The verification ladder in `.sw/workspace.md` records the gotcha that the
+first request can return `[]`. From Git Bash, headless Claude tests need
+`MSYS_NO_PATHCONV=1`.
+
+**What an Opus review of 0.1.0 found and fixed:**
+- **Data loss:**
+  - comms names allowed path traversal;
+  - `comms close` dropped files that were not `.md`;
+  - `claude enable` and `claude disable` overwrote or deleted your own
+    `.claude/` files.
+- **Security:**
+  - one of the two broad `gh` allows survived `global install`;
+  - the Claude deny list was missing several `gh` write verbs;
+  - backups copied `opencode.json`, which can hold API keys.
+- **Linux and macOS:**
+  - dotfiles were hidden;
+  - the Windows-only `remote` calls failed.
+
+Every fix has a regression test.
+
+**Contributors:** they check their own setup with `sw doctor`. It only reads,
+and it prints the fix for each problem instead of installing anything. The
+kit writes files; humans make installs and account changes.
+
 ## 2026-09-26: SuperWorkspace replaces both predecessors (accepted)
 
 MyMMO's workspace layer was rich but welded to one game. The ai-foundation repo
@@ -116,29 +149,6 @@ managed blocks, and keeps nothing in a database.
 
 ## Open items
 
-- Runtime verification of an installed project. What has been checked so far:
-  - **Done (2026-09-26):** on OpenCode 2.0.17, `api GET
-    /api/agent?location%5Bdirectory%5D=<path>` lists all 8 project roles
-    alongside the built-ins.
-  - **Done (2026-09-26):** once the service was up, `/api/command` and
-    `/api/skill` responded, where they had returned 404 before. They listed all
-    8 project commands (plus the built-in `init`) and all 8 unreal-profile
-    skills. The first command request for a new directory returned `[]`; a
-    repeat returned the full list.
-  - **Done (2026-09-26):** OpenCode Desktop UI checks on an unreal-profile
-    project, all passed:
-    - the Leader is the default agent, and the picker lists the roles;
-    - the `/` menu shows the 8 commands;
-    - `/validate` passes and `/inbox` runs;
-    - the skills load;
-    - `git push` is refused.
-  - **Done (2026-09-26):** a headless Claude Code session (`claude -p`) in a
-    fresh `init -Claude` project. The SessionStart hook made it the Leader, all
-    7 pointer agents were listed, and `/inbox` and `/status` ran the project
-    bodies (project commands override the built-in `/status`). Deny rules were
-    not exercised; destructive commands are never run to prove a denial. From
-    Git Bash, set `MSYS_NO_PATHCONV=1`, or the `/cmd` argument gets rewritten
-    into a Windows path.
 - MyMMO adoption (for the user and Crank). A dry run on 2026-09-26 in a
   throwaway clone of HEAD found no kit bugs. `init -Profile unreal -Adopt`
   backs up and replaces 20 files, adds 19, and `validate` then fails only on

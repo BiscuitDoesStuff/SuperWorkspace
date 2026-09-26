@@ -1,6 +1,3 @@
-# Harvest from the retired workspaces (local reference only, removed after porting)
-_harvest/
-
 # Secrets and credentials: never commit, never back up
 .env
 *.env
