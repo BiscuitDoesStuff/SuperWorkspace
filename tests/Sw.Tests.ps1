@@ -334,6 +334,16 @@ Describe 'Comms' {
     }
 }
 
+Describe 'Test-SwDoctor' {
+    It 'reports tier-map and users guidance without -User, and does not throw' {
+        $dir = New-SwProject "doctor$(New-Id)" generic
+        { Test-SwDoctor -Path $dir } | Should -Not -Throw
+        $out = Test-SwDoctor -Path $dir | Out-String
+        $out | Should -Match 'sw\.ps1 tiers'
+        $out | Should -Match 'pass -User <name>'
+    }
+}
+
 Describe 'Backup secret filter' {
     It '<Name> -> secret:<Expected>' -ForEach @(
         @{ Name = 'service.json'; Expected = $true }

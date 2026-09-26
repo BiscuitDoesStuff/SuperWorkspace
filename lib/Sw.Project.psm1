@@ -41,6 +41,18 @@ function Get-SwConfig([string]$Root) {
 
 function Get-SwUtc { [DateTime]::UtcNow.ToString('yyyy-MM-ddTHHmmssZ') }
 
+function Get-SwToolVersion([string]$Name) {
+    $cmd = Get-Command $Name -ErrorAction SilentlyContinue | Select-Object -First 1
+    if (-not $cmd -and $Name -eq 'opencode' -and $IsWindows) {
+        $cand = Join-Path $env:LOCALAPPDATA 'Programs/@opencodedesktop/resources/opencode-cli.exe'
+        if (Test-Path -LiteralPath $cand) { $cmd = Get-Item $cand }
+    }
+    if (-not $cmd) { return $null }
+    $exe = if ($cmd -is [IO.FileInfo]) { $cmd.FullName } else { $cmd.Source }
+    $out = (& $exe --version 2>$null) -join ' '
+    if ($out -match '(\d+\.\d+\.\d+)') { [version]$Matches[1] } else { [version]'0.0.0' }
+}
+
 function Get-SwUser([string]$Root) {
     $name = & git -C $Root config user.name 2>$null
     if (-not $name) { throw 'Set git config user.name, or pass -User/-From.' }
@@ -606,6 +618,69 @@ function Add-SwUser {
     }
     Write-Output "Contributor $Name recorded. Their branch (created by the owner, from published main):"
     Write-Output "  git switch -c $Name/$Name-worktree origin/main"
+    Write-Output "Send them .sw/onboarding.md; they check their setup with: pwsh .sw/sw.ps1 doctor -User $Name"
+}
+
+function Get-SwDoctorHint([string]$Tool) {
+    $winget = @{ git = 'Git.Git'; pwsh = 'Microsoft.PowerShell'; gh = 'GitHub.cli' }
+    if ($winget.Contains($Tool)) { if ($IsWindows) { "winget install $($winget[$Tool])" } else { $Tool } }
+    elseif ($Tool -eq 'opencode') { 'install OpenCode Desktop' }
+    else { 'install rtk' }
+}
+
+function Test-SwDoctor {
+    <#
+    .SYNOPSIS Read-only setup check for a contributor: doctor [-User <name>]. Never installs or changes anything.
+    #>
+    [CmdletBinding()]
+    param([string]$User, [string]$Path)
+    $Root = Resolve-SwRoot $Path
+    $rows = [Collections.Generic.List[object]]::new()
+    $add = { param($n, $state, $detail) $rows.Add([pscustomobject]@{ Item = $n; State = $state; Detail = $detail }) }
+
+    & $add 'pwsh >= 7.2' 'OK' $PSVersionTable.PSVersion.ToString()
+
+    $hasGit = [bool](Get-Command git -ErrorAction SilentlyContinue)
+    & $add 'git' $(if ($hasGit) { 'OK' } else { 'MISSING' }) $(if ($hasGit) { (& git --version) } else { "Fix: $(Get-SwDoctorHint git)" })
+    $userName = if ($hasGit) { & git -C $Root config user.name 2>$null }
+    & $add 'git user.name' $(if ($userName) { 'OK' } else { 'MISSING' }) $(if ($userName) { $userName } else { 'Fix: git config --global user.name "<name>"' })
+
+    $ocVer = Get-SwToolVersion opencode
+    & $add 'opencode' $(if ($ocVer) { 'OK' } else { 'MISSING' }) $(if ($ocVer) { $ocVer.ToString() } else { "Fix: $(Get-SwDoctorHint opencode)" })
+
+    $ghVer = Get-SwToolVersion gh
+    & $add 'gh' $(if ($ghVer) { 'OK' } else { 'WARN' }) $(if ($ghVer) { $ghVer.ToString() } else { "Fix: $(Get-SwDoctorHint gh)" })
+    if ($ghVer) {
+        & gh auth status *> $null
+        & $add 'gh auth' $(if ($LASTEXITCODE -eq 0) { 'OK' } else { 'WARN' }) $(if ($LASTEXITCODE -eq 0) { 'logged in' } else { 'Fix: gh auth login' })
+    }
+
+    $rtkVer = Get-SwToolVersion rtk
+    & $add 'rtk' $(if ($rtkVer) { 'OK' } else { 'WARN' }) $(if ($rtkVer) { $rtkVer.ToString() } else { "Fix: $(Get-SwDoctorHint rtk)" })
+    if ($rtkVer -and $rtkVer -lt [version]'0.48.0') { & $add 'rtk >= 0.48' 'WARN' "found $rtkVer" }
+
+    $config = Get-SwConfig $Root
+    $users = @($config['users'])
+    if ($User) {
+        $listed = $users -ccontains $User
+        & $add "user $User" $(if ($listed) { 'OK' } else { 'MISSING' }) $(if ($listed) { 'listed in .sw/config.json' } else { "Fix (project owner runs): pwsh .sw/sw.ps1 user $User" })
+        $branch = "$User/$User-worktree"
+        $branchExists = [bool](& git -C $Root branch --list $branch 2>$null) -or [bool](& git -C $Root branch -r --list "origin/$branch" 2>$null)
+        & $add "branch $branch" $(if ($branchExists) { 'OK' } else { 'WARN' }) $(if ($branchExists) { 'exists' } else { "Fix: git switch -c $branch origin/main" })
+    } else {
+        & $add 'users' 'WARN' "Recorded: $(if ($users.Count) { $users -join ', ' } else { 'none' }); pass -User <name> to check yours"
+    }
+
+    $current = & git -C $Root branch --show-current 2>$null
+    $onOwnBranch = $current -eq 'main' -or ($User -and $current -eq "$User/$User-worktree")
+    & $add 'current branch' $(if ($onOwnBranch) { 'OK' } else { 'WARN' }) $(if ($onOwnBranch) { $current } else { "$current (expected main or your worktree branch)" })
+
+    $hasTiers = Test-Path -LiteralPath (Join-Path $Root '.opencode/opencode.jsonc')
+    & $add 'tier map' $(if ($hasTiers) { 'OK' } else { 'WARN' }) $(if ($hasTiers) { '.opencode/opencode.jsonc' } else { 'Fix: pwsh .sw/sw.ps1 tiers -Reasoning <id> -Standard <id> -Fast <id>' })
+
+    $rows | Format-Table -AutoSize | Out-String -Width 200 | Write-Output
+    Write-Output 'Reminder: OpenCode Desktop -> default environment = "Local directory" (automatic worktrees create branches outside the policy; cannot be detected).'
+    $global:LASTEXITCODE = if (@($rows | Where-Object State -eq 'MISSING').Count) { 1 } else { 0 }
 }
 
 # --- GitHub (read-only helpers; writes are human-run) -----------------------------------
@@ -657,4 +732,5 @@ function Get-SwUsage {
 
 Export-ModuleMember -Function Resolve-SwRoot, Write-SwFile, Read-SwText, Read-SwJson, ConvertTo-SwJson, Get-SwHash,
     Get-SwConfig, Read-SwFrontmatter, Get-SwDecision, Test-SwPattern, Get-SwGhRules, Get-SwClaudeGhDeny, Test-SwProject,
-    Get-SwClaudeFiles, Invoke-SwClaude, Set-SwTiers, Invoke-SwComms, Add-SwUser, Invoke-SwGitHub, Get-SwUsage, Test-SwLocalOnly
+    Get-SwClaudeFiles, Invoke-SwClaude, Set-SwTiers, Invoke-SwComms, Add-SwUser, Invoke-SwGitHub, Get-SwUsage, Test-SwLocalOnly,
+    Get-SwToolVersion, Test-SwDoctor

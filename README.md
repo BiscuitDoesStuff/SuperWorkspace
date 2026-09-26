@@ -41,6 +41,7 @@ Then, inside the project:
 
 ```powershell
 pwsh .sw/sw.ps1 validate                                   # static contract check
+pwsh .sw/sw.ps1 doctor -User <you>                          # new contributor? see .sw/onboarding.md
 pwsh .sw/sw.ps1 tiers -Reasoning <id> -Standard <id> -Fast <id>
 pwsh .sw/sw.ps1 claude enable                              # optional Claude adapter
 pwsh .sw/sw.ps1 user crank                                 # add a contributor
@@ -60,6 +61,7 @@ Run `pwsh sw.ps1 help`. Every command that writes accepts `-WhatIf`.
 | `global install\|check\|backup` | kit | User-level config, a tool inventory, and backups |
 | `remote setup\|check` | kit | OpenCode over Tailscale (`-KeepLan` keeps LAN access for devices that can't run Tailscale) |
 | `validate` | project | Static checks: definitions, permission matrix, portability, startup budget, hygiene, Claude drift |
+| `doctor` | project | Read-only setup check for a contributor (`-User <name>`); never installs or changes anything |
 | `claude enable\|disable` | project | The local Claude adapter |
 | `tiers` | project | The per-user model map (git-ignored) |
 | `comms send\|inbox\|event\|close\|archive` | project | Messages and task records |

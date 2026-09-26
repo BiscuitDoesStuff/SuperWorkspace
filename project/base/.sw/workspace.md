@@ -22,6 +22,7 @@ Each rule has one owning source; everything else links to it.
 | `.sw/config.json` | Profile, GitHub tier, contributors, startup budget |
 | `opencode.jsonc`, `.opencode/{agents,commands,skills,plugins}` | Actual shared configuration; inspect these and runtime discovery before asserting behavior |
 | Git and `.sw/comms/tasks/` | Ancestry, publication, and approved work; not a second memory ledger |
+| `.sw/onboarding.md` | New contributor setup |
 
 Keep required startup reading small: this map is read on demand.
 

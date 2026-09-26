@@ -2,7 +2,7 @@
 <#
 .SYNOPSIS
   SuperWorkspace CLI. In the kit: every command. Inside a project (.sw/sw.ps1):
-  the project commands only (validate, claude, tiers, comms, user, gh, usage).
+  the project commands only (validate, doctor, claude, tiers, comms, user, gh, usage).
 .EXAMPLE
   pwsh sw.ps1 init C:\DevProjects\MyGame -Profile unreal -Name MyGame
   pwsh .sw/sw.ps1 validate
@@ -25,6 +25,7 @@ $commands = [ordered]@{
     global   = @('Invoke-SwGlobal', 'kit', 'User-level setup: global install|check|backup [-Claude] [-ReplaceUnmanaged]')
     remote   = @('Invoke-SwRemote', 'kit', 'OpenCode over Tailscale: remote setup|check [-Port 49374] [-KeepLan]')
     validate = @('Test-SwProject', 'project', 'Static workspace contract check: validate [-Path] [-CheckLinks]')
+    doctor   = @('Test-SwDoctor', 'project', 'Read-only setup check for a contributor: doctor [-User <name>]')
     claude   = @('Invoke-SwClaude', 'project', 'Opt-in local Claude adapter: claude enable|disable')
     tiers    = @('Set-SwTiers', 'project', 'Per-user model tiers: tiers -Reasoning <id> -Standard <id> -Fast <id> [-Force]')
     comms    = @('Invoke-SwComms', 'project', 'Messages and task records: comms send|inbox|event|close|archive ...')
@@ -48,4 +49,4 @@ if ($Command -in 'help', '-h', '--help', '/?' -or -not $commands.Contains($Comma
 $fn = $commands[$Command][0]
 if (-not (Get-Command $fn -ErrorAction SilentlyContinue)) { Write-Output "'$Command' is a kit command; run it from your SuperWorkspace clone."; exit 2 }
 & $fn @Arguments
-if ($Command -eq 'validate') { exit $LASTEXITCODE }
+if ($Command -in 'validate', 'doctor') { exit $LASTEXITCODE }

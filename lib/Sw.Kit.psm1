@@ -295,18 +295,6 @@ function Install-SwGlobal {
     Test-SwGlobal
 }
 
-function Get-SwToolVersion([string]$Name) {
-    $cmd = Get-Command $Name -ErrorAction SilentlyContinue | Select-Object -First 1
-    if (-not $cmd -and $Name -eq 'opencode' -and $IsWindows) {
-        $cand = Join-Path $env:LOCALAPPDATA 'Programs/@opencodedesktop/resources/opencode-cli.exe'
-        if (Test-Path -LiteralPath $cand) { $cmd = Get-Item $cand }
-    }
-    if (-not $cmd) { return $null }
-    $exe = if ($cmd -is [IO.FileInfo]) { $cmd.FullName } else { $cmd.Source }
-    $out = (& $exe --version 2>$null) -join ' '
-    if ($out -match '(\d+\.\d+\.\d+)') { [version]$Matches[1] } else { [version]'0.0.0' }
-}
-
 function Test-SwGlobal {
     [CmdletBinding()]
     param()
