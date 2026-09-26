@@ -138,8 +138,8 @@ Record each level separately; a lower level never proves a higher one.
 2. Runtime discovery: the OpenCode CLI `api` against `/api/agent`,
    `/api/command`, `/api/skill` with an explicit
    `?location%5Bdirectory%5D=<encoded-repo-path>` (omitting it reads home config).
-   OpenCode 2.0.17 serves only `/api/agent` (the other two return 404); confirm
-   commands and skills in the client UI there.
+   The first request for a new directory can return an empty command list
+   while discovery warms up; repeat it before reporting a failure.
 3. Permission API evaluation: expected decisions, not executed denials.
 4. Controlled workflow: a harmless approved dispatch, skill load, and
    fresh-session resume, only when available and in scope.

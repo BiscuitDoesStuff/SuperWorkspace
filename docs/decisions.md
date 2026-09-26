@@ -116,8 +116,18 @@ managed blocks, and keeps nothing in a database.
   - **Done (2026-09-26):** on OpenCode 2.0.17, `api GET
     /api/agent?location%5Bdirectory%5D=<path>` lists all 8 project roles
     alongside the built-ins.
-  - **Can't check yet:** `/api/command` and `/api/skill` return 404 on 2.0.17,
-    so check them in the Desktop UI or after an upgrade.
+  - **Done (2026-09-26):** once the service was up, `/api/command` and
+    `/api/skill` responded, where they had returned 404 before. They listed all
+    8 project commands (plus the built-in `init`) and all 8 unreal-profile
+    skills. The first command request for a new directory returned `[]`; a
+    repeat returned the full list.
+  - **Done (2026-09-26):** OpenCode Desktop UI checks on an unreal-profile
+    project, all passed:
+    - the Leader is the default agent, and the picker lists the roles;
+    - the `/` menu shows the 8 commands;
+    - `/validate` passes and `/inbox` runs;
+    - the skills load;
+    - `git push` is refused.
   - **Done (2026-09-26):** a headless Claude Code session (`claude -p`) in a
     fresh `init -Claude` project. The SessionStart hook made it the Leader, all
     7 pointer agents were listed, and `/inbox` and `/status` ran the project
