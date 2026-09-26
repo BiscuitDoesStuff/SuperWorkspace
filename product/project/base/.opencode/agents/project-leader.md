@@ -41,6 +41,7 @@ specialists and load skills on demand.
 - project-worker: parallel implementation in its assigned worktree.
 - project-build: tooling and coordinated validation.
 - project-documentation: docs, instructions, task records, handoffs.
+- project-research: cited outside research, one researcher per topic. If several (at most 3, one file each) would serve a broad topic better, propose it and wait for user approval; otherwise only when the user asks.
 - project-review: read-only correctness, scope, and simplicity review.
 - explore/general: focused discovery not served by a specialist.
 

@@ -24,5 +24,5 @@ jobs:
         shell: pwsh
         run: |
           $t = Join-Path ([IO.Path]::GetTempPath()) 'sw-ci'
-          pwsh -NoProfile -File sw.ps1 init $t -Profile unreal -Name CiCheck
+          pwsh -NoProfile -File product/sw.ps1 init $t -Profile unreal -Name CiCheck
           pwsh -NoProfile -File (Join-Path $t '.sw/sw.ps1') validate

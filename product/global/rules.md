@@ -6,15 +6,13 @@ Project policy lives in the project's `AGENTS.md`; SuperWorkspace projects add
 work runs on this machine.
 
 ## Model routing
-- Planning, architecture, review: reasoning tier (Claude: a fresh Opus session).
-  Never switch a running session's model.
-- Implementation, docs, mechanical edits: standard tier (Claude: Sonnet).
-- Review after implementation passes its checks: the project's `/review`, or the
-  `code-review` skill.
-- Laziest working solution, shortest diff (`minimal-change` / Ponytail).
+- Planning, architecture, review: reasoning tier, in a fresh session. Never
+  switch a running session's model.
+- Implementation, docs, mechanical edits: standard tier.
+- Review after implementation passes its checks: the project's `/review`.
+- Smallest working change, shortest diff (`minimal-change`).
 - Minimize tokens: batch tool calls, never re-read files already in context,
-  terse replies, no unrequested prose. Free-first: no metered API spend unless
-  the user opts in.
+  terse replies, no unrequested prose.
 
 ## Agent coordination
 - Roles are defined per project in `.opencode/agents/` (Claude pointers in

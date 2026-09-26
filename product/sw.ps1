@@ -4,7 +4,7 @@
   SuperWorkspace CLI. In the kit: every command. Inside a project (.sw/sw.ps1):
   the project commands only (validate, doctor, claude, tiers, comms, user, gh, usage).
 .EXAMPLE
-  pwsh sw.ps1 init C:\DevProjects\MyGame -Profile unreal -Name MyGame
+  pwsh sw.ps1 init <project-path> -Profile unreal -Name MyGame
   pwsh .sw/sw.ps1 validate
 #>
 # No param block on purpose: plain $args keeps "-Name value" tokens bindable when

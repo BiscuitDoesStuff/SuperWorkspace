@@ -177,10 +177,10 @@ function Get-SwClaudeGhDeny([int]$Tier) {
 # --- validation -------------------------------------------------------------------
 
 $script:Skills = @('agent-documentation', 'focused-review', 'free-models', 'minimal-change', 'project-planning',
-    'structured-debugging', 'task-handoff')
+    'research', 'structured-debugging', 'task-handoff')
 $script:Routes = [ordered]@{ work = 'project-leader'; resume = 'project-leader'; 'workspace-check' = 'project-leader';
     handoff = 'project-leader'; inbox = 'project-leader'; validate = 'project-build'; review = 'project-review';
-    status = 'project-review' }
+    status = 'project-review'; research = 'project-research' }
 $script:MojibakePattern = ([char]0x00E2 + [char]0x20AC) + '|' + ([char]0x00C3 + [char]0x00E9) + '|' + ([char]0x00C2 + [char]0x00A0)
 
 function Test-SwLocalOnly([string]$Root, [string]$Relative) {
@@ -304,7 +304,7 @@ function Test-SwProject {
         Require ($agents['project-worker']['mode'] -ceq 'subagent') 'project-worker must be subagent (Leader-dispatched only)'
         foreach ($name in $commands.Keys) { Require ($agents.ContainsKey([string]$commands[$name]['agent'])) "Command $name references missing agent: $($commands[$name]['agent'])" }
         foreach ($name in $script:Routes.Keys) {
-            $child = if ($name -in 'review', 'status') { 'true' } else { 'false' }
+            $child = if ($name -in 'review', 'status', 'research') { 'true' } else { 'false' }
             Require ($commands.ContainsKey($name) -and $commands[$name]['agent'] -ceq $script:Routes[$name]) "Command $name must route to $($script:Routes[$name])"
             Require ($commands.ContainsKey($name) -and $commands[$name]['subagent'] -ceq $child) "Command $name must set subagent: $child"
         }
@@ -471,7 +471,8 @@ and follow its body; ``.sw/workspace.md`` owns orchestration. Claude adaptation:
 - Only this session spawns agents. Subagents cannot delegate or ask the user.
 - Skills: the Skill tool, or Read ``.claude/skills/<name>/SKILL.md``.
 - Commands pinned ``subagent: false`` run here; ``/validate`` applies the
-  ``project-build`` contract inline. ``/review`` and ``/status`` dispatch ``project-review``.
+  ``project-build`` contract inline. ``/review`` and ``/status`` dispatch ``project-review``;
+  ``/research`` dispatches ``project-research``.
 - GitHub tier $tier (see ``.sw/workspace.md``). Never push, merge, or release.
 "@ + "`n"
     $deny = @('Bash(git push:*)', 'Bash(git reset --hard:*)', 'Bash(git clean:*)', 'Bash(git stash:*)') + @(Get-SwClaudeGhDeny $tier) +

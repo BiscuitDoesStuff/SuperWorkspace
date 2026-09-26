@@ -19,8 +19,8 @@ its password.
 
 ```powershell
 tailscale up                               # once; also enable HTTPS in the tailnet admin console
-pwsh C:\DevProjects\SuperWorkspace\sw.ps1 remote setup -WhatIf
-pwsh C:\DevProjects\SuperWorkspace\sw.ps1 remote setup          # or: remote setup -KeepLan
+pwsh <kit-path>/sw.ps1 remote setup -WhatIf
+pwsh <kit-path>/sw.ps1 remote setup          # or: remote setup -KeepLan
 ```
 
 Then quit and reopen OpenCode Desktop so the service rebinds. If `setup`
@@ -29,7 +29,7 @@ prints LAN firewall rules, review them and remove them from an elevated shell.
 ## Check (after every OpenCode update, service change, or Tailscale change)
 
 ```powershell
-pwsh C:\DevProjects\SuperWorkspace\sw.ps1 remote check
+pwsh <kit-path>/sw.ps1 remote check
 ```
 
 This is what a healthy result looks like:

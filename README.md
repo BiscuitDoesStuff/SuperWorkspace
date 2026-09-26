@@ -9,7 +9,7 @@ shared harness. Claude Code is an opt-in local adapter.
 
 | Layer | What SuperWorkspace provides |
 | --- | --- |
-| **Project** | `AGENTS.md` policy (with managed blocks), 8 roles, 8 commands, 7+ skills, `opencode.jsonc` with a permission model, an RTK plugin, and `.sw/` (workspace guide, collaboration rules, comms, validator) |
+| **Project** | `AGENTS.md` policy (with managed blocks), 9 roles, 9 commands, 8+ skills, `opencode.jsonc` with a permission model, an RTK plugin, and `.sw/` (workspace guide, collaboration rules, comms, validator) |
 | **Profiles** | `generic` (any stack) and `unreal` (C++; LFS binary assets, binary-edit denies, UE validation skill) |
 | **Collaboration** | Task records and inboxes in `.sw/comms/`, carried by git. Rules for contributor branches and fast-forward integration. Closed tasks are summarized so they stop costing context |
 | **GitHub** | Tier 0 is read-only (the default). Tier 1 adds issues and draft PRs. Also issue forms, a PR template, labels, and a CI workflow that runs the validator |
@@ -27,14 +27,14 @@ shared harness. Claude Code is an opt-in local adapter.
 ## Quick start
 
 ```powershell
-git clone https://github.com/BiscuitDoesStuff/SuperWorkspace C:\DevProjects\SuperWorkspace
-$sw = 'C:\DevProjects\SuperWorkspace\sw.ps1'
+git clone https://github.com/BiscuitDoesStuff/SuperWorkspace <kit-path>
+$sw = '<kit-path>/product/sw.ps1'
 
 pwsh $sw global check                        # what is installed on this machine
 pwsh $sw global install -Claude -WhatIf      # preview user-level setup, then run without -WhatIf
 
-pwsh $sw init C:\DevProjects\MyGame -Profile unreal -Name MyGame          # new project
-pwsh $sw init C:\Dev\ExistingRepo -Profile generic -Adopt                 # existing project
+pwsh $sw init <path>/MyGame -Profile unreal -Name MyGame          # new project
+pwsh $sw init <path>/ExistingRepo -Profile generic -Adopt         # existing project
 ```
 
 Then, inside the project:
@@ -44,8 +44,8 @@ pwsh .sw/sw.ps1 validate                                   # static contract che
 pwsh .sw/sw.ps1 doctor -User <you>                          # new contributor? see .sw/onboarding.md
 pwsh .sw/sw.ps1 tiers -Reasoning <id> -Standard <id> -Fast <id>
 pwsh .sw/sw.ps1 claude enable                              # optional Claude adapter
-pwsh .sw/sw.ps1 user crank                                 # add a contributor
-pwsh .sw/sw.ps1 comms send -To crank -Subject "..." -Body "..."
+pwsh .sw/sw.ps1 user <name>                                # add a contributor
+pwsh .sw/sw.ps1 comms send -To <name> -Subject "..." -Body "..."
 ```
 
 Open the project in OpenCode. The default agent is `project-leader`; start with
@@ -53,7 +53,7 @@ Open the project in OpenCode. The default agent is `project-leader`; start with
 
 ## Commands
 
-Run `pwsh sw.ps1 help`. Every command that writes accepts `-WhatIf`.
+Run `pwsh product/sw.ps1 help`. Every command that writes accepts `-WhatIf`.
 
 | Command | Where | Purpose |
 | --- | --- | --- |
@@ -83,15 +83,17 @@ The kit only rewrites its own `<!-- sw:begin ... -->` / `# sw:begin` blocks.
 
 ## Layout
 
+Everything that ships lives in `product/`:
+
 ```
-sw.ps1                 CLI entry (the same file is copied to <project>/.sw/sw.ps1)
-lib/Sw.Project.psm1    in-project commands (copied into projects)
-lib/Sw.Kit.psm1        init/update, global, remote (kit only)
-project/               everything installed into a project: base/, profiles/, github/, roles.json, opencode.base.json
-global/rules.md        the managed global rules block
-tests/                 Pester suite
-docs/                  decisions and guides
+product/sw.ps1                 CLI entry (the same file is copied to <project>/.sw/sw.ps1)
+product/lib/Sw.Project.psm1    in-project commands (copied into projects)
+product/lib/Sw.Kit.psm1        init/update, global, remote (kit only)
+product/project/               everything installed into a project: base/, profiles/, github/, roles.json, opencode.base.json
+product/global/rules.md        the managed global rules block
+product/docs/                  user guides
 ```
 
-See [docs/decisions.md](docs/decisions.md) for why things are the way they
-are, and [docs/remote-access.md](docs/remote-access.md) for Tailscale.
+See [product/docs/remote-access.md](product/docs/remote-access.md) for
+Tailscale. Developing SuperWorkspace itself? See
+[docs/development.md](docs/development.md).

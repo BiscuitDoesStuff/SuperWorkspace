@@ -1,6 +1,6 @@
 # Agent workspace
 
-Installed and updated by [SuperWorkspace](https://github.com/BiscuitDoesStuff/SuperWorkspace);
+Installed and updated by the SuperWorkspace kit;
 files listed in `.sw/manifest.json` are kit-managed (edit them upstream, or
 accept that `sw update` will skip your modified copy). OpenCode is the shared
 harness: new sessions default to `project-leader`. Use `/work <task>`,
@@ -37,6 +37,7 @@ Keep required startup reading small: this map is read on demand.
 | project-worker | subagent | standard | Leader-dispatched parallel work in an assigned worktree |
 | project-build | all | standard | Tooling and coordinated validation |
 | project-documentation | all | standard | Markdown, factual docs, skills, task records |
+| project-research | all | reasoning | Primary-source research, cited Markdown findings |
 | project-review | all | reasoning | Read-only correctness, scope, simplicity findings |
 | explore (built-in) | subagent | fast | Focused discovery |
 
@@ -105,11 +106,11 @@ A Claude subscription is not OpenCode API access.
 ## Model tiers
 
 Single source for role-to-tier membership (the table above): reasoning =
-project-plan, project-architect, project-review; standard = project-developer,
-project-worker, project-build, project-documentation; fast = explore; the Leader
-inherits the session model. Default cost policy is free-first: free
-OpenCode/OpenRouter models and local LM Studio, no metered API spend unless a
-contributor opts in locally. See the `free-models` skill for dated tier fits.
+project-plan, project-architect, project-research, project-review; standard =
+project-developer, project-worker, project-build, project-documentation; fast =
+explore; the Leader inherits the session model. Default cost policy is
+free-first: free OpenCode/OpenRouter models and local LM Studio, no metered API
+spend unless a contributor opts in locally. See the `free-models` skill for dated tier fits.
 Local models with small context windows must override `compaction` locally.
 
 ## Usage optimization

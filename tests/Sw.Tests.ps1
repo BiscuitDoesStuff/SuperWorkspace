@@ -4,8 +4,8 @@
 
 BeforeAll {
     $script:RepoRoot = Split-Path $PSScriptRoot -Parent
-    Import-Module (Join-Path $RepoRoot 'lib/Sw.Project.psm1') -Force -DisableNameChecking
-    Import-Module (Join-Path $RepoRoot 'lib/Sw.Kit.psm1') -Force -DisableNameChecking
+    Import-Module (Join-Path $RepoRoot 'product/lib/Sw.Project.psm1') -Force -DisableNameChecking
+    Import-Module (Join-Path $RepoRoot 'product/lib/Sw.Kit.psm1') -Force -DisableNameChecking
 
     function New-SwProject {
         param([string]$Name, [string]$Profile = 'generic', [int]$GitHubTier = 0)
@@ -251,6 +251,7 @@ Describe 'Claude adapter' {
         $roles = Read-SwJson (Join-Path $dir '.sw/roles.json')
         $workers = @($roles.Keys | Where-Object { $_ -notin 'project-leader', 'explore' })
         foreach ($r in $workers) { Test-Path (Join-Path $dir ".claude/agents/$r.md") | Should -BeTrue }
+        Get-Content -LiteralPath (Join-Path $dir '.claude/agents/project-research.md') -Raw | Should -Match 'WebSearch'
         Test-Path (Join-Path $dir '.claude/agents/project-leader.md') | Should -BeFalse
         Test-Path (Join-Path $dir '.claude/agents/explore.md') | Should -BeFalse
 
@@ -420,5 +421,15 @@ Describe 'Backup secret filter' {
     ) {
         $matched = InModuleScope Sw.Kit -Parameters @{ Name = $Name } { $Name -match $script:SecretName }
         $matched | Should -Be $Expected
+    }
+}
+
+Describe 'product/ leak guard' {
+    It 'ships no personal names or paths' {
+        # CHANGELOG is dated history, so it may name the projects the kit came from.
+        $hits = Get-ChildItem (Join-Path $RepoRoot 'product') -Recurse -File -Force |
+            Where-Object Name -ne 'CHANGELOG.md' |
+            Select-String -Pattern 'BiscuitDoesStuff|crank|MyMMO|C:\Dev'
+        $hits | ForEach-Object { "$($_.Path):$($_.LineNumber)" } | Should -BeNullOrEmpty
     }
 }

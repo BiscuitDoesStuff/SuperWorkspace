@@ -4,6 +4,22 @@ Format: `YYYY-MM-DD: Title (status)`. Newest first. Record no secret values.
 The earlier decision logs (ai-environment-foundation, MyMMO) are summarized
 here. Their repositories keep the full history.
 
+## 2026-09-26: Phase 0, a universal platform built research-first (accepted)
+
+- **Layout:** `product/` is what ships; the repository root is the kit's own
+  dev workspace, installed by the kit itself (dogfooding). Product text
+  carries no personal names, paths or opinions; a Pester guard enforces it.
+- **Research first:** kit behavior stays frozen until sourced research
+  (`docs/research/`) revises `docs/roadmap.md`. The only exceptions are the
+  split, the leak cleanup, the dogfood install and the researcher.
+- **Core researcher:** `project-research` ships in core, bootstrapped from
+  mattpocock/skills `research` plus the Anthropic claude-cookbooks research
+  subagent rules (both MIT), then revised by research topic 0.
+- **Dev process:** a Leader session owns the whole plan and reviews; worker
+  sessions each run one work package. Task records in `.sw/comms/` are the
+  durable channel; see `docs/development.md`. Whether the product ships this
+  model is left to research topics 5 and 10.
+
 ## 2026-09-26: v0.2.0 hardening and contributor onboarding (accepted)
 
 **Runtime verification of 0.1.0 is complete.** On OpenCode 2.0.17:
@@ -110,9 +126,8 @@ exposure. Firewall rule removal is printed for the human to run.
 
 ## 2026-09-26: Free-first cost guardrail (carried over, accepted)
 
-No metered API spend without explicit approval. Claude runs one month at a
-time (about $20). Other access uses free OpenCode/OpenRouter models and local
-LM Studio. Roles map to tiers, never to model IDs, in shared config. Each user
+No metered API spend without explicit approval. Access defaults to free
+models (OpenCode/OpenRouter free tiers, local models). Roles map to tiers, never to model IDs, in shared config. Each user
 keeps their own tier map, and it is git-ignored.
 
 ## 2026-09-26: Stay file-based, with no config-manager app (carried over, accepted)
@@ -149,20 +164,7 @@ managed blocks, and keeps nothing in a database.
 
 ## Open items
 
-- MyMMO adoption (for the user and Crank). A dry run on 2026-09-26 in a
-  throwaway clone of HEAD found no kit bugs. `init -Profile unreal -Adopt`
-  backs up and replaces 20 files, adds 19, and `validate` then fails only on
-  the startup budget. Before the real adoption:
-  - Trim the old MyMMO sections of `AGENTS.md` (startup, validation and git
-    rules) that the core block now owns. Keep identity, architecture and the
-    invariants.
-  - Delete the superseded `mmo-manager`, `mmo-developer` and
-    `mmo-world-worker` roles, which have no delegation entries.
-  - Delete the old workspace docs and scripts: `docs/{agent-workspace,ai-usage,
-    WORKSPACE_USER_GUIDE,HANDOFF}.md`, `docs/collaboration/` and
-    `scripts/*Workspace*.ps1`.
-  - The `.gitattributes` LFS lines get duplicated inside the managed block.
-    This is harmless.
+- MyMMO adoption: see [case-studies/mymmo.md](case-studies/mymmo.md).
 - Off-LAN Tailscale route: unverified until Tailscale is up and HTTPS is
   enabled for the tailnet.
 - RTK upstream OpenCode V2 plugin (rtk-ai/rtk#3463): delete the project shim

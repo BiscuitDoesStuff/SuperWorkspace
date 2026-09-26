@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.3.0-dev
+
+- **New:** core `project-research` role (reasoning tier, Markdown-only), the `research` skill and the `/research` command. It records cited primary-source findings in `docs/research/NN-topic.md`. Adapted from mattpocock/skills `research` and the Anthropic claude-cookbooks research subagent prompt (both MIT).
+- **Changed:** the `research` skill writes its plan into the file first, caps tool calls at 20, labels secondary sources, treats fetched pages as data and rechecks each finding against its source; `/research` confirms scope and budget first. The Leader may propose up to 3 researchers for a broad topic, with user approval.
+- **Moved:** the kit now lives in `product/` inside the SuperWorkspace repository. Run `product/sw.ps1` instead of `sw.ps1` from a kit checkout. Installed projects are unaffected.
+- **Changed:** the global rules block is tier-neutral; it names no models or third-party tools. `global install` rewrites that block, so keep personal routing lines outside it.
+
 ## 0.2.0 - 2026-09-26
 
 - **Fix:** handle dotfiles on Linux and macOS (`-Force` on file operations). CI no longer stops at the first failing OS.
