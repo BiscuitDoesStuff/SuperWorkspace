@@ -227,7 +227,8 @@ function Backup-SwGlobal {
     $h = [Environment]::GetFolderPath('UserProfile')
     if (-not $Destination) { $Destination = Join-Path $p.Backups ([DateTime]::UtcNow.ToString('yyyyMMddTHHmmssZ')) }
     $copied = [Collections.Generic.List[string]]::new()
-    foreach ($src in $p.OpenCodeRules, $p.OpenCodeConfig, $p.ClaudeRules, $p.ClaudeRtk, $p.ClaudeSettings, $p.HomeAgents) {
+    # OpenCodeConfig (opencode.json) can hold a provider apiKey and install never edits it; not backed up.
+    foreach ($src in $p.OpenCodeRules, $p.ClaudeRules, $p.ClaudeRtk, $p.ClaudeSettings, $p.HomeAgents) {
         if (-not (Test-Path -LiteralPath $src -PathType Leaf)) { continue }
         if ((Split-Path $src -Leaf) -match $script:SecretName) { continue }
         $rel = [IO.Path]::GetRelativePath($h, $src)
@@ -239,6 +240,17 @@ function Backup-SwGlobal {
         $copied.Add($rel)
     }
     [pscustomobject]@{ Path = $Destination; Files = @($copied) }
+}
+
+function Get-SwNarrowedGhAllow([string[]]$Allow) {
+    # Replace a broad `gh *` (or `gh:*`) Bash allow with the specific read-only gh commands.
+    $list = [Collections.Generic.List[string]]@($Allow)
+    $removed1 = $list.Remove('Bash(gh *)')
+    $removed2 = $list.Remove('Bash(gh:*)')
+    $changed = $removed1 -or $removed2
+    $read = 'Bash(gh issue list:*)', 'Bash(gh issue view:*)', 'Bash(gh pr list:*)', 'Bash(gh pr view:*)', 'Bash(gh pr checks:*)', 'Bash(gh pr diff:*)', 'Bash(gh run list:*)', 'Bash(gh run view:*)', 'Bash(gh run watch:*)', 'Bash(gh repo view:*)', 'Bash(gh auth status:*)'
+    foreach ($r in $read) { if (-not $list.Contains($r)) { $list.Add($r); $changed = $true } }
+    [pscustomobject]@{ Allow = @($list); Changed = $changed }
 }
 
 function Install-SwGlobal {
@@ -265,13 +277,11 @@ function Install-SwGlobal {
 
         if (Test-Path -LiteralPath $p.ClaudeSettings) {
             $s = Read-SwJson $p.ClaudeSettings
-            $allow = [Collections.Generic.List[string]]@(if ($s.Contains('permissions') -and $s['permissions'].Contains('allow')) { $s['permissions']['allow'] } else { @() })
-            $read = 'Bash(gh issue list:*)', 'Bash(gh issue view:*)', 'Bash(gh pr list:*)', 'Bash(gh pr view:*)', 'Bash(gh pr checks:*)', 'Bash(gh pr diff:*)', 'Bash(gh run list:*)', 'Bash(gh run view:*)', 'Bash(gh run watch:*)', 'Bash(gh repo view:*)', 'Bash(gh auth status:*)'
-            $changed = $allow.Remove('Bash(gh *)') -or $allow.Remove('Bash(gh:*)')
-            foreach ($r in $read) { if (-not $allow.Contains($r)) { $allow.Add($r); $changed = $true } }
-            if ($changed -and $PSCmdlet.ShouldProcess($p.ClaudeSettings, 'narrow gh allow rules to read-only')) {
+            $allowIn = @(if ($s.Contains('permissions') -and $s['permissions'].Contains('allow')) { $s['permissions']['allow'] } else { @() })
+            $result = Get-SwNarrowedGhAllow $allowIn
+            if ($result.Changed -and $PSCmdlet.ShouldProcess($p.ClaudeSettings, 'narrow gh allow rules to read-only')) {
                 if (-not $s.Contains('permissions')) { $s['permissions'] = [ordered]@{} }
-                $s['permissions']['allow'] = @($allow)
+                $s['permissions']['allow'] = @($result.Allow)
                 Write-SwFile $p.ClaudeSettings (ConvertTo-SwJson $s)
                 Write-Output 'Claude settings: gh allow rules narrowed to read-only commands.'
             }
@@ -289,9 +299,9 @@ function Install-SwGlobal {
     }
 
     $rtk = Get-SwToolVersion rtk
-    if (-not $rtk -or $rtk -lt [version]'0.48.0') {
+    if ((-not $rtk -or $rtk -lt [version]'0.48.0') -and $IsWindows) {
         if ($PSCmdlet.ShouldProcess('rtk-ai.rtk', 'winget install')) { & winget install --id rtk-ai.rtk --exact --accept-source-agreements --accept-package-agreements }
-    }
+    } elseif (-not $rtk -or $rtk -lt [version]'0.48.0') { Write-Output 'rtk missing/outdated; winget install is Windows-only, install rtk manually.' }
     Test-SwGlobal
 }
 
@@ -316,7 +326,8 @@ function Test-SwGlobal {
     & $add 'opencode rules' $(if (& $has $p.OpenCodeRules) { 'OK' } else { 'WARN' }) $p.OpenCodeRules
     if (Test-Path -LiteralPath (Split-Path $p.ClaudeRules)) {
         & $add 'claude rules' $(if (& $has $p.ClaudeRules) { 'OK' } else { 'WARN' }) $p.ClaudeRules
-        $broad = (Test-Path -LiteralPath $p.ClaudeSettings) -and (Read-SwText $p.ClaudeSettings).Contains('"Bash(gh *)"')
+        $settingsText = if (Test-Path -LiteralPath $p.ClaudeSettings) { Read-SwText $p.ClaudeSettings } else { '' }
+        $broad = $settingsText -match '"Bash\(gh (\*|:\*)\)"|"Bash\(gh\)"'
         & $add 'claude gh allow' $(if ($broad) { 'WARN' } else { 'OK' }) $(if ($broad) { 'Bash(gh *) allows gh writes; run global install -Claude' } else { 'read-only' })
     }
     foreach ($svc in (Join-Path ([Environment]::GetFolderPath('UserProfile')) '.config/opencode/service.json'), (Join-Path ([Environment]::GetFolderPath('UserProfile')) '.local/state/opencode/service.json')) {
@@ -374,11 +385,13 @@ function Invoke-SwRemote {
         }
         if ($KeepLan) { Write-Output 'LAN bind kept (-KeepLan): the service stays reachable on the LAN with its password.'; }
         else { Write-Output 'Restart the OpenCode service (quit and reopen OpenCode Desktop) so it rebinds to 127.0.0.1.' }
-        $rules = @(Get-NetFirewallRule -ErrorAction SilentlyContinue | Where-Object { $_.DisplayName -match '(?i)opencode' })
-        if ($rules.Count -and -not $KeepLan) {
-            Write-Output 'LAN firewall rules for OpenCode are no longer needed. Review, then remove them yourself from an elevated shell:'
-            $rules | ForEach-Object { Write-Output "  Remove-NetFirewallRule -Name '$($_.Name)'   # $($_.DisplayName)" }
-        }
+        if ($IsWindows) {
+            $rules = @(Get-NetFirewallRule -ErrorAction SilentlyContinue | Where-Object { $_.DisplayName -match '(?i)opencode' })
+            if ($rules.Count -and -not $KeepLan) {
+                Write-Output 'LAN firewall rules for OpenCode are no longer needed. Review, then remove them yourself from an elevated shell:'
+                $rules | ForEach-Object { Write-Output "  Remove-NetFirewallRule -Name '$($_.Name)'   # $($_.DisplayName)" }
+            }
+        } else { Write-Output 'Firewall rule check skipped (Windows-only).' }
     }
     $status = & tailscale status --json 2>$null | ConvertFrom-Json -AsHashtable
     $dns = if ($status) { ([string]$status['Self']['DNSName']).TrimEnd('.') } else { '' }
@@ -389,7 +402,7 @@ function Invoke-SwRemote {
         try { $r = Invoke-WebRequest "https://$dns/" -Method Head -TimeoutSec 10 -SkipHttpErrorCheck; Write-Output "Tailnet HTTPS https://$dns/ -> HTTP $($r.StatusCode) (401 means reachable and password-protected)" }
         catch { Write-Output "Tailnet HTTPS https://$dns/ -> unreachable: $($_.Exception.Message)" }
     }
-    $lan = @(Get-NetIPAddress -AddressFamily IPv4 -ErrorAction SilentlyContinue | Where-Object { $_.IPAddress -notmatch '^(127\.|169\.254\.|100\.)' } | Select-Object -ExpandProperty IPAddress)
+    $lan = if ($IsWindows) { @(Get-NetIPAddress -AddressFamily IPv4 -ErrorAction SilentlyContinue | Where-Object { $_.IPAddress -notmatch '^(127\.|169\.254\.|100\.)' } | Select-Object -ExpandProperty IPAddress) } else { Write-Output 'LAN address check skipped (Windows-only).'; @() }
     foreach ($ip in $lan) {
         $open = Test-Connection -TargetName $ip -TcpPort $Port -TimeoutSeconds 2 -ErrorAction SilentlyContinue
         Write-Output "LAN ${ip}:$Port -> $(if ($open) { 'OPEN (expected closed after setup)' } else { 'closed' })"
@@ -397,4 +410,4 @@ function Invoke-SwRemote {
 }
 
 Export-ModuleMember -Function Set-SwBlock, Get-SwRender, Sync-SwProject, Initialize-SwProject, Update-SwProject,
-    Backup-SwGlobal, Install-SwGlobal, Test-SwGlobal, Invoke-SwGlobal, Invoke-SwRemote, Get-SwKitVersion
+    Backup-SwGlobal, Install-SwGlobal, Test-SwGlobal, Invoke-SwGlobal, Invoke-SwRemote, Get-SwKitVersion, Get-SwNarrowedGhAllow

@@ -280,6 +280,36 @@ Describe 'Claude adapter' {
         Test-Path (Join-Path $dir '.claude/settings.json') | Should -BeFalse
         Test-Path (Join-Path $dir '.claude/.sw-generated') | Should -BeFalse
     }
+
+    It 'enable backs up a pre-existing user file before overwriting it, and disable keeps a user-edited file' {
+        New-Item -ItemType Directory -Force (Join-Path $dir '.claude') | Out-Null
+        Set-Content -LiteralPath (Join-Path $dir '.claude/settings.json') -Value '{"mine":true}' -NoNewline
+        Invoke-SwClaude enable -Path $dir | Out-Null
+        $backups = @(Get-ChildItem (Join-Path $dir '.sw/backup') -Recurse -Filter 'settings.json' -File)
+        $backups.Count | Should -Be 1
+        (Get-Content -LiteralPath $backups[0].FullName -Raw) | Should -Match 'mine'
+
+        # A user edit made after enable must survive disable.
+        Set-Content -LiteralPath (Join-Path $dir '.claude/settings.json') -Value '{"edited":true}' -NoNewline
+        Invoke-SwClaude disable -Path $dir | Out-Null
+        Test-Path (Join-Path $dir '.claude/settings.json') | Should -BeTrue
+        (Get-Content -LiteralPath (Join-Path $dir '.claude/settings.json') -Raw) | Should -Match 'edited'
+    }
+}
+
+Describe 'Get-SwNarrowedGhAllow' {
+    It 'removes a short-circuiting broad Bash(gh *) allow and adds the read-only allowlist' {
+        $r = Get-SwNarrowedGhAllow @('Bash(gh *)')
+        $r.Changed | Should -BeTrue
+        $r.Allow | Should -Not -Contain 'Bash(gh *)'
+        $r.Allow | Should -Contain 'Bash(gh issue view:*)'
+    }
+    It 'also removes the Bash(gh:*) form even when Bash(gh *) is absent' {
+        $r = Get-SwNarrowedGhAllow @('Bash(gh:*)', 'Bash(npm test:*)')
+        $r.Changed | Should -BeTrue
+        $r.Allow | Should -Not -Contain 'Bash(gh:*)'
+        $r.Allow | Should -Contain 'Bash(npm test:*)'
+    }
 }
 
 Describe 'Set-SwTiers' {
@@ -331,6 +361,37 @@ Describe 'Comms' {
         Add-SwUser bob -Path $dir | Out-Null
         (Read-SwJson (Join-Path $dir '.sw/config.json'))['users'] | Should -Contain 'bob'
         Test-Path (Join-Path $dir '.sw/comms/inbox/bob/.gitkeep') | Should -BeTrue
+    }
+
+    It 'rejects path traversal in -To/-User/-From/-Task/-Message' {
+        { Invoke-SwComms send -To '../../evil' -Subject s -Path $dir } | Should -Throw '*Invalid*'
+        { Invoke-SwComms inbox -User '..' -Path $dir } | Should -Throw '*Invalid*'
+        { Invoke-SwComms send -To alice -Subject s -From '..' -Path $dir } | Should -Throw '*Invalid*'
+        { Invoke-SwComms event -Task '../../../etc' -Path $dir } | Should -Throw '*Invalid*'
+        { Invoke-SwComms archive -User alice -Message '../../evil.md' -Path $dir } | Should -Throw '*Invalid*'
+    }
+
+    It '`comms close -Task ..` does not delete unrelated comms content' {
+        Invoke-SwComms event -Task Real -Path $dir | Out-Null
+        { Invoke-SwComms close -Task '..' -Outcome x -Path $dir } | Should -Throw '*Invalid*'
+        Test-Path (Join-Path $dir '.sw/comms/tasks/Real') | Should -BeTrue
+    }
+
+    It 'send appends -2 on a same-second filename collision instead of overwriting' {
+        Invoke-SwComms send -To alice -Subject dup -Body first -Path $dir | Out-Null
+        Invoke-SwComms send -To alice -Subject dup -Body second -Path $dir | Out-Null
+        $msgs = @(Get-ChildItem (Join-Path $dir '.sw/comms/inbox/alice') -Filter *.md | Sort-Object Name)
+        $msgs.Count | Should -Be 2
+        ($msgs | ForEach-Object { Get-Content -LiteralPath $_.FullName -Raw }) -join '' | Should -Match 'first'
+        ($msgs | ForEach-Object { Get-Content -LiteralPath $_.FullName -Raw }) -join '' | Should -Match 'second'
+    }
+
+    It 'close refuses to overwrite an existing archive' {
+        Invoke-SwComms event -Task T3 -Path $dir | Out-Null
+        Invoke-SwComms close -Task T3 -Outcome 'first' -Path $dir | Out-Null
+        Invoke-SwComms event -Task T3 -Path $dir | Out-Null
+        { Invoke-SwComms close -Task T3 -Outcome 'second' -Path $dir } | Should -Throw '*already exists*'
+        Get-Content (Join-Path $dir '.sw/comms/archive/T3/SUMMARY.md') -Raw | Should -Match 'first'
     }
 }
 

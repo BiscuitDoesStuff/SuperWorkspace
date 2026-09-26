@@ -49,4 +49,4 @@ if ($Command -in 'help', '-h', '--help', '/?' -or -not $commands.Contains($Comma
 $fn = $commands[$Command][0]
 if (-not (Get-Command $fn -ErrorAction SilentlyContinue)) { Write-Output "'$Command' is a kit command; run it from your SuperWorkspace clone."; exit 2 }
 & $fn @Arguments
-if ($Command -in 'validate', 'doctor') { exit $LASTEXITCODE }
+if ($Command -in 'validate', 'doctor', 'global') { exit $LASTEXITCODE }
