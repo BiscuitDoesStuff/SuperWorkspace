@@ -1,0 +1,27 @@
+name: ci
+on:
+  push:
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  test:
+    strategy:
+      matrix:
+        os: [windows-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Pester
+        shell: pwsh
+        run: |
+          git config --global user.name ci
+          git config --global user.email ci@example.invalid
+          Install-Module Pester -MinimumVersion 5.5 -Force -Scope CurrentUser
+          Invoke-Pester tests -CI
+      - name: Fresh install validates
+        shell: pwsh
+        run: |
+          $t = Join-Path ([IO.Path]::GetTempPath()) 'sw-ci'
+          pwsh -NoProfile -File sw.ps1 init $t -Profile unreal -Name CiCheck
+          pwsh -NoProfile -File (Join-Path $t '.sw/sw.ps1') validate

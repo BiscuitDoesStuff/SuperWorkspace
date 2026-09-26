@@ -1,0 +1,7 @@
+{
+  "description": "Unreal Engine C++ project with LFS binary assets.",
+  "editDeny": ["*.uasset", "*.umap"],
+  "lfs": ["*.uasset", "*.umap"],
+  "watcherIgnore": ["Binaries/**", "Build/**", "DerivedDataCache/**", "Intermediate/**", "Saved/**", ".vs/**"],
+  "skills": ["unreal-validation"]
+}

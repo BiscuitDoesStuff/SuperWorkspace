@@ -1,0 +1,27 @@
+# Harvest from the retired workspaces (local reference only, removed after porting)
+_harvest/
+
+# Secrets and credentials: never commit, never back up
+.env
+*.env
+.env.*
+!.env.example
+*.pem
+*.key
+auth.json
+credentials.json
+.claude.json
+service.json
+
+# Local state, caches, test output
+.sw-test/
+*.log
+node_modules/
+TestResults/
+testResults.xml
+
+# OS and editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
