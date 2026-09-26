@@ -285,7 +285,7 @@ Describe 'Claude adapter' {
         New-Item -ItemType Directory -Force (Join-Path $dir '.claude') | Out-Null
         Set-Content -LiteralPath (Join-Path $dir '.claude/settings.json') -Value '{"mine":true}' -NoNewline
         Invoke-SwClaude enable -Path $dir | Out-Null
-        $backups = @(Get-ChildItem (Join-Path $dir '.sw/backup') -Recurse -Filter 'settings.json' -File)
+        $backups = @(Get-ChildItem (Join-Path $dir '.sw/backup') -Recurse -Filter 'settings.json' -File -Force)
         $backups.Count | Should -Be 1
         (Get-Content -LiteralPath $backups[0].FullName -Raw) | Should -Match 'mine'
 
