@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.2.0 - 2026-09-26
+
+- **Fix:** handle dotfiles on Linux and macOS (`-Force` on file operations). CI no longer stops at the first failing OS.
+- **Fix (security and data loss):**
+  - comms names reject path traversal;
+  - `comms close` archives the whole task folder;
+  - `claude enable` and `claude disable` keep your own `.claude/` files;
+  - both broad `gh` allows are removed, and more `gh` write verbs are denied;
+  - global backups skip `opencode.json`.
+- **Fix:** `remote` works on Linux and macOS, and `global` returns its exit code.
+- **New:** `sw doctor [-User]`, a read-only setup check that prints the fix for each problem, and `.sw/onboarding.md` for new contributors.
+
 ## 0.1.0 - 2026-09-26
 
 First version. It replaces the ai-environment-foundation repo and the MyMMO
