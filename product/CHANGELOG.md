@@ -5,6 +5,7 @@
 - **Changed (Claude adapter, Phase 1 package 3):** generated `.claude/agents/*.md` set `disallowedTools: Agent`, so only the main session spawns agents. `.claude/settings.json` asks before `Read(**/.env)` and `Read(**/.env.*)` (`.env.example` prompts too) and denies `gh alias`. The `.claude/project-leader.md` dispatch sentence is built from the commands marked `subagent: true`. Run `update` (or `claude enable`) to regenerate.
 - **Changed (behaviour):** OpenCode `external_directory` now defaults to `ask` instead of `allow`, so access outside the project folder prompts. `update` rewrites the base rule in `opencode.jsonc`.
 - **Changed:** `validate` no longer pins each command's `subagent` value; command frontmatter owns the flag. The routing check stays.
+- **Fixed:** `.claude/project-leader.md` is generated with LF line endings, so `validate` no longer reports false Claude drift when the kit module is checked out with CRLF.
 - Fixed: `free-models` no longer lists models or prices; GLM 5.2 was listed as free and is not.
 - **Docs (research topics 5-10, Phase 1 package 1):**
   - `.sw/collaboration.md`:

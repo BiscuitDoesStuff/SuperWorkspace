@@ -463,7 +463,7 @@ function Get-SwClaudeFiles([string]$Root) {
     $dispatchLine = if ($dispatch.Count) {
         (@($dispatch.Keys | ForEach-Object { "$($dispatch[$_] -join ' and ') $(if ($dispatch[$_].Count -gt 1) { 'dispatch' } else { 'dispatches' }) ``$_``" }) -join '; ') + '.'
     } else { 'No command dispatches a subagent.' }
-    $out['.claude/project-leader.md'] = @"
+    $out['.claude/project-leader.md'] = (@"
 # Project Leader (Claude main session)
 
 $note
@@ -477,7 +477,7 @@ and follow its body; ``.sw/workspace.md`` owns orchestration. Claude adaptation:
 - Commands pinned ``subagent: false`` run here; ``/validate`` applies the
   ``project-build`` contract inline. $dispatchLine
 - GitHub tier $tier (see ``.sw/workspace.md``). Never push, merge, or release.
-"@ + "`n"
+"@ + "`n").Replace("`r`n", "`n")
     $deny = @('Bash(git push:*)', 'Bash(git reset --hard:*)', 'Bash(git clean:*)', 'Bash(git stash:*)') + @(Get-SwClaudeGhDeny $tier) +
         @($profileData['editDeny'] | ForEach-Object { "Edit(**/$_)" })
     $ask = @('Bash(git commit:*)', 'Read(**/.env)', 'Read(**/.env.*)') + $(if ($tier -ge 1) { @('Bash(gh pr create:*)') } else { @() })
