@@ -42,6 +42,8 @@ Work packages (records in `.sw/comms/tasks/`; process in
     (reviewed 2026-09-27; R1-R7 adopted).
   - [x] `p0-research-08`: topic 8, `docs/research/08-permissions-safety.md`
     (reviewed 2026-09-27; R5 hook not now).
+  - [x] `p0-research-09`: topic 9, `docs/research/09-validation-evaluation.md`
+    (reviewed 2026-09-27; R1-R8 adopted).
   - [x] `p0-research-05`: topic 5, `docs/research/05-orchestration-roles.md`
     (reviewed 2026-09-27; R1-R7 adopted, R7 minimal).
   - [x] `p0-research-06`: topic 6, `docs/research/06-upkeep-memory.md`
@@ -50,6 +52,8 @@ Work packages (records in `.sw/comms/tasks/`; process in
     (reviewed 2026-09-27; R1-R7 adopted).
   - [x] `p0-research-08`: topic 8, `docs/research/08-permissions-safety.md`
     (reviewed 2026-09-27; R5 hook not now).
+  - [x] `p0-research-09`: topic 9, `docs/research/09-validation-evaluation.md`
+    (reviewed 2026-09-27; R1-R8 adopted).
 
 ## Research inputs found during Phase 0
 
@@ -165,8 +169,19 @@ Work packages (records in `.sw/comms/tasks/`; process in
   GLM defect. One line each in `task-handoff` (records stand without
   transcripts) and `agent-documentation` (date volatile facts). Instructions
   are reviewed on recorded failures, not on a schedule.
-- **Research lint (topic 9):** a `validate` check that each finding has a URL
-  and a date, deferred until several research files exist.
+- **Validation (decided in topic 9):** CI stays deterministic and
+  secret-free (no model runs). `validate` gains: a `## Project identity`
+  check, a skill name/description check against the spec, Claude adapter
+  structure derived from `roles.json`, and a research lint (six sections,
+  header date, a citation per finding) as a warning, shipped, running only
+  where `docs/research/*.md` exists. Pester gains: a test that the
+  `subagent:` flag drives the leader dispatch line (05 R7), and a staleness
+  test on shipped skills (06 R5). No schema validation until OpenCode serves
+  a V2 schema (the kit fails the V1 one today). After the rewrite, run a
+  manual runtime smoke checklist per harness in a throwaway init (denied
+  `git push`, a readonly edit, a `.env` read), recorded in a task record;
+  install OpenCode first. Skill evaluation is a practice (three scenarios
+  plus a baseline, run by hand), not a tool.
 
 ## Standing rules
 
