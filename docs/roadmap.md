@@ -40,12 +40,16 @@ Work packages (records in `.sw/comms/tasks/`; process in
     (reviewed 2026-09-27; advisor is a skill; `effort` deferred).
   - [x] `p0-research-04`: topic 4, `docs/research/04-context-efficiency.md`
     (reviewed 2026-09-27; R1-R7 adopted).
+  - [x] `p0-research-08`: topic 8, `docs/research/08-permissions-safety.md`
+    (reviewed 2026-09-27; R5 hook not now).
   - [x] `p0-research-05`: topic 5, `docs/research/05-orchestration-roles.md`
     (reviewed 2026-09-27; R1-R7 adopted, R7 minimal).
   - [x] `p0-research-06`: topic 6, `docs/research/06-upkeep-memory.md`
     (reviewed 2026-09-27; R1-R6 adopted).
   - [x] `p0-research-07`: topic 7, `docs/research/07-lifecycle.md`
     (reviewed 2026-09-27; R1-R7 adopted).
+  - [x] `p0-research-08`: topic 8, `docs/research/08-permissions-safety.md`
+    (reviewed 2026-09-27; R5 hook not now).
 
 ## Research inputs found during Phase 0
 
@@ -120,6 +124,19 @@ Work packages (records in `.sw/comms/tasks/`; process in
   text. A kit-side rename map moves files, including edited ones. Tag
   releases in git as the pin; no PowerShell Gallery yet. Fix
   `.sw/workspace.md` "Regenerate after `sw update`" (update already does it).
+- **Permissions and safety (decided in topic 8):** safety claims use three
+  words: *enforced* (tool lists, file-tool rules), *guardrail* (shell
+  patterns, which stop the command as written only), *stated* (role text). A
+  small table in `.sw/workspace.md` shows what each harness enforces; today
+  the doc overstates Claude. Claude adapter gains: `disallowedTools: Agent`, a
+  `.env` read ask, and a `gh alias` deny; its `gh` list is documented as a
+  denylist. OpenCode `external_directory` changes from `allow` to `ask`. No
+  more `git push` spellings: branch protection on `main` is the real control
+  (a human check; the kit's `gh api` deny blocked the Leader's read-only
+  check). Owner checked 2026-09-27: `main` is not protected. Sandboxes are documented, never configured (Claude's does not run on
+  native Windows). No per-role Claude hook for now. Update the `decisions.md`
+  hook lesson with its documented cause (subagent frontmatter hooks need trust
+  for the exact folder). Note the shipped third-party MCP server (`context7`).
 - **Skills move (topic 7 R7, owner 2026-09-27):** moving canonical skills to
   `.agents/skills` is planned next-phase work, after the rename map; it
   reverses part of the 2026-09-26 "OpenCode is canonical" decision.
