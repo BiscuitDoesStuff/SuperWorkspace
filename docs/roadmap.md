@@ -42,7 +42,7 @@ after each. Records: `.sw/comms/tasks/p1-NN-*/`.
 
 Status (realigned 2026-09-27 after the desktop checkpoint,
 `archive/p1-checkpoint-runtime/`): packages 1-5 and 10 are done (records in
-`.sw/comms/archive/p1-NN-*/`); 5a is done (2026-09-27); 6-9 wait on their runtime tests.
+`.sw/comms/archive/p1-NN-*/`); 5a and 6 are done (2026-09-27); 7 and 9 wait on their runtime tests; 8 has none.
 Each package that installed projects receive bumps `product/VERSION` and adds
 a `product/CHANGELOG.md` entry, and adds Pester coverage for new code (09 R2).
 
@@ -141,9 +141,11 @@ a `product/CHANGELOG.md` entry, and adds Pester coverage for new code (09 R2).
       control (`.sw/workspace.md`, `.sw/collaboration.md` "Protect main"):
       the solo ruleset stops force pushes and deletion, not ordinary pushes.
     - End with a desktop re-test of the smoke checklist.
-6. **Skills move to `.agents/skills`** (07 R7, 02 option b). After the rename
+6. [x] **Skills move to `.agents/skills`** (07 R7, 02 option b). After the rename
    map. Runtime test 4 first. It reverses part of the 2026-09-26 "OpenCode is
-   canonical" decision; record that in `docs/decisions.md`.
+   canonical" decision; record that in `docs/decisions.md`. Done 2026-09-27
+   (`p1-06-skills-move`): `update` moves kit skills with their edits (rename-map
+   prefix); `validate` rejects a kit skill left in `.opencode/skills`.
 7. **Global overlay** (01 R1-R2, 02 R6). `global install` creates an empty
    `~/.config/superworkspace/rules.local.md` if missing and never rewrites
    it. Claude loads it by an `@` line after `sw:end global`; OpenCode by an
@@ -181,8 +183,10 @@ a `product/CHANGELOG.md` entry, and adds Pester coverage for new code (09 R2).
 3. [x] Does OpenCode V2 warn on the V1 `$schema`, and what does
    `opencode models --verbose` print for free models? (03; packages 2, 8.)
    No warning; `--verbose` no longer exists; the picker marks free models.
-4. Duplicate skills in OpenCode when both `.opencode/skills` and
-   `.agents/skills` exist (07; package 6).
+4. [x] Duplicate skills in OpenCode when both `.opencode/skills` and
+   `.agents/skills` exist (07; package 6). OpenCode 2.0.18 reads
+   `.opencode`, `.agents` and `.claude` skills and lists a shared name once;
+   precedence `.opencode` > `.agents` > `.claude` (`p1-06-skills-move`).
 5. Does OpenCode's `instructions` accept `~/` paths, and do project arrays
    replace or extend the global one? (01; package 7.)
 6. Do Cursor and Copilot accept Claude `model` aliases in `.claude/agents`?
