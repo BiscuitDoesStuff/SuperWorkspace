@@ -47,6 +47,13 @@ folder on `main`; each runs one work package and reports back.
   `pwsh .sw/sw.ps1 claude enable`.
 - When context runs long, the Leader writes a `handoff` event and a fresh Leader
   session resumes from the roadmap and open task records.
+- A cloud Leader session (Claude Code on the web) works on the branch the
+  harness assigns it, because its container is temporary. It may commit and
+  push to that branch only; the branch carries work between machines, is not a
+  contributor branch, and never becomes a base for other work. Only the owner
+  updates `main`, by fast-forward after review. The cloud Leader keeps a
+  `handoff` event current after each milestone so a local session (OpenCode or
+  Claude) can take over at any point.
 
 ## Commits
 
@@ -54,4 +61,5 @@ folder on `main`; each runs one work package and reports back.
 test, chore. Areas: `kit` (product/), `dogfood` (generated install at the
 root), `docs`, `research`, `tests`. The body lists one bullet per change and
 names the task record; a `BREAKING CHANGE:` footer marks anything a kit user
-must act on. Only the human commits and pushes.
+must act on. Only the human commits and pushes, except a cloud Leader on its
+assigned branch (see above).
