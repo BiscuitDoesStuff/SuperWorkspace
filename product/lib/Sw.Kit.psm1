@@ -66,7 +66,8 @@ function Add-SwSessionRules([string]$Text, $Rules, [string]$Label) {
     $m = [regex]::Match($head, '(?m)^permissions:\n((?:  .*\n)*)')
     $own = @(if ($m.Success) {
         $found = [regex]::Matches($m.Groups[1].Value, '(?m)^  - action: "?([^"\n]+)"?\n    resource: "([^"\n]*)"\n    effect: ([a-z]+)\n')
-        if ([int]($found | ForEach-Object Length | Measure-Object -Sum).Sum -ne $m.Groups[1].Length) { throw "${Label}: permissions must use the kit's action/resource/effect line form" }
+        $covered = 0; foreach ($f in $found) { $covered += $f.Length }
+        if ($covered -ne $m.Groups[1].Length) { throw "${Label}: permissions must use the kit's action/resource/effect line form" }
         foreach ($f in $found) { [ordered]@{ action = $f.Groups[1].Value; resource = $f.Groups[2].Value; effect = $f.Groups[3].Value } }
     })
     $lines = foreach ($r in Add-SwRtkTwins (@($Rules) + $own)) { "  - action: $(& $q $r['action'])"; "    resource: `"$($r['resource'])`""; "    effect: $($r['effect'])" }
