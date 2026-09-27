@@ -6,17 +6,25 @@ here. Their repositories keep the full history.
 
 ## 2026-09-27: OpenCode session rules live in every agent (accepted)
 
-- **Finding:** OpenCode desktop 2.0.17/2.0.18 ignores the project-level
-  `permissions` list in `opencode.jsonc` and applies only agent frontmatter
-  (`p1-checkpoint-runtime`). The solo ruleset on `main` blocks force pushes
-  and deletion, not ordinary pushes, so it is not a push control.
+- **Finding (corrected the same day):** the checkpoint concluded that OpenCode
+  desktop 2.0.17/2.0.18 ignores the project-level `permissions` list. It does
+  not: `opencode debug agents` shows project and agent rules both applied.
+  The real cause was the kit's own RTK plugin. In 2.0.18 the shell
+  `create.before` hook runs before the permission check, so `git push ...`
+  is checked as `rtk git push ...` and no `git ...` or `gh ...` rule matches.
+  The solo ruleset on `main` blocks force pushes and deletion, not ordinary
+  pushes, so it is not a push control.
 - **Decision (package 5a):** one list, `Get-SwSessionRules` in
   `Sw.Project.psm1` (base, profile edit denies, GitHub tier, `.env` asks),
   is rendered at the head of every kit agent's `permissions`, of
   `agents.build`, and into `opencode.jsonc`. The base list moved out of
   `opencode.base.json` into code, because installed projects run `validate`
   from `.sw/lib` without the kit's JSON. `validate` models each agent file
-  alone and reports drift.
+  alone and reports drift. Injection stays as defence in depth. Every
+  rendered shell rule gets an `rtk ` twin with the same effect, directly
+  after it (`Add-SwRtkTwins`), and `validate` checks every shell case in both
+  forms. Any other plugin that rewrites commands would bypass rules the same
+  way.
 - **Supersedes:** "branch protection on `main` is the real push control" in
   the branch-model entry below.
 - **Open:** whether OpenCode enforces the `.env` rule form; the desktop

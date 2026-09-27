@@ -123,8 +123,11 @@ a `product/CHANGELOG.md` entry, and adds Pester coverage for new code (09 R2).
    - A kit-side rename map that also moves edited files (07 R5).
    - Tag releases in git; no PowerShell Gallery yet (07 R6).
 5a. **Permission correction** (checkpoint finding, owner-approved
-    2026-09-27). OpenCode desktop 2.0.17/2.0.18 ignores the project-level
-    permission list in `opencode.jsonc`; agent-frontmatter rules work.
+    2026-09-27). The kit's rules did not hold in OpenCode 2.0.18, because
+    the kit's RTK plugin rewrites commands (`rtk git push ...`) before the
+    permission check. The checkpoint's reading, "the project list is
+    ignored", was wrong. The fix renders `rtk ` twins of every shell rule
+    (owner's choice) on top of the steps below.
     - Repeat the session-wide denies and asks (push, reset, clean, stash,
       commit ask, `.env` ask, external directory) in every kit agent's
       frontmatter.
