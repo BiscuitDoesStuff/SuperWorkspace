@@ -1,6 +1,6 @@
 {
   "kitVersion": "0.3.0-dev",
-  "kitCommit": "3f903c97295e0fae78c56939752cbc3dbc99594c",
+  "kitCommit": "2a83fd10568da4db0cc8cce338e9568f3c3d16ea",
   "files": {
     ".opencode/agents/project-architect.md": "cdbe6e6fa038bc876ce80b338c870670343b3166058dd8544f4c6038048d435b",
     ".opencode/agents/project-build.md": "21eae122e96ec3558bc0156211583684ca29f8c4882b61d40553cb0897e997f4",

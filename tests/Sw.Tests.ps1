@@ -159,6 +159,20 @@ Describe 'Sync and init lifecycle' {
         $m['kitCommit'] | Should -Be (Get-SwKitCommit)
     }
 
+    It 'kitCommit is null for a kit copied into another repository' {
+        $host_ = Join-Path $TestDrive 'hostRepo'
+        New-Item -ItemType Directory -Force -Path (Join-Path $host_ 'vendor-kit') | Out-Null
+        Write-SwFile (Join-Path $host_ 'vendor-kit/VERSION') "0.0.0`n"
+        & git -C $host_ init -q -b main
+        & git -C $host_ add -A
+        & git -C $host_ -c user.email=t@example.invalid -c user.name=t commit -q -m host
+        InModuleScope Sw.Kit -Parameters @{ Dir = (Join-Path $host_ 'vendor-kit') } {
+            param($Dir)
+            $saved = $script:Kit
+            try { $script:Kit = $Dir; Get-SwKitCommit | Should -BeNullOrEmpty } finally { $script:Kit = $saved }
+        }
+    }
+
     It 'Compare-SwVersion orders <A> vs <B> as <Expected>' -ForEach @(
         @{ A = '0.3.0-dev'; B = '0.3.0'; Expected = -1 }
         @{ A = '0.3.0'; B = '0.3.0-dev'; Expected = 1 }

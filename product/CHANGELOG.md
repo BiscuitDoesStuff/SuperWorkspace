@@ -3,7 +3,7 @@
 ## 0.3.0-dev
 
 - **Changed (update, Phase 1 package 5): lifecycle.**
-  - `.sw/manifest.json` gains `kitCommit`, the kit clone's `git rev-parse HEAD` (`null` outside a git clone).
+  - `.sw/manifest.json` gains `kitCommit`, the kit clone's `git rev-parse HEAD` (`null` outside a git clone, or when the kit was copied into another repository).
   - `update` and `init` refuse to run when the manifest's `kitVersion` is newer than the running kit (a `-dev` build is older than its release), and write nothing. Update the kit clone, or pass `-Force` to downgrade on purpose. `update` also accepts `-Adopt`.
   - The plan starts with `kit A -> B`.
   - A locally edited file the kit did not change is reported `kept-local`, with no merge hint.
