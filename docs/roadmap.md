@@ -42,7 +42,7 @@ after each. Records: `.sw/comms/tasks/p1-NN-*/`.
 
 Status (realigned 2026-09-27 after the desktop checkpoint,
 `archive/p1-checkpoint-runtime/`): packages 1-5 and 10 are done (records in
-`.sw/comms/archive/p1-NN-*/`); 5a is next; 6-9 wait on their runtime tests.
+`.sw/comms/archive/p1-NN-*/`); 5a is done (2026-09-27); 6-9 wait on their runtime tests.
 Each package that installed projects receive bumps `product/VERSION` and adds
 a `product/CHANGELOG.md` entry, and adds Pester coverage for new code (09 R2).
 
@@ -122,7 +122,7 @@ a `product/CHANGELOG.md` entry, and adds Pester coverage for new code (09 R2).
      that lacks `## Project identity`, touching no existing text (07 R4).
    - A kit-side rename map that also moves edited files (07 R5).
    - Tag releases in git; no PowerShell Gallery yet (07 R6).
-5a. **Permission correction** (checkpoint finding, owner-approved
+5a. [x] **Permission correction** (checkpoint finding, owner-approved
     2026-09-27). The kit's rules did not hold in OpenCode 2.0.18, because
     the kit's RTK plugin rewrites commands (`rtk git push ...`) before the
     permission check. The checkpoint's reading, "the project list is
@@ -206,7 +206,7 @@ a `product/CHANGELOG.md` entry, and adds Pester coverage for new code (09 R2).
 
 - Solo ruleset on `main` (10 R6): set 2026-09-27 (blocks force pushes and
   deletion). It does not block ordinary pushes, so OpenCode push control
-  depends on 5a. The repository is public since 2026-09-27.
+  relies on the agent rules (5a, done). The repository is public since 2026-09-27.
 - Fast-forward `main` from reviewed work; publish.
 
 ## Standing rules
