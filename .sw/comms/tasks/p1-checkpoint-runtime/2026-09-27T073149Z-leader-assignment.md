@@ -6,9 +6,10 @@
 
   **Before you start (once).** Bring the desktop to `main-ahb0v0` (4bf92e0 or later). If the desktop still has uncommitted work on `main`, follow the receive steps in `.sw/comms/archive/p0-leader/events/2026-09-27T053324Z-leader-handoff.md` first. Then, in PowerShell 7, create a throwaway project per harness:
   ```powershell
-  pwsh -NoProfile -File product/sw.ps1 init $env:TEMP\sw-smoke -Profile generic -Name Smoke
-  Set-Location $env:TEMP\sw-smoke
-  pwsh -NoProfile -File .sw/sw.ps1 claude enable
+  $kit = '<path to the SuperWorkspace clone>'
+  pwsh -NoProfile -File "$kit\product\sw.ps1" init "$env:TEMP\sw-smoke" -Profile generic -Name Smoke
+  Set-Location "$env:TEMP\sw-smoke"
+  pwsh -NoProfile -File .sw\sw.ps1 claude enable
   git add -A; git commit -q -m init; git remote add origin https://example.invalid/smoke.git
   Set-Content .env 'SECRET=smoke-test-not-real'
   ```
