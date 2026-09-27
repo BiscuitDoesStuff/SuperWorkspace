@@ -13,4 +13,4 @@ jobs:
         shell: pwsh
         run: pwsh -NoProfile -File .sw/sw.ps1 validate
       - name: Whitespace
-        run: git diff --check $(git hash-object -t tree /dev/null) HEAD -- .sw .opencode AGENTS.md opencode.jsonc
+        run: git diff --check $(git hash-object -t tree /dev/null) HEAD -- .sw .opencode .agents AGENTS.md opencode.jsonc

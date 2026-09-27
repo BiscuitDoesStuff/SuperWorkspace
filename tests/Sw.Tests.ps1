@@ -364,7 +364,7 @@ Describe 'Sync and init lifecycle' {
 
     Context 'rename map' {
         BeforeEach { InModuleScope Sw.Kit { $script:Moved['.sw/old-workspace.md'] = '.sw/workspace.md' } }
-        AfterEach { InModuleScope Sw.Kit { $script:Moved.Clear() } }
+        AfterEach { InModuleScope Sw.Kit { $script:Moved.Remove('.sw/old-workspace.md') } }
 
         BeforeAll {
             function Set-OldLayout([string]$Dir, [string]$Content) {
@@ -404,6 +404,48 @@ Describe 'Sync and init lifecycle' {
 
             $again = Sync-SwProject -Root $dir -Config (Get-SwConfig $dir)
             ($again | Where-Object Path -eq '.sw/workspace.md').Action | Should -Be 'skip-modified'
+        }
+
+        Context 'skills prefix' {
+            BeforeAll {
+                function Set-OldSkillLayout([string]$Dir, [string]$Name, [string]$Content) {
+                    # Simulate a project from a kit that shipped skill $Name's SKILL.md (as "old kit text")
+                    # under .opencode/skills instead of .agents/skills.
+                    $old = ".opencode/skills/$Name/SKILL.md"; $new = ".agents/skills/$Name/SKILL.md"
+                    $mPath = Join-Path $Dir '.sw/manifest.json'
+                    $m = Read-SwJson $mPath
+                    $m['files'].Remove($new)
+                    $m['files'][$old] = Get-SwHash "old kit text`n"
+                    Write-SwFile $mPath (ConvertTo-SwJson $m)
+                    Remove-Item -LiteralPath (Join-Path $Dir ".agents/skills/$Name") -Recurse -Force
+                    Write-SwFile (Join-Path $Dir $old) $Content
+                }
+            }
+
+            It 'an unedited skill under the old .opencode/skills prefix is removed and the new .agents/skills copy is added' {
+                $dir = New-SwProject 'moveSkillClean' generic
+                Set-OldSkillLayout $dir 'minimal-change' "old kit text`n"
+                $own = Join-Path $dir '.opencode/skills/my-own/SKILL.md'
+                Write-SwFile $own "---`nname: my-own`ndescription: A user skill.`n---`n`nBody.`n"
+                $plan = Sync-SwProject -Root $dir -Config (Get-SwConfig $dir)
+                ($plan | Where-Object Path -eq '.opencode/skills/minimal-change/SKILL.md').Action | Should -Be 'remove'
+                ($plan | Where-Object Path -eq '.agents/skills/minimal-change/SKILL.md').Action | Should -Be 'add'
+                Test-Path (Join-Path $dir '.opencode/skills/minimal-change/SKILL.md') | Should -BeFalse
+                Read-SwText (Join-Path $dir '.agents/skills/minimal-change/SKILL.md') | Should -Be (Get-SwRender (Get-SwConfig $dir)).Files['.agents/skills/minimal-change/SKILL.md']
+                @($plan | Where-Object Path -like '.opencode/skills/my-own/*').Count | Should -Be 0
+                Test-Path $own | Should -BeTrue
+                (Test-SwValidate $dir).ExitCode | Should -Be 0
+            }
+
+            It 'an edited skill under the old .opencode/skills prefix moves with its edit and is skip-modified' {
+                $dir = New-SwProject 'moveSkillEdited' generic
+                Set-OldSkillLayout $dir 'minimal-change' "old kit text`nmy local note`n"
+                $plan = Sync-SwProject -Root $dir -Config (Get-SwConfig $dir)
+                @($plan | Where-Object Path -eq '.opencode/skills/minimal-change/SKILL.md').Count | Should -Be 0
+                ($plan | Where-Object Path -eq '.agents/skills/minimal-change/SKILL.md').Action | Should -Be 'skip-modified'
+                Test-Path (Join-Path $dir '.opencode/skills/minimal-change/SKILL.md') | Should -BeFalse
+                Read-SwText (Join-Path $dir '.agents/skills/minimal-change/SKILL.md') | Should -Be "old kit text`nmy local note`n"
+            }
         }
     }
 
@@ -506,12 +548,16 @@ Describe 'Validator negative fixtures' {
             }
         }
         @{ Name = 'skill name outside the Agent Skills pattern'; Match = 'name must be 1-64 lowercase'; Mutate = {
-                param($d) Write-SwFile (Join-Path $d '.opencode/skills/bad--name/SKILL.md') "---`nname: bad--name`ndescription: Probe.`n---`n`nBody.`n"
+                param($d) Write-SwFile (Join-Path $d '.agents/skills/bad--name/SKILL.md') "---`nname: bad--name`ndescription: Probe.`n---`n`nBody.`n"
             }
         }
         @{ Name = 'skill description over 1024 characters'; Match = 'description exceeds 1024 characters'; Mutate = {
-                param($d) $f = Join-Path $d '.opencode/skills/minimal-change/SKILL.md'
+                param($d) $f = Join-Path $d '.agents/skills/minimal-change/SKILL.md'
                 Write-SwFile $f ((Read-SwText $f) -replace '(?m)^description:.*$', "description: $('x' * 1025)")
+            }
+        }
+        @{ Name = 'kit skill left under .opencode/skills shadows the .agents/skills copy'; Match = 'shadows the kit copy in OpenCode'; Mutate = {
+                param($d) Write-SwFile (Join-Path $d '.opencode/skills/minimal-change/SKILL.md') "---`nname: minimal-change`ndescription: Shadow copy.`n---`n`nBody.`n"
             }
         }
     ) {
@@ -638,7 +684,7 @@ Describe 'Claude adapter' {
         }
         @(Get-ChildItem (Join-Path $dir '.claude/commands') -Filter *.md -Force).Count | Should -Be @(Get-ChildItem (Join-Path $dir '.opencode/commands') -Filter *.md -Force).Count
         (Test-SwValidate $dir).ExitCode | Should -Be 0
-        foreach ($s in Get-ChildItem (Join-Path $dir '.opencode/skills') -Directory) {
+        foreach ($s in Get-ChildItem (Join-Path $dir '.agents/skills') -Directory) {
             Test-Path (Join-Path $dir ".claude/skills/$($s.Name)/SKILL.md") | Should -BeTrue
         }
 

@@ -20,7 +20,7 @@ Each rule has one owning source; everything else links to it.
 | This file | Roles, approved-plan execution, permissions, tiers, verification |
 | `.sw/collaboration.md` | Task records, messages, branches, publication, integration |
 | `.sw/config.json` | Profile, GitHub tier, contributors, startup budget |
-| `opencode.jsonc`, `.opencode/{agents,commands,skills,plugins}` | Actual shared configuration; inspect these and runtime discovery before asserting behavior |
+| `opencode.jsonc`, `.opencode/{agents,commands,plugins}`, `.agents/skills` | Actual shared configuration; inspect these and runtime discovery before asserting behavior |
 | Git and `.sw/comms/tasks/` | Ancestry, publication, and approved work; not a second memory ledger |
 | `.sw/onboarding.md` | New contributor setup |
 
@@ -168,7 +168,7 @@ pointer agents and commands, copied skills, permission rules for the GitHub
 tier, and a SessionStart hook that makes the main session the Leader.
 `sw update` regenerates it when `.claude/.sw-generated` exists; otherwise run
 `sw claude enable`. `sw validate` reports drift. Never hand-edit generated
-files; edit the `.opencode/` source instead. Claude applies instruction edits
+files; edit the `.opencode/` or `.agents/skills` source instead. Claude applies instruction edits
 and `update` output only after `/clear`, `/compact` or a restart. Keep one
 model per session in every harness: switching mid-session breaks the prompt
 cache.

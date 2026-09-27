@@ -326,8 +326,9 @@ function Test-SwProject {
         $agents = @{}; $commands = @{}; $skills = @{}
         $hygiene = [Collections.Generic.List[string]]::new()
         foreach ($kind in 'agents', 'commands', 'skills') {
-            $dir = Join-Path $Root ".opencode/$kind"
-            if (-not (Test-Path -LiteralPath $dir)) { $problems.Add("Missing directory: .opencode/$kind"); continue }
+            $dirRel = if ($kind -eq 'skills') { '.agents/skills' } else { ".opencode/$kind" }
+            $dir = Join-Path $Root $dirRel
+            if (-not (Test-Path -LiteralPath $dir)) { $problems.Add("Missing directory: $dirRel"); continue }
             if ($kind -eq 'skills') {
                 foreach ($flat in Get-ChildItem -LiteralPath $dir -Filter *.md -File -Force) { Require $false "Unsupported flat skill: $($flat.Name)" }
                 $defs = @(Get-ChildItem -LiteralPath $dir -Recurse -Filter SKILL.md -File -Force)
@@ -370,7 +371,10 @@ function Test-SwProject {
         if ($problems.Count) { throw 'Definition validation failed; dependent contract checks were skipped' }
 
         foreach ($name in $roleNames) { Require ($agents.ContainsKey($name)) "Missing agent: $name" }
-        foreach ($name in @($script:Skills) + @($profileData['skills'])) { Require ($skills.ContainsKey($name)) "Missing skill: $name" }
+        foreach ($name in @($script:Skills) + @($profileData['skills'])) {
+            Require ($skills.ContainsKey($name)) "Missing skill: $name"
+            Require (-not (Test-Path -LiteralPath (Join-Path $Root ".opencode/skills/$name/SKILL.md"))) "Kit skill '$name' also exists under .opencode/skills/$name, which shadows the kit copy in OpenCode; move the edit into .agents/skills/$name or delete it"
+        }
         Require ($agents['project-leader']['mode'] -ceq 'primary') 'project-leader must be primary'
         Require ($agents['project-worker']['mode'] -ceq 'subagent') 'project-worker must be subagent (Leader-dispatched only)'
         foreach ($name in $commands.Keys) { Require ($agents.ContainsKey([string]$commands[$name]['agent'])) "Command $name references missing agent: $($commands[$name]['agent'])" }
@@ -579,7 +583,7 @@ function Get-SwClaudeFiles([string]$Root) {
         }
         $out[".claude/commands/$name.md"] = "---`ndescription: $($cmd['description'])`n---`n`n$note`n$body`n"
     }
-    foreach ($skillDir in Get-ChildItem -LiteralPath (Join-Path $Root '.opencode/skills') -Directory -Force | Sort-Object Name) {
+    foreach ($skillDir in Get-ChildItem -LiteralPath (Join-Path $Root '.agents/skills') -Directory -Force | Sort-Object Name) {
         foreach ($f in Get-ChildItem -LiteralPath $skillDir.FullName -Recurse -File -Force) {
             $rel = [IO.Path]::GetRelativePath($skillDir.FullName, $f.FullName).Replace('\', '/')
             $out[".claude/skills/$($skillDir.Name)/$rel"] = Read-SwText $f.FullName

@@ -2,6 +2,11 @@
 
 ## 0.3.0-dev
 
+- **Changed (skills, Phase 1 package 6):** canonical skills moved from `.opencode/skills` to `.agents/skills` (base and the `unreal` profile), because OpenCode, Codex, Gemini, Cursor and Copilot all read `.agents/skills`, while `.opencode/skills` is OpenCode-only.
+  - The rename map (`$script:Moved`, `Sw.Kit.psm1`) gained prefix support: one `.opencode/skills/` -> `.agents/skills/` rule, expanded per file against the project's manifest. `update` moves an edited kit skill to `.agents/skills/<name>` with its edit, the same as any other renamed file.
+  - A user's own skill under `.opencode/skills/<name>` (not a kit skill name) is left alone; OpenCode still reads it there, but `claude enable` and `validate` now read only `.agents/skills`. Move your own skills to `.agents/skills/<name>` and delete their stale `.claude/skills/<name>` copies.
+  - `validate` now reads skills from `.agents/skills`, and reports a new error when a kit skill name still exists under `.opencode/skills/<name>`, since it shadows the kit's `.agents/skills` copy in OpenCode.
+  - The generated `.claude/skills` copy is now built from `.agents/skills`. Claude users: re-run `sw claude enable` if `update` does not regenerate your `.claude/` (no `.claude/.sw-generated` marker).
 - **Changed (OpenCode permissions, Phase 1 package 5a):** OpenCode desktop 2.0.17/2.0.18 ignores the project-level `permissions` list in `opencode.jsonc` and applies only agent frontmatter.
   - `update` writes the session rules (shell allow, `external_directory` ask, skill allow, subagent deny, commit ask, push/reset/clean/stash/`gh` deny, the profile's edit denies, the GitHub tier allows, then the `.env` read asks) at the head of every `.opencode/agents/*.md` `permissions` list, and of `agents.build`. The role's own rules follow and still win. `opencode.jsonc` keeps the same list. The rules now live in `Get-SwSessionRules`; `opencode.base.json` no longer holds a `permissions` list.
   - A `githubTier` change needs `update`, which now rewrites the agents too. A locally edited agent follows the usual `skip-modified` / `incoming/` path.

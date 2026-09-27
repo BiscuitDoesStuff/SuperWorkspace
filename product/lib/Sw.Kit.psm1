@@ -32,7 +32,8 @@ function Compare-SwVersion([string]$A, [string]$B) {
 }
 
 # Kit-side renames (old path -> new path). An edited old file moves with its edit.
-$script:Moved = [ordered]@{}
+# A key ending in '/' is a prefix rule, expanded per-file against the old manifest (Sync-SwProject).
+$script:Moved = [ordered]@{ '.opencode/skills/' = '.agents/skills/' }
 
 function Set-SwBlock([string]$Text, [string]$Name, [string]$Body, [ValidateSet('md', 'hash')][string]$Style = 'md') {
     # Insert or replace one named managed block; everything outside it is left alone.
@@ -142,9 +143,16 @@ function Sync-SwProject {
     }
     $old = [ordered]@{}
     if ($prev['files']) { foreach ($k in $prev['files'].Keys) { $old[$k] = $prev['files'][$k] } }
+    # Expand prefix rules ('.opencode/skills/' -> '.agents/skills/') into one whole-file pair per old
+    # manifest key under that prefix, so the loop below (unchanged) handles them like any other rename.
+    $moved = [ordered]@{}
+    foreach ($m in $script:Moved.GetEnumerator()) {
+        if (-not $m.Key.EndsWith('/')) { $moved[$m.Key] = $m.Value; continue }
+        foreach ($k in @($old.Keys)) { if ($k.StartsWith($m.Key, [StringComparison]::Ordinal)) { $moved[$k] = $m.Value + $k.Substring($m.Key.Length) } }
+    }
     # An edited file at a moved path moves with its edit: its manifest hash follows it to the new path.
     $movedFrom = @{}
-    foreach ($m in $script:Moved.GetEnumerator()) {
+    foreach ($m in $moved.GetEnumerator()) {
         $src = Join-Path $Root $m.Key
         if (-not $old.Contains($m.Key) -or $old.Contains($m.Value) -or $render.Files.Contains($m.Key) -or -not $render.Files.Contains($m.Value)) { continue }
         if (-not (Test-Path -LiteralPath $src) -or (Test-Path -LiteralPath (Join-Path $Root $m.Value))) { continue }

@@ -42,8 +42,8 @@ folder on `main`; each runs one work package and reports back.
 - One writing worker at a time; research workers that each own one new
   `docs/research/` file may run alongside. Nobody commits or pushes without the
   human; a worker never does what the Leader was denied.
-- Edit `product/`, never the generated copies (`.opencode/`, `.sw/`,
-  `.claude/`); refresh them with `pwsh product/sw.ps1 update .` and
+- Edit `product/`, never the generated copies (`.opencode/`, `.agents/`,
+  `.sw/`, `.claude/`); refresh them with `pwsh product/sw.ps1 update .` and
   `pwsh .sw/sw.ps1 claude enable`.
 - When context runs long, the Leader writes a `handoff` event and a fresh Leader
   session resumes from the roadmap and open task records.

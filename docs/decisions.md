@@ -4,6 +4,22 @@ Format: `YYYY-MM-DD: Title (status)`. Newest first. Record no secret values.
 The earlier decision logs (ai-environment-foundation, MyMMO) are summarized
 here. Their repositories keep the full history.
 
+## 2026-09-27: Canonical skills live in `.agents/skills` (accepted)
+
+- **Why:** `.agents/skills` is read by OpenCode, Codex, Gemini, Cursor and
+  Copilot (research 02, option b); `.opencode/skills` only by OpenCode.
+  Universality is the goal, so the move does not wait for a named user (07 R7).
+- **Finding (runtime test 4, `p1-06-skills-move`):** OpenCode 2.0.18 reads
+  project skills from `.opencode`, `.agents` and `.claude`, lists a shared
+  name once, and gives precedence `.opencode` > `.agents` > `.claude`.
+- **Decision (package 6):** skills are canonical in `.agents/skills`; agents,
+  commands and plugins stay in `.opencode/`. `update` moves edited kit skills
+  out of `.opencode/skills` with their edits (rename-map prefix), because a
+  copy left there shadows the kit's in OpenCode; `validate` rejects one.
+  Claude still gets a generated `.claude/skills` copy, since it reads no other
+  folder; in OpenCode the `.agents` copy shadows it.
+- **Supersedes:** "OpenCode is canonical" (2026-09-26) for skills only.
+
 ## 2026-09-27: OpenCode session rules live in every agent (accepted)
 
 - **Finding (corrected the same day):** the checkpoint concluded that OpenCode

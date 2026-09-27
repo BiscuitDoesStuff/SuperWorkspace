@@ -12,8 +12,9 @@ beyond that checklist is authorized.
 
 ## Rules for changing the kit
 
-- **One owning source per rule.** The roles, commands and skills in
-  `product/project/base/.opencode/` are canonical. Role metadata (tier,
+- **One owning source per rule.** The roles and commands in
+  `product/project/base/.opencode/` and the skills in
+  `product/project/base/.agents/skills/` are canonical. Role metadata (tier,
   access, Claude tools) lives only in `product/project/roles.json`. GitHub
   tier rules live only in `Get-SwGhRules` and `Get-SwClaudeGhDeny` in
   `product/lib/Sw.Project.psm1`. OpenCode session rules live only in
