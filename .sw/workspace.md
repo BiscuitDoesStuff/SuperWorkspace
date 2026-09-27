@@ -140,8 +140,9 @@ Local models with small context windows must override `compaction` locally.
 
 ## Usage optimization
 
-- Startup budget: `AGENTS.md` + role body + skill names/descriptions, capped per
-  role by `sw validate` (`startupBudgetBytes` in `.sw/config.json`).
+- Startup budget: `AGENTS.md` + role body + skill names/descriptions (the Leader
+  also counts the other agents' descriptions), capped per role by `sw validate`
+  (`startupBudgetBytes` in `.sw/config.json`); tokens are a bytes/4 estimate.
 - Skills and docs load on demand; do not re-read `AGENTS.md`.
 - RTK rewrites shell output through `.opencode/plugins/rtk.ts` (fails open).
 - context7 MCP for library docs instead of web search; it receives your queries,
