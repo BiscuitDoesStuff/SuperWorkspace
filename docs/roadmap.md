@@ -134,6 +134,9 @@ a `product/CHANGELOG.md` entry, and adds Pester coverage for new code (09 R2).
     - Widen the read-only shell allowlist (the review child could not run
       `git status`).
     - Note that OpenCode's built-in Build and Plan agents carry no kit rules.
+    - Correct the shipped claim that branch protection is the real push
+      control (`.sw/workspace.md`, `.sw/collaboration.md` "Protect main"):
+      the solo ruleset stops force pushes and deletion, not ordinary pushes.
     - End with a desktop re-test of the smoke checklist.
 6. **Skills move to `.agents/skills`** (07 R7, 02 option b). After the rename
    map. Runtime test 4 first. It reverses part of the 2026-09-26 "OpenCode is
@@ -198,9 +201,9 @@ a `product/CHANGELOG.md` entry, and adds Pester coverage for new code (09 R2).
 
 ### Human actions (the kit prints, never runs)
 
-- Set the solo ruleset on `main` (10 R6), urgent: until 5a lands, OpenCode
-  sessions are not blocked from pushing. The repository is public since
-  2026-09-27; `main` was unprotected when checked that day.
+- Solo ruleset on `main` (10 R6): set 2026-09-27 (blocks force pushes and
+  deletion). It does not block ordinary pushes, so OpenCode push control
+  depends on 5a. The repository is public since 2026-09-27.
 - Fast-forward `main` from reviewed work; publish.
 
 ## Standing rules
