@@ -1,0 +1,22 @@
+# p1-checkpoint-runtime - progress - 2026 - leader
+
+- **Author / audience:** leader (cloud Leader session), recording the owner's results; readers: the owner and later Leaders.
+- **Approval:** as in the assignment.
+- **Scope / acceptance:** runtime test B2, OpenCode desktop 2.0.17, `sw-smoke`, project-leader:
+  - **Child sessions load `AGENTS.md`: yes.** A `project-review` child (`ses_f1df56759ffeCRQslXEWINJBJm`) quoted the first `## Git` rule, which it said it did without reading a file.
+  - **Nesting: no.** The child's tools were glob, grep, read, shell, question and skill, with no subagent tool, so it could not start `project-plan`. This is the intended result for non-leader roles.
+  - **`subagent:` flag: `/review` (`subagent: true`) is honoured.** Nothing showed at first. Later the same session received a `project-review` child result (`ses_f1df4f409ffe7pDBPGMxsjOHX7`). `/inbox` (`subagent: false`) and cross-session messaging are not reported yet.
+  - Side observations from that `/review` child:
+    - it read `.env` with the read tool, with **no prompt**. This confirms that OpenCode `.env` reads are not asked (the project-level rule is ignored, 2026-09-27T*-progress);
+    - its shell calls were rejected, so it read `.git` internals instead. It is unknown whether it tried the exact allowlisted forms (`git status`, `git log --oneline -10`); the allowlist is whole-value.
+- **Status:** in_progress
+- **Branch / base:** `main-ahb0v0`; published main 0ee9b5eb864b1a410e4d45da0b541f7da5c88019
+- **Checked revision / changed:** desktop at 6934e22; this event only.
+- **Owners / dependencies:** the owner runs the checks. The Leader records them.
+- **Decisions / remaining:**
+  - For the correction package: a read-only reviewer that cannot run `git status`/`git diff` in practice is weak. Check whether the model's command forms match the exact allowlist, and consider `git diff *` read forms.
+  - Remaining: `/inbox`, messaging, and B3.
+- **Validation:** manual, owner's desktop, 2026-09-27; evidence is the owner's screenshot and pasted output.
+- **Not validated / risks:** as before.
+- **Publication:** `main-ahb0v0`; `main` is the owner's.
+- **Next action:** owner; `/inbox`, messaging yes or no, B3.
