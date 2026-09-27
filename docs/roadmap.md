@@ -38,6 +38,8 @@ Work packages (records in `.sw/comms/tasks/`; process in
     (reviewed 2026-09-27; R5 revised, option b and R3 deferred).
   - [x] `p0-research-03`: topic 3, `docs/research/03-model-advisor.md`
     (reviewed 2026-09-27; advisor is a skill; `effort` deferred).
+  - [x] `p0-research-04`: topic 4, `docs/research/04-context-efficiency.md`
+    (reviewed 2026-09-27; R1-R7 adopted).
 
 ## Research inputs found during Phase 0
 
@@ -65,6 +67,17 @@ Work packages (records in `.sw/comms/tasks/`; process in
   code. No ranking data ships. A personal snapshot report is reached through
   `rules.local.md`. Deferred: `effort` in generated Claude agents. Open: the
   Artificial Analysis attribution duty for data read through OpenRouter.
+- **Context budget (decided in topic 4):** keep the byte cap as a kit-hygiene
+  check. The kit's share is about 2K tokens per role, about 3% of the smallest
+  free window (64K). Label tokens a bytes/4 estimate. `sw doctor` states that
+  only kit files are counted and points to `/context`. The leader's count adds
+  agent descriptions. No model-dependent cap and no tokenizer dependency.
+  Docs only: Claude applies instruction edits and `update` output only after
+  `/clear`, `/compact` or a restart; switching models mid-session breaks the
+  cache; free-endpoint caching is unconfirmed. Later, optional: a doctor warning
+  when a tier uses local Ollama (4K default window). Runtime tests: a
+  `/context` run in a fresh session (checks bytes/4), and whether OpenCode loads
+  AGENTS.md in child sessions.
 - **Known defects (topic 3; fix after the rewrite):** the `free-models` skill
   lists GLM 5.2 as free, and it is not (F13). The kit's `$schema` URL
   `https://opencode.ai/config.json` serves the V1 schema, which has no
