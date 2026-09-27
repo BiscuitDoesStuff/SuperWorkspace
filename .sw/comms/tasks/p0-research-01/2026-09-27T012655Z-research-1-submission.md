@@ -1,0 +1,14 @@
+# p0-research-01 - submission - 2026-09-27T012655Z - research-1
+
+- **Author / audience:** research-1
+- **Approval:** work approved by the owner in the Phase 0 plan (2026-09-26), per the leader assignment 2026-09-27T012134Z. The findings are a proposal, not approved.
+- **Scope / acceptance:** roadmap topic 1 (structure and extension), written to docs/research/01-structure-and-extension.md. It has all six skill sections, every finding has a fetched URL and a date, sub-questions 1-5 are answered or listed as not covered, and open questions are explicit. No other files were edited.
+- **Status:** complete
+- **Branch / base:** main; published main 0ee9b5eb864b1a410e4d45da0b541f7da5c88019 (from the assignment; not re-fetched)
+- **Checked revision / changed:** 65d6b7092c3224928a445aa2f464ffbef39f93fe plus uncommitted:  M docs/roadmap.md; ?? .sw/comms/tasks/p0-leader/; ?? .sw/comms/tasks/p0-research-01/; ?? docs/research/01-structure-and-extension.md
+- **Owners / dependencies:** research-1 owns the research file and this event. The Leader owns review, the roadmap and everything else. No dependencies.
+- **Decisions / remaining:** Wrote docs/research/01-structure-and-extension.md: 13 findings (F1-F13), options, R1-R4, 5 open questions. Proposed roadmap changes: resolve the 'Global overlay' input as R1 (rules.local.md imported by a Claude @ line after the sw:end marker plus an OpenCode global instructions entry; ~ path support needs a runtime test); R2 make product/global/rules.md tier-neutral; replace the hypothesis 'personal opinions become opt-in packs' with 'personal opinions live in rules.local.md; packs deferred, profiles are the extension unit' (R3). Not covered: chezmoi modify_, cookiecutter, Claude plugin install scopes, OpenCode instructions ~/array-merge behavior. Tool calls: about 30 against a cap of 25. Research used 21; the overrun came from submission mechanics (-Message misuse, filling placeholders, a line-ending fix, and a correction to open question 5).
+- **Validation:** research-1, 2026-09-27 ~01:26 UTC. From the repo root: 'pwsh -NoProfile -File .sw/sw.ps1 validate' PASS (static contracts and permission matrix); 'git diff --check' clean; 'git diff --no-index --check /dev/null docs/research/01-structure-and-extension.md' clean. Manual check: F1-F13 each carry a URL and 'accessed 2026-09-26' (13 findings; 'accessed 2026-09-26' appears 14 times, once in the header). Pester was not run (docs-only change).
+- **Not validated / risks:** F4-F7 and F9-F13 are based on the fetch tool's model summaries and were not re-fetched. F1-F3 and F8 were checked against exact saved passages. OpenCode `instructions` handling of ~ paths and array merging is unverified at runtime (open question 3).
+- **Publication:** local-only until a human pushes
+- **Next action:** Leader: review docs/research/01-structure-and-extension.md, then take open questions 1-4 to the owner and record their review.

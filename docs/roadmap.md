@@ -29,16 +29,28 @@ Work packages (records in `.sw/comms/tasks/`; process in
 `docs/development.md`):
 
 - [x] `p0-researcher-revision`: apply topic 0's R1–R4 and the user's answers.
-- [ ] Checkpoint commits (human), then a Leader handoff.
+- [x] Checkpoint commits `fa7115d`, `65d6b70`, then a Leader handoff
+  (`.sw/comms/tasks/p0-leader/`).
 - [ ] One work package per research topic 1–10.
+  - [x] `p0-research-01`: topic 1, `docs/research/01-structure-and-extension.md`
+    (R1–R4 adopted 2026-09-27, R2 corrected).
 
 ## Research inputs found during Phase 0
 
-- **Global overlay (topics 1–2):** `global install` rewrites the managed
-  block in the user's global rules, so personal lines need an overlay. Plan:
-  `~/.config/superworkspace/rules.local.md`, holding model routing per tier,
-  the minimal-change tool and a free-first cost rule. Until it exists, do not
-  run `global install` on a machine with personal lines in that block.
+- **Global overlay (decided in topic 1, R1–R2):** one user-owned
+  `~/.config/superworkspace/rules.local.md`, created by `global install` as an
+  empty stub if missing and never rewritten. Claude loads it by an `@` line
+  after `sw:end global`; OpenCode by an `instructions` entry in the global
+  `opencode.json`. `product/global/rules.md` stays as is; personal lines move
+  out of the block. Before implementing, test at runtime whether OpenCode's
+  `instructions` accepts `~/` paths and whether project arrays replace or
+  extend the global one. Until then, do not run `global install` on a machine
+  with personal lines in that block.
+- **Skills location (topic 2):** OpenCode also reads `.claude/skills/` and
+  `.agents/skills/` (topic 1, F7); weigh this against generating Claude copies.
+- **Research budget (topic 0 follow-up):** topic 1 used 21 research calls and
+  about 30 in total. Proposal: the cap counts research calls only; say whether
+  re-verifying from saved fetch output, or from a fetch tool's summary, counts.
 - **Duplicated subagent list (topics 5, 9):** the validator hard-codes which
   commands run as subagents, duplicating each command's `subagent:` field.
 - **`-Adopt` gap (topic 7):** adopting a repo with an existing `AGENTS.md`
@@ -63,7 +75,8 @@ Work packages (records in `.sw/comms/tasks/`; process in
 
 ## Hypotheses (unverified; research may overturn them)
 
-- Personal opinions become opt-in packs.
+- Personal opinions live in `rules.local.md`; packs are deferred and profiles
+  stay the extension unit (topic 1, R3; revisit when a second bundle exists).
 - The branch model becomes configurable.
 - Global rules become a neutral core plus a user overlay.
 - Generators, a pack registry, hooks and a spec flow.
