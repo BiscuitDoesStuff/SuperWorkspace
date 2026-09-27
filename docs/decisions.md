@@ -4,6 +4,30 @@ Format: `YYYY-MM-DD: Title (status)`. Newest first. Record no secret values.
 The earlier decision logs (ai-environment-foundation, MyMMO) are summarized
 here. Their repositories keep the full history.
 
+## 2026-09-27: The branch model stays fixed, with a solo mode (accepted)
+
+- **Model:** only `main` and owner-designated `<user>/<user>-worktree`
+  branches, integrated by fast-forward. No task, feature or agent-made
+  branches. Until now no rationale was recorded (research 10-F21).
+- **Why it stays:** research found no need to change it. One long-lived
+  branch per contributor matches the one-checkout rule (10-F15) and the
+  ff-only integrate flow. Agent tools (Claude `--worktree`, Codex cloud,
+  Copilot cloud agent) name their own branches per task, so a configurable
+  pattern would not make them fit (10-F5, 10-F7). The original reason for
+  "no task branches" is still unrecorded (10 Q2, open with the owner).
+- **Solo mode:** `users: []` in `.sw/config.json` already marks a one-person
+  project. There the owner works on `main` directly, like trunk-based
+  development's direct-commit case for small teams. Once `sw user add`
+  records anyone, everyone, the owner included, works on their own branch.
+  This repository's practice is that mode, not a violation.
+- **Not configurable yet:** a config field would duplicate `users`. Revisit
+  when a team asks for task branches or a hosted agent; then list the
+  long-lived branches (option d) rather than add a pattern (10 R1).
+- **Protection:** branch protection on `main` is the real push control
+  (08 R3), set by a human; the kit prints the steps (10 R6).
+- **Cloud sessions:** a cloud Leader pushes only to its harness-assigned
+  transport branch; the owner fast-forwards `main` (`docs/development.md`).
+
 ## 2026-09-26: Phase 0, a universal platform built research-first (accepted)
 
 - **Layout:** `product/` is what ships; the repository root is the kit's own
