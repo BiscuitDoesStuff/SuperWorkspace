@@ -109,7 +109,7 @@ Describe 'Session rules' {
 
     It 'leads every rendered agent, which the frontmatter parser accepts, with the role rules after' {
         $dir = New-SwProject "session$(New-Id)" unreal 1
-        $session = Get-Key (Get-SwSessionRules @('*.uasset', '*.umap') 1)
+        $session = Get-Key (Add-SwRtkTwins (Get-SwSessionRules @('*.uasset', '*.umap') 1))
         $agents = @(Get-ChildItem -LiteralPath (Join-Path $dir '.opencode/agents') -Filter *.md -File -Force)
         $agents.Count | Should -Be 9
         foreach ($a in $agents) {
@@ -125,10 +125,47 @@ Describe 'Session rules' {
         (Get-Key $oc['agents']['build']['permissions'])[0..$session.Count] | Should -Be (@($session) + 'subagent|*|deny')
     }
 
-    It 'keeps the canonical agent files free of session rules' {
+    It 'keeps the canonical agent files free of session rules and RTK twins' {
         foreach ($f in Get-ChildItem -LiteralPath (Join-Path $RepoRoot 'product/project/base/.opencode/agents') -Filter *.md -File -Force) {
-            (Read-SwText $f.FullName) | Should -Not -Match 'git push' -Because $f.Name
+            (Read-SwText $f.FullName) | Should -Not -Match 'git push|"rtk ' -Because $f.Name
         }
+    }
+
+    It 'twins each shell rule except * with an rtk rule of the same effect, directly after it' {
+        $rules = @(
+            [ordered]@{ action = 'shell'; resource = '*'; effect = 'allow' }
+            [ordered]@{ action = 'read'; resource = '*.env'; effect = 'ask' }
+            [ordered]@{ action = 'shell'; resource = 'git push *'; effect = 'deny' }
+            [ordered]@{ action = 'shell'; resource = 'git push origin main'; effect = 'allow' }
+        )
+        (Get-Key (Add-SwRtkTwins $rules)) | Should -Be @('shell|*|allow', 'read|*.env|ask', 'shell|git push *|deny', 'shell|rtk git push *|deny',
+            'shell|git push origin main|allow', 'shell|rtk git push origin main|allow')
+    }
+
+    It 'renders the twins for session and role rules, and rtk commands get the same decisions' {
+        $dir = New-SwProject "rtk$(New-Id)" generic
+        foreach ($role in 'project-leader', 'project-review', 'project-worker') {
+            $keys = Get-Key (Get-AgentRules $dir $role)
+            for ($i = 0; $i -lt $keys.Count; $i++) {
+                $a, $r, $e = $keys[$i] -split '\|'
+                if ($a -ne 'shell' -or $r -eq '*' -or $r.StartsWith('rtk ')) { continue }
+                $keys[$i + 1] | Should -Be "shell|rtk $r|$e" -Because "$role $r"
+            }
+        }
+        $review = Get-Key (Get-AgentRules $dir 'project-review')
+        [array]::IndexOf($review, 'shell|rtk git status *|allow') | Should -Be ([array]::IndexOf($review, 'shell|git status *|allow') + 1)
+        (Get-Key (Get-AgentRules $dir 'project-worker')) | Should -Contain 'shell|rtk git switch *|deny'
+        $leader = Get-AgentRules $dir 'project-leader'
+        foreach ($c in 'rtk git push origin main', 'rtk git stash list', 'rtk gh repo list') { Get-SwDecision $leader shell $c | Should -Be 'deny' -Because $c }
+        Get-SwDecision $leader shell 'rtk git commit -m x' | Should -Be 'ask'
+        Get-SwDecision $leader shell 'rtk gh issue view 1' | Should -Be 'allow'
+        $rules = Get-AgentRules $dir 'project-review'
+        Get-SwDecision $rules shell 'rtk git status' | Should -Be 'allow'
+        Get-SwDecision $rules shell 'rtk git diff --output=probe.txt' | Should -Be 'deny'
+        Get-SwDecision (Get-AgentRules $dir 'project-worker') shell 'rtk git switch main' | Should -Be 'deny'
+        $oc = Read-SwJson (Join-Path $dir 'opencode.jsonc')
+        Get-SwDecision $oc['permissions'] shell 'rtk git push' | Should -Be 'deny'
+        Get-SwDecision $oc['agents']['build']['permissions'] shell 'rtk gh pr merge 1' | Should -Be 'deny'
     }
 
     It 'a githubTier change is applied to every agent by update, and -WhatIf writes nothing' {
@@ -428,6 +465,23 @@ Describe 'Validator negative fixtures' {
         @{ Name = 'agent leading rules differ from the session rules'; Match = 'Session rule drift: \.opencode/agents/project-developer\.md .*run sw update'; Mutate = {
                 param($d) $f = Join-Path $d '.opencode/agents/project-developer.md'
                 Write-SwFile $f ((Read-SwText $f).Replace("resource: `"git push *`"`n    effect: deny", "resource: `"git push *`"`n    effect: ask"))
+            }
+        }
+        @{ Name = 'session shell rule without its RTK twin'; Match = 'RTK twin missing: \.opencode/agents/project-developer\.md shell \[git push \*\].*run sw update'; Mutate = {
+                param($d) $f = Join-Path $d '.opencode/agents/project-developer.md'
+                Write-SwFile $f ((Read-SwText $f).Replace("  - action: shell`n    resource: `"rtk git push *`"`n    effect: deny`n", ''))
+            }
+        }
+        @{ Name = 'role shell rule without its RTK twin'; Match = 'RTK twin missing: \.opencode/agents/project-review\.md shell \[git status \*\]'; Mutate = {
+                param($d) $f = Join-Path $d '.opencode/agents/project-review.md'
+                Write-SwFile $f ((Read-SwText $f).Replace("  - action: shell`n    resource: `"rtk git status *`"`n    effect: allow`n", ''))
+            }
+        }
+        @{ Name = 'opencode.jsonc shell rule without its RTK twin'; Match = 'RTK twin missing: opencode\.jsonc permissions shell \[gh \*\]'; Mutate = {
+                param($d) $f = Join-Path $d 'opencode.jsonc'
+                $oc = Read-SwJson $f
+                $oc['permissions'] = @($oc['permissions'] | Where-Object { $_['resource'] -cne 'rtk gh *' })
+                Write-SwFile $f (ConvertTo-SwJson $oc)
             }
         }
         @{ Name = 'read-only shell list re-opens --output'; Match = 'STATIC project-review shell \[git diff --output=probe\.txt\]: expected deny, got allow'; Mutate = {

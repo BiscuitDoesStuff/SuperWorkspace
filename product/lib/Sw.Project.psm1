@@ -177,6 +177,16 @@ function Get-SwSessionRules($EditDeny, [int]$Tier) {
     [ordered]@{ action = 'read'; resource = '*.env.example'; effect = 'allow' }
 }
 
+function Add-SwRtkTwins($Rules) {
+    # OpenCode 2.0.18 runs plugin shell hooks before its permission check, and the RTK plugin
+    # rewrites `git push ...` to `rtk git push ...`. Each shell rule (except `*`) gets an
+    # `rtk ` twin with the same effect, directly after it, so last-match order is unchanged.
+    foreach ($r in $Rules) {
+        $r
+        if ($r['action'] -ceq 'shell' -and $r['resource'] -cne '*') { [ordered]@{ action = 'shell'; resource = "rtk $($r['resource'])"; effect = $r['effect'] } }
+    }
+}
+
 function Get-SwClaudeGhDeny([int]$Tier) {
     # Claude cannot deny-all-then-allow (deny always wins), so write verbs are enumerated.
     $always = 'gh pr merge', 'gh pr ready', 'gh pr close', 'gh pr review', 'gh release create', 'gh release edit',
@@ -281,8 +291,11 @@ function Test-SwProject {
         } elseif ($Node -is [Collections.IEnumerable]) { foreach ($entry in $Node) { Portable $entry $Label } }
     }
     function Expect($Policy, $Agent, $Action, $Resource, $Expected) {
-        $actual = Get-SwDecision $Policy $Action $Resource
-        Require ($actual -ceq $Expected) "STATIC $Agent $Action [$Resource]: expected $Expected, got $actual" Permissions
+        # A shell case also holds for its RTK rewrite (see Add-SwRtkTwins).
+        foreach ($res in @($Resource) + $(if ($Action -ceq 'shell') { "rtk $Resource" } else { @() })) {
+            $actual = Get-SwDecision $Policy $Action $res
+            Require ($actual -ceq $Expected) "STATIC $Agent $Action [$res]: expected $Expected, got $actual" Permissions
+        }
     }
 
     try {
@@ -373,7 +386,7 @@ function Test-SwProject {
             Require (@($oc['permissions'] | Where-Object { $_['action'] -ceq 'edit' -and $_['resource'] -ceq $glob -and $_['effect'] -ceq 'deny' }).Count) "opencode.jsonc must deny edit $glob for every role"
         }
         # OpenCode loads each agent's own list only, so the session rules must lead every kit agent.
-        $session = @(Get-SwSessionRules $profileData['editDeny'] $tier)
+        $session = @(Add-SwRtkTwins (Get-SwSessionRules $profileData['editDeny'] $tier))
         $leads = {
             param($Items)
             $items = @($Items)
@@ -385,6 +398,23 @@ function Test-SwProject {
         }
         foreach ($name in $roleNames) {
             Require (& $leads $(if ($agents[$name].Contains('permissions')) { $agents[$name]['permissions'] } else { @() })) "Session rule drift: .opencode/agents/$name.md does not start with the session rules for this config; run sw update"
+        }
+        # Every rendered shell rule is followed by its `rtk ` twin (the RTK plugin rewrites before the check).
+        $untwinned = {
+            param($Items)
+            $items = @($Items)
+            for ($i = 0; $i -lt $items.Count; $i++) {
+                $r = $items[$i]
+                if ($r['action'] -cne 'shell' -or $r['resource'] -ceq '*' -or $r['resource'].StartsWith('rtk ')) { continue }
+                $t = if ($i + 1 -lt $items.Count) { $items[$i + 1] } else { @{} }
+                if ($t['action'] -cne 'shell' -or $t['resource'] -cne "rtk $($r['resource'])" -or $t['effect'] -cne $r['effect']) { $r['resource'] }
+            }
+        }
+        $twinLists = [ordered]@{ 'opencode.jsonc permissions' = $oc['permissions']; 'opencode.jsonc agents.build' = $ocAgents['build']['permissions'] }
+        foreach ($name in $roleNames) { $twinLists[".opencode/agents/$name.md"] = $(if ($agents[$name].Contains('permissions')) { $agents[$name]['permissions'] } else { @() }) }
+        foreach ($entry in $twinLists.GetEnumerator()) {
+            $missing = @(& $untwinned $entry.Value)
+            Require (-not $missing.Count) "RTK twin missing: $($entry.Key) shell [$($missing -join '], [')] needs its [rtk ...] twin, same effect, directly after it; run sw update"
         }
         $buildAllowed = @($roleNames | Where-Object { $_ -ne 'project-leader' }) + 'general', 'explore'
         $buildPerms = @($ocAgents['build']['permissions'])
@@ -875,6 +905,6 @@ function Get-SwUsage {
 }
 
 Export-ModuleMember -Function Resolve-SwRoot, Write-SwFile, Read-SwText, Read-SwJson, ConvertTo-SwJson, Get-SwHash,
-    Get-SwConfig, Read-SwFrontmatter, Get-SwDecision, Test-SwPattern, Get-SwGhRules, Get-SwSessionRules, Get-SwClaudeGhDeny, Test-SwProject,
+    Get-SwConfig, Read-SwFrontmatter, Get-SwDecision, Test-SwPattern, Get-SwGhRules, Get-SwSessionRules, Add-SwRtkTwins, Get-SwClaudeGhDeny, Test-SwProject,
     Get-SwClaudeFiles, Invoke-SwClaude, Set-SwTiers, Invoke-SwComms, Add-SwUser, Invoke-SwGitHub, Get-SwUsage, Test-SwLocalOnly,
     Get-SwToolVersion, Test-SwDoctor

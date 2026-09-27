@@ -98,7 +98,7 @@ secret files to get around them.
 | Read-only roles: shell limited to listed git reads | enforced (read forms of `status`, `diff`, `log`, `show`; `--output`, `--ext-diff`, `--textconv` denied) | stated (Bash is available; only session-wide denies apply) |
 | Documentation: edit `*.md` only | enforced | stated |
 | `git push`, `reset --hard`, `clean`, `stash` denied | guardrail | guardrail |
-| `.env` reads prompt | unverified (desktop re-test pending) | guardrail (Read tool only; shell reads are not covered) |
+| `.env` reads prompt | enforced (ask) | guardrail (Read tool only; shell reads are not covered) |
 | Non-leader roles: no subagent launch | enforced | enforced (`disallowedTools: Agent`) |
 
 OpenCode applies only each agent's own frontmatter rules; desktop 2.0.17 and
@@ -107,7 +107,10 @@ writes the session rules (base denies and asks, profile edit denies, GitHub
 tier, `.env` asks) at the head of every kit agent's `permissions`, and the
 role's own rules follow (last match wins). OpenCode's built-in agents other
 than Build carry no kit rules; Build gets them only from `opencode.jsonc`
-(`agents.build`). Claude settings rules are session-wide, so per-role limits
+(`agents.build`). The RTK plugin rewrites shell commands before OpenCode's
+permission check, so the kit renders an `rtk ` twin after every shell rule;
+another plugin that rewrites commands would bypass the rules the same way.
+Claude settings rules are session-wide, so per-role limits
 there are stated only. The solo ruleset on `main` (`.sw/collaboration.md`)
 stops force pushes and branch deletion, not ordinary pushes.
 

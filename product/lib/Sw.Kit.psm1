@@ -56,17 +56,23 @@ function Get-SwBlockBody([string]$Text, [string]$Name) {
 }
 
 function Add-SwSessionRules([string]$Text, $Rules, [string]$Label) {
-    # Prepend $Rules to the frontmatter `permissions:` list (created before the closing `---` if absent).
+    # Rewrite the frontmatter `permissions:` list as $Rules, then the agent's own rules, with RTK
+    # twins (Add-SwRtkTwins). The list is created before the closing `---` if absent.
     $q = { param($v) if ($v -match '["\\]') { throw "${Label}: cannot quote rule value $v" }; if ($v -cmatch '^[a-z_]+$') { $v } else { "`"$v`"" } }
-    $lines = foreach ($r in $Rules) { "  - action: $(& $q $r['action'])"; "    resource: `"$($r['resource'])`""; "    effect: $($r['effect'])" }
-    $block = $lines -join "`n"
     if ($Text -notmatch '\A---\n') { throw "${Label}: missing frontmatter" }
     $close = $Text.IndexOf("`n---`n", 3)
     if ($close -lt 0) { throw "${Label}: missing closing frontmatter delimiter" }
     $head = $Text.Substring(0, $close + 1)
-    $m = [regex]::Match($head, '(?m)^permissions:\n')
-    if ($m.Success) { return $Text.Insert($m.Index + $m.Length, "$block`n") }
-    $Text.Insert($close + 1, "permissions:`n$block`n")
+    $m = [regex]::Match($head, '(?m)^permissions:\n((?:  .*\n)*)')
+    $own = @(if ($m.Success) {
+        $found = [regex]::Matches($m.Groups[1].Value, '(?m)^  - action: "?([^"\n]+)"?\n    resource: "([^"\n]*)"\n    effect: ([a-z]+)\n')
+        if ([int]($found | ForEach-Object Length | Measure-Object -Sum).Sum -ne $m.Groups[1].Length) { throw "${Label}: permissions must use the kit's action/resource/effect line form" }
+        foreach ($f in $found) { [ordered]@{ action = $f.Groups[1].Value; resource = $f.Groups[2].Value; effect = $f.Groups[3].Value } }
+    })
+    $lines = foreach ($r in Add-SwRtkTwins (@($Rules) + $own)) { "  - action: $(& $q $r['action'])"; "    resource: `"$($r['resource'])`""; "    effect: $($r['effect'])" }
+    $block = "permissions:`n$($lines -join "`n")`n"
+    if ($m.Success) { return $Text.Remove($m.Index, $m.Length).Insert($m.Index, $block) }
+    $Text.Insert($close + 1, $block)
 }
 
 function Get-SwRender([Collections.IDictionary]$Config) {
@@ -98,9 +104,10 @@ function Get-SwRender([Collections.IDictionary]$Config) {
 
     # opencode.jsonc: session rules (kept for an OpenCode that honours them) + build delegation allowlist.
     $oc = Read-SwJson (Join-Path $script:Kit 'project/opencode.base.json')
-    $oc['permissions'] = $session
+    $twinned = @(Add-SwRtkTwins $session)
+    $oc['permissions'] = $twinned
     $roles = Read-SwJson (Join-Path $script:Kit 'project/roles.json')
-    $build = [Collections.Generic.List[object]]@($session)
+    $build = [Collections.Generic.List[object]]@($twinned)
     $build.Add([ordered]@{ action = 'subagent'; resource = '*'; effect = 'deny' })
     foreach ($r in @($roles.Keys | Where-Object { $_ -notin 'project-leader', 'explore' }) + 'general', 'explore') { $build.Add([ordered]@{ action = 'subagent'; resource = $r; effect = 'allow' }) }
     $oc['agents'] = [ordered]@{ build = [ordered]@{ permissions = @($build) } }

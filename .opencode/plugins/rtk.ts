@@ -21,10 +21,11 @@ function rewriteCommand(command: string): string {
 export default {
   id: "rtk",
   async setup(ctx: any) {
-    // OpenCode v2.0.16 packages/core/src/tool/plugin/shell.ts:134 runs permission.assert
-    // on the parsed ORIGINAL command before shell.create (:199), which is what triggers
-    // create.before (packages/core/src/shell.ts:270). This preserves that tool's
-    // original-command check, not a sandbox or validation of rewritten commands.
+    // OpenCode v2.0.18 packages/core/src/shell.ts:274 fires create.before first; only then
+    // does the shell tool's prepare (packages/core/src/tool/plugin/shell.ts ~116-136, called
+    // ~210) scan the command and run permission.assert. So the check sees the REWRITTEN
+    // command (`rtk git push ...`). The kit renders an `rtk ` twin of every shell rule
+    // (Add-SwRtkTwins in .sw/lib/Sw.Project.psm1) so rewritten commands get the same decision.
     try {
       await ctx?.shell?.hook?.("create.before", (e: { command: string }) => {
         e.command = rewriteCommand(e.command)
