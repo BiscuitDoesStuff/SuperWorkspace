@@ -133,7 +133,8 @@ project-plan, project-architect, project-research, project-review; standard =
 project-developer, project-worker, project-build, project-documentation; fast =
 explore; the Leader inherits the session model. Default cost policy is
 free-first: free OpenCode/OpenRouter models and local LM Studio, no metered API
-spend unless a contributor opts in locally. See the `free-models` skill for dated tier fits.
+spend unless a contributor opts in locally. To pick free models per tier, follow
+the `free-models` skill's procedure; the kit ships no model IDs or tier fits.
 Local models with small context windows must override `compaction` locally.
 
 ## Usage optimization

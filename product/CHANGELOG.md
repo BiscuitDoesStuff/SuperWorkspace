@@ -2,6 +2,7 @@
 
 ## 0.3.0-dev
 
+- Fixed: `free-models` no longer lists models or prices; GLM 5.2 was listed as free and is not.
 - **Docs (research topics 5-10, Phase 1 package 1):**
   - `.sw/collaboration.md`:
     - a solo mode: with `users` empty, the owner works on `main`;
