@@ -2,6 +2,14 @@
 
 ## 0.3.0-dev
 
+- **Changed (validate, Phase 1 package 4): three new errors.** Fix these before or right after `update`:
+  - `AGENTS.md` must keep a `## Project identity` heading. A project that adopted an existing `AGENTS.md` may lack it; add the heading above the kit blocks.
+  - Every skill `name` must be 1-64 lowercase letters, digits and single inner hyphens, and its `description` at most 1024 characters (Agent Skills spec). Rename or shorten your own skills that break this.
+  - When `.claude/.sw-generated` exists, `.claude/` must match `.sw/roles.json`: one agent per role except `project-leader` and `explore`, with the tier's `model`, the role's `claudeTools` as `tools`, and `disallowedTools: Agent`, plus one command per `.opencode/commands/*.md`. Run `claude enable` to fix.
+- **New (validate):** a research lint for `docs/research/*.md` (sections 1-6, a dated header, a citation per `F<n>.` finding). It prints `WARNING:` lines and never changes the exit code.
+- **Changed (validate):** the budget line reads `~N tokens (bytes/4 estimate; tokenizer varies)`, and `project-leader`'s count adds the other agents' `description` bytes (the subagent catalogue it sees).
+- **Changed (doctor):** two notes: the startup budget counts kit files only (check `/context` in Claude for the real total), and branch protection on `main` is not checked (see `.sw/collaboration.md`, Protect main).
+- **Changed (comms):** an event's "changed" line drops `.sw/comms/` entries and lists at most 10 paths, then `(+N more)`.
 - **Changed (Claude adapter, Phase 1 package 3):** generated `.claude/agents/*.md` set `disallowedTools: Agent`, so only the main session spawns agents. `.claude/settings.json` asks before `Read(**/.env)` and `Read(**/.env.*)` (`.env.example` prompts too) and denies `gh alias`. The `.claude/project-leader.md` dispatch sentence is built from the commands marked `subagent: true`. Run `update` (or `claude enable`) to regenerate.
 - **Changed (behaviour):** OpenCode `external_directory` now defaults to `ask` instead of `allow`, so access outside the project folder prompts. `update` rewrites the base rule in `opencode.jsonc`.
 - **Changed:** `validate` no longer pins each command's `subagent` value; command frontmatter owns the flag. The routing check stays.

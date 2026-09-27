@@ -217,6 +217,20 @@ Describe 'Validator negative fixtures' {
                 Write-SwFile $f ((Read-SwText $f) + "trailing line  `n")
             }
         }
+        @{ Name = 'AGENTS.md without a Project identity heading'; Match = 'AGENTS\.md must have a "## Project identity" heading'; Mutate = {
+                param($d) $f = Join-Path $d 'AGENTS.md'
+                Write-SwFile $f ((Read-SwText $f) -replace '(?m)^## Project identity$', '## Identity')
+            }
+        }
+        @{ Name = 'skill name outside the Agent Skills pattern'; Match = 'name must be 1-64 lowercase'; Mutate = {
+                param($d) Write-SwFile (Join-Path $d '.opencode/skills/bad--name/SKILL.md') "---`nname: bad--name`ndescription: Probe.`n---`n`nBody.`n"
+            }
+        }
+        @{ Name = 'skill description over 1024 characters'; Match = 'description exceeds 1024 characters'; Mutate = {
+                param($d) $f = Join-Path $d '.opencode/skills/minimal-change/SKILL.md'
+                Write-SwFile $f ((Read-SwText $f) -replace '(?m)^description:.*$', "description: $('x' * 1025)")
+            }
+        }
     ) {
         & $Mutate $dir
         $result = Test-SwValidate $dir
@@ -231,6 +245,78 @@ Describe 'Validator negative fixtures' {
         $result = Test-SwValidate $dir
         $result.ExitCode | Should -Be 1
         ($result.Output -join "`n") | Should -Match 'Claude adapter drift: \.claude/project-leader\.md'
+    }
+
+    It 'Claude structure is checked against roles.json: <Name>' -ForEach @(
+        @{ Name = 'wrong model'; Match = 'Claude agent project-plan: model must be opus'; Mutate = {
+                param($d) $f = Join-Path $d '.claude/agents/project-plan.md'
+                Write-SwFile $f ((Read-SwText $f) -replace '(?m)^model: opus$', 'model: sonnet')
+            }
+        }
+        @{ Name = 'wrong tools'; Match = 'Claude agent project-review: tools must be'; Mutate = {
+                param($d) $f = Join-Path $d '.claude/agents/project-review.md'
+                Write-SwFile $f ((Read-SwText $f) -replace '(?m)^tools: .*$', 'tools: Read, Edit')
+            }
+        }
+        @{ Name = 'missing disallowedTools'; Match = 'Claude agent project-worker: must set disallowedTools: Agent'; Mutate = {
+                param($d) $f = Join-Path $d '.claude/agents/project-worker.md'
+                Write-SwFile $f ((Read-SwText $f) -replace "(?m)^disallowedTools: Agent`n", '')
+            }
+        }
+        @{ Name = 'missing agent'; Match = 'Missing Claude agent: \.claude/agents/project-build\.md'; Mutate = {
+                param($d) Remove-Item -LiteralPath (Join-Path $d '.claude/agents/project-build.md') -Force
+            }
+        }
+        @{ Name = 'missing command'; Match = 'Missing Claude command: \.claude/commands/review\.md'; Mutate = {
+                param($d) Remove-Item -LiteralPath (Join-Path $d '.claude/commands/review.md') -Force
+            }
+        }
+    ) {
+        Invoke-SwClaude enable -Path $dir | Out-Null
+        & $Mutate $dir
+        $result = Test-SwValidate $dir
+        $result.ExitCode | Should -Be 1
+        ($result.Output -join "`n") | Should -Match $Match
+    }
+}
+
+Describe 'Research lint' {
+    It 'is silent without docs/research' {
+        $dir = New-SwProject "research$(New-Id)" generic
+        $result = Test-SwValidate $dir
+        $result.ExitCode | Should -Be 0
+        ($result.Output -join "`n") | Should -Not -Match 'WARNING'
+    }
+
+    It 'warns on missing sections, an undated header and an uncited finding, without failing' {
+        $dir = New-SwProject "research$(New-Id)" generic
+        $sections = "## 1. Question`n`nQ.`n`n## 2. Findings`n`n### Web`n`nF1. **Cited.** <https://example.com>.`n`nF2. **Same.** Same page as`nF1.`n`nF3. **Uncited.** A claim.`n`n### Local analysis`n`nF4. **Covered by the heading.** A claim.`n`n## 3. Options`n`nO.`n`n## 4. Recommendation`n`nR.`n`n## 5. Open questions`n`nNone.`n`n## 6. Supersedes / updates`n`nNone.`n"
+        Write-SwFile (Join-Path $dir 'docs/research/01-good.md') "# 01: Good`n`nAll sources accessed 2026-09-27.`n`n$sections"
+        Write-SwFile (Join-Path $dir 'docs/research/02-bad.md') "# 02: Bad`n`nNo date here.`n`n## 1. Question`n`nQ.`n"
+        $result = Test-SwValidate $dir
+        $result.ExitCode | Should -Be 0
+        $out = $result.Output -join "`n"
+        $out | Should -Match 'WARNING: docs/research/01-good\.md: F3 has no citation'
+        $out | Should -Not -Match '01-good\.md: (F1|F2|F4) '
+        $out | Should -Not -Match '01-good\.md: (missing section|header)'
+        $out | Should -Match 'WARNING: docs/research/02-bad\.md: missing section\(s\) 2, 3, 4, 5, 6'
+        $out | Should -Match 'WARNING: docs/research/02-bad\.md: header has no YYYY-MM-DD date'
+        $out | Should -Match 'PASS:'
+    }
+}
+
+Describe 'Startup budget output' {
+    It 'labels the token figure as a bytes/4 estimate and counts the subagent catalogue for project-leader only' {
+        $dir = New-SwProject "budget$(New-Id)" generic
+        $lines = @(Test-SwProject -Path $dir | Where-Object { $_ -like 'Startup budget:*' })
+        $lines | Should -Not -BeNullOrEmpty
+        foreach ($l in $lines) { $l | Should -Match '^Startup budget: \S+ = \d+ bytes, ~\d+ tokens \(bytes/4 estimate; tokenizer varies\); cap \d+$' }
+        $f = Join-Path $dir '.opencode/agents/project-worker.md'
+        $bytes = { param($role) [int]((@(Test-SwProject -Path $dir) -like "Startup budget: $role =*")[0] -replace '^.* = (\d+) bytes.*$', '$1') }
+        $leader = & $bytes project-leader; $developer = & $bytes project-developer
+        Write-SwFile $f ((Read-SwText $f) -replace '(?m)^description: (.*)$', 'description: $1 Padded.')
+        (& $bytes project-leader) | Should -Be ($leader + 8)
+        (& $bytes project-developer) | Should -Be $developer
     }
 }
 
@@ -250,7 +336,15 @@ Describe 'Claude adapter' {
 
         $roles = Read-SwJson (Join-Path $dir '.sw/roles.json')
         $workers = @($roles.Keys | Where-Object { $_ -notin 'project-leader', 'explore' })
-        foreach ($r in $workers) { Test-Path (Join-Path $dir ".claude/agents/$r.md") | Should -BeTrue }
+        $models = @{ reasoning = 'opus'; standard = 'sonnet'; fast = 'haiku' }
+        foreach ($r in $workers) {
+            $text = Read-SwText (Join-Path $dir ".claude/agents/$r.md")
+            $text | Should -Match "(?m)^model: $($models[$roles[$r]['tier']])$"
+            if ($roles[$r]['claudeTools']) { $text | Should -Match "(?m)^tools: $([regex]::Escape($roles[$r]['claudeTools']))$" }
+            else { $text | Should -Not -Match '(?m)^tools:' }
+            $text | Should -Match '(?m)^disallowedTools: Agent$'
+        }
+        @(Get-ChildItem (Join-Path $dir '.claude/agents') -Filter *.md -Force).Count | Should -Be $workers.Count
         Get-Content -LiteralPath (Join-Path $dir '.claude/agents/project-worker.md') -Raw | Should -Match '(?m)^disallowedTools: Agent$'
         Get-Content -LiteralPath (Join-Path $dir '.claude/agents/project-research.md') -Raw | Should -Match 'WebSearch'
         Test-Path (Join-Path $dir '.claude/agents/project-leader.md') | Should -BeFalse
@@ -259,6 +353,8 @@ Describe 'Claude adapter' {
         foreach ($c in Get-ChildItem (Join-Path $dir '.opencode/commands') -Filter *.md) {
             Test-Path (Join-Path $dir ".claude/commands/$($c.BaseName).md") | Should -BeTrue
         }
+        @(Get-ChildItem (Join-Path $dir '.claude/commands') -Filter *.md -Force).Count | Should -Be @(Get-ChildItem (Join-Path $dir '.opencode/commands') -Filter *.md -Force).Count
+        (Test-SwValidate $dir).ExitCode | Should -Be 0
         foreach ($s in Get-ChildItem (Join-Path $dir '.opencode/skills') -Directory) {
             Test-Path (Join-Path $dir ".claude/skills/$($s.Name)/SKILL.md") | Should -BeTrue
         }
@@ -367,6 +463,20 @@ Describe 'Comms' {
         (Get-Content -LiteralPath $ev[0].FullName -Raw) | Should -Match '\*\*Status:\*\* blocked'
     }
 
+    It 'event lists at most 10 changed paths, drops .sw/comms/ entries, and counts the rest' {
+        git -C $dir add -A | Out-Null
+        git -C $dir commit -q -m init | Out-Null
+        Invoke-SwComms event -Task T0 -Path $dir | Out-Null
+        1..12 | ForEach-Object { Write-SwFile (Join-Path $dir ('f{0:d2}.txt' -f $_)) 'x' }
+        Invoke-SwComms event -Task T4 -Path $dir | Out-Null
+        $ev = @(Get-ChildItem (Join-Path $dir '.sw/comms/tasks/T4') -Filter *.md)
+        $line = @((Read-SwText $ev[0].FullName) -split "`n" | Where-Object { $_ -like '- **Checked revision / changed:**' + '*' })[0]
+        $line | Should -Not -Match '\.sw/comms'
+        $line | Should -Match 'f10\.txt \(\+2 more\)$'
+        $line | Should -Not -Match 'f11\.txt'
+        ([regex]::Matches($line, 'f\d\d\.txt')).Count | Should -Be 10
+    }
+
     It 'close moves events into archive and writes SUMMARY.md' {
         Invoke-SwComms event -Task T2 -Path $dir | Out-Null
         Invoke-SwComms close -Task T2 -Outcome 'shipped' -Path $dir | Out-Null
@@ -421,6 +531,8 @@ Describe 'Test-SwDoctor' {
         $out = Test-SwDoctor -Path $dir | Out-String
         $out | Should -Match 'sw\.ps1 tiers'
         $out | Should -Match 'pass -User <name>'
+        $out | Should -Match 'Startup budget \(validate\) counts kit files only'
+        $out | Should -Match 'Branch protection on main: not checked'
     }
 }
 
@@ -439,6 +551,20 @@ Describe 'Backup secret filter' {
     ) {
         $matched = InModuleScope Sw.Kit -Parameters @{ Name = $Name } { $Name -match $script:SecretName }
         $matched | Should -Be $Expected
+    }
+}
+
+Describe 'Shipped skill staleness' {
+    It 'no shipped SKILL.md has an Observed YYYY-MM line outside an Old observations section' {
+        $hits = foreach ($f in Get-ChildItem (Join-Path $RepoRoot 'product') -Recurse -Filter SKILL.md -File -Force) {
+            $old = $false; $n = 0
+            foreach ($line in (Read-SwText $f.FullName) -split "`n") {
+                $n++
+                if ($line -match '^#+ ') { $old = $line -match '(?i)old observations' }
+                elseif (-not $old -and $line -match '(?i)\bobserved \d{4}-\d{2}') { "$($f.FullName):$n" }
+            }
+        }
+        $hits | Should -BeNullOrEmpty
     }
 }
 

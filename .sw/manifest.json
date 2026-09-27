@@ -42,7 +42,7 @@
     ".sw/roles.json": "7899406b14bf940d174575efbecf146c85f73789ab6e3487bf5ff3792665686c",
     ".sw/profile.json": "40409c166bf36cce15c3f5b2700d0c44cc40b4a0b342fbc79c9ee581f0396210",
     ".sw/sw.ps1": "fea95499b0d56059ba69dc9a4c828beeb679e5a0c24a81cac7d14c422338316b",
-    ".sw/lib/Sw.Project.psm1": "c918855bd79d2c37a9f061bbaa99eb42f2ed16d374a76983b03b3b13fa977c8f",
+    ".sw/lib/Sw.Project.psm1": "199c7027df5472471e71290ec5ce35244cc1ddb159ff1fc38fbad78c822298dc",
     "opencode.jsonc": "7619c26f7658a91c5850a308e541ddeb2364a14cec2b2db4e1ce39fb6bcea6fa"
   }
 }

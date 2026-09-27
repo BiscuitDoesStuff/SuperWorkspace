@@ -181,7 +181,8 @@ $script:Skills = @('agent-documentation', 'focused-review', 'free-models', 'mini
 $script:Routes = [ordered]@{ work = 'project-leader'; resume = 'project-leader'; 'workspace-check' = 'project-leader';
     handoff = 'project-leader'; inbox = 'project-leader'; validate = 'project-build'; review = 'project-review';
     status = 'project-review'; research = 'project-research' }
-$script:MojibakePattern = ([char]0x00E2 + [char]0x20AC) + '|' + ([char]0x00C3 + [char]0x00E9) + '|' + ([char]0x00C2 + [char]0x00A0)
+$script:ClaudeModels = @{ reasoning = 'opus'; standard = 'sonnet'; fast = 'haiku' }
+$script:MojibakePattern =([char]0x00E2 + [char]0x20AC) + '|' + ([char]0x00C3 + [char]0x00E9) + '|' + ([char]0x00C2 + [char]0x00A0)
 
 function Test-SwLocalOnly([string]$Root, [string]$Relative) {
     # A per-user override is allowed only when untracked AND git-ignored; git failure fails closed.
@@ -192,6 +193,40 @@ function Test-SwLocalOnly([string]$Root, [string]$Relative) {
     $LASTEXITCODE -eq 0
 }
 
+function Get-SwResearchWarnings([string]$Root) {
+    # Lenient lint for docs/research/*.md: warnings only, never errors.
+    $dir = Join-Path $Root 'docs/research'
+    if (-not (Test-Path -LiteralPath $dir)) { return }
+    foreach ($file in Get-ChildItem -LiteralPath $dir -Filter *.md -File -Force | Sort-Object Name) {
+        $rel = "docs/research/$($file.Name)"
+        $lines = @((Read-SwText $file.FullName) -split "`n")
+        $missing = @(1..6 | Where-Object { $n = $_; -not @($lines | Where-Object { $_ -match "^## $n\. " }).Count })
+        if ($missing.Count) { "${rel}: missing section(s) $($missing -join ', ') (expected '## 1.' to '## 6.')" }
+        $first = [array]::FindIndex([string[]]$lines, [Predicate[string]] { param($l) $l -match '^## ' })
+        $header = if ($first -ge 0) { $lines[0..([math]::Max(0, $first - 1))] } else { $lines }
+        if (-not (($header -join "`n") -match '\d{4}-\d{2}-\d{2}')) { "${rel}: header has no YYYY-MM-DD date" }
+        # Findings: F<n>. blocks under '## 2.'; a subsection heading containing "local" covers its findings.
+        $inFindings = $false; $localHeading = $false; $id = $null; $block = ''
+        $check = {
+            if ($id -and -not $localHeading -and $block -notmatch 'https?://|Same\s[\s\S]*?\sas\s+(\d{2}-)?F\d+|\bLocal\b|\(F\d+|\b\d{2}-F\d+') {
+                "${rel}: $id has no citation (URL, 'Same ... as F<n>', 'Local', or a finding cross-reference)"
+            }
+        }
+        foreach ($line in $lines) {
+            if ($line -match '^#{1,3} ') {
+                & $check; $id = $null; $block = ''
+                if ($line -match '^## ') { $inFindings = $line -match '^## 2\. '; $localHeading = $false }
+                elseif ($line -match '^### ') { $localHeading = $line -match '(?i)local' }
+                continue
+            }
+            if (-not $inFindings) { continue }
+            if ($line -match '^(F\d+)\. ') { & $check; $id = $Matches[1]; $block = $line }
+            elseif ($id) { $block += "`n$line" }
+        }
+        & $check
+    }
+}
+
 function Test-SwProject {
     <#
     .SYNOPSIS Static workspace contract check (definitions, permissions matrix, portability, budget, hygiene, Claude drift).
@@ -200,6 +235,7 @@ function Test-SwProject {
     param([string]$Path, [switch]$CheckLinks, [switch]$Quiet)
     $problems = [Collections.Generic.List[string]]::new()
     $counts = [ordered]@{ Contracts = 0; Permissions = 0; HygieneFiles = 0; LocalLinks = 0 }
+    $warnings = @()
     function Require($Condition, [string]$Message, [string]$Category = 'Contracts') {
         $counts[$Category]++
         if (-not $Condition) { $problems.Add($Message) }
@@ -288,6 +324,9 @@ function Test-SwProject {
                         }
                         skills {
                             Require ($data['name'] -ceq $file.Directory.Name) "$($file.FullName): name must equal directory"
+                            # Agent Skills spec: lowercase letters, digits and single inner hyphens, at most 64 characters.
+                            Require ($data['name'] -cmatch '^[a-z0-9]+(-[a-z0-9]+)*$' -and $data['name'].Length -le 64) "$($file.FullName): name must be 1-64 lowercase letters, digits and single hyphens (Agent Skills spec)"
+                            Require ($data['description'].Length -le 1024) "$($file.FullName): description exceeds 1024 characters (Agent Skills spec)"
                             Require (-not $skills.ContainsKey($data['name'])) "Duplicate skill: $($data['name'])"
                             $skills[$data['name']] = $data
                         }
@@ -323,15 +362,20 @@ function Test-SwProject {
         $ocGh = @($oc['permissions'] | Where-Object { $_['effect'] -ceq 'allow' -and $_['resource'] -like 'gh *' } | ForEach-Object { $_['resource'] })
         Require (-not @(Compare-Object $ocGh $ghRules).Count) "opencode.jsonc GitHub rules do not match githubTier $tier; run sw update"
 
-        # Startup budget: AGENTS.md + role body + skill names/descriptions, per role.
+        # Startup budget: AGENTS.md + role body + skill names/descriptions, per role;
+        # project-leader also sees the subagent catalogue, so it adds the other agents' descriptions.
         $cap = if ($config.Contains('startupBudgetBytes')) { [int]$config['startupBudgetBytes'] } else { 12100 }
-        $agentsMd = [Text.Encoding]::UTF8.GetByteCount((Read-SwText (Join-Path $Root 'AGENTS.md')))
+        $agentsMdText = Read-SwText (Join-Path $Root 'AGENTS.md')
+        Require ($agentsMdText -cmatch '(?m)^## Project identity\s*$') 'AGENTS.md must have a "## Project identity" heading (the project-owned section)'
+        $agentsMd = [Text.Encoding]::UTF8.GetByteCount($agentsMdText)
         $skillBytes = 0
         foreach ($s in $skills.GetEnumerator()) { $skillBytes += [Text.Encoding]::UTF8.GetByteCount($s.Key + $s.Value['description']) }
+        $catalogueBytes = 0
+        foreach ($a in $agents.GetEnumerator()) { if ($a.Key -ne 'project-leader') { $catalogueBytes += [Text.Encoding]::UTF8.GetByteCount($a.Value['description']) } }
         foreach ($name in $roleNames) {
             if (-not $agents.ContainsKey($name)) { continue }
-            $total = $agentsMd + [Text.Encoding]::UTF8.GetByteCount($agents[$name]['__body']) + $skillBytes
-            if (-not $Quiet) { Write-Output "Startup budget: $name = $total bytes (~$([math]::Ceiling($total / 4)) tokens); cap $cap" }
+            $total = $agentsMd + [Text.Encoding]::UTF8.GetByteCount($agents[$name]['__body']) + $skillBytes + $(if ($name -eq 'project-leader') { $catalogueBytes } else { 0 })
+            if (-not $Quiet) { Write-Output "Startup budget: $name = $total bytes, ~$([math]::Ceiling($total / 4)) tokens (bytes/4 estimate; tokenizer varies); cap $cap" }
             Require ($total -le $cap) "Startup budget exceeded for ${name}: $total > $cap bytes (trim AGENTS.md or raise startupBudgetBytes with evidence)"
         }
 
@@ -381,6 +425,21 @@ function Test-SwProject {
                 $target = Join-Path $Root $entry.Key
                 Require ((Test-Path -LiteralPath $target) -and (Read-SwText $target) -ceq $entry.Value) "Claude adapter drift: $($entry.Key) (run sw claude enable)"
             }
+            # Structure from roles.json, independent of the generator's output.
+            foreach ($role in @($roleNames | Where-Object { $_ -ne 'project-leader' })) {
+                $target = Join-Path $Root ".claude/agents/$role.md"
+                if (-not (Test-Path -LiteralPath $target)) { Require $false "Missing Claude agent: .claude/agents/$role.md"; continue }
+                $fm = ((Read-SwText $target) -split "`n---`n", 2)[0]
+                $model = $script:ClaudeModels[[string]$roles[$role]['tier']]
+                Require ($fm -cmatch "(?m)^model: $([regex]::Escape($model))$") "Claude agent ${role}: model must be $model (tier $($roles[$role]['tier']))"
+                $tools = [string]$roles[$role]['claudeTools']
+                if ($tools) { Require ($fm -cmatch "(?m)^tools: $([regex]::Escape($tools))$") "Claude agent ${role}: tools must be $tools (roles.json claudeTools)" }
+                else { Require ($fm -cnotmatch '(?m)^tools:') "Claude agent ${role}: no tools line expected (roles.json claudeTools is empty)" }
+                Require ($fm -cmatch '(?m)^disallowedTools: Agent$') "Claude agent ${role}: must set disallowedTools: Agent"
+            }
+            foreach ($name in $commands.Keys) {
+                Require (Test-Path -LiteralPath (Join-Path $Root ".claude/commands/$name.md")) "Missing Claude command: .claude/commands/$name.md"
+            }
         }
 
         # Hygiene: shared workspace files, including untracked ones.
@@ -408,9 +467,13 @@ function Test-SwProject {
                 }
             }
         }
+
+        # Research lint (warnings only; never changes the exit code).
+        $warnings = @(Get-SwResearchWarnings $Root)
     } catch { $problems.Add($_.Exception.Message) }
 
     Write-Output "Static workspace validation: contracts=$($counts.Contracts); permission cases=$($counts.Permissions); hygiene files=$($counts.HygieneFiles); local links=$($counts.LocalLinks). NOT runtime enforcement."
+    foreach ($w in $warnings) { Write-Output "WARNING: $w" }
     if ($problems.Count) {
         foreach ($p in $problems) { Write-Output "ERROR: $p" }
         Write-Output "FAILED: $($problems.Count) error(s)."
@@ -429,7 +492,7 @@ function Get-SwClaudeFiles([string]$Root) {
     $profileData = Read-SwJson (Join-Path $Root '.sw/profile.json')
     $tier = [int]$config['githubTier']
     $out = [ordered]@{}
-    $models = @{ reasoning = 'opus'; standard = 'sonnet'; fast = 'haiku' }
+    $models = $script:ClaudeModels
     $note = '<!-- Generated by SuperWorkspace (sw claude enable) from .opencode/; do not edit. -->'
     $workers = @($roles.Keys | Where-Object { $_ -notin 'project-leader', 'explore' })
     foreach ($role in $workers) {
@@ -603,7 +666,10 @@ function Invoke-SwComms {
             $author = if ($From) { $From } else { Get-SwUser $Root }
             $branch = (& git -C $Root branch --show-current 2>$null)
             $head = (& git -C $Root rev-parse HEAD 2>$null)
-            $dirty = @(& git -C $Root status --porcelain 2>$null) -join '; '
+            # Task records churn on every event; list other changes only, at most 10.
+            $changed = @(& git -C $Root status --porcelain 2>$null | Where-Object { $_ -and $_.Substring(3).TrimStart('"') -notlike '.sw/comms/*' })
+            $dirty = @($changed | Select-Object -First 10) -join '; '
+            if ($changed.Count -gt 10) { $dirty += " (+$($changed.Count - 10) more)" }
             $utc = Get-SwUtc
             $file = Get-SwUniquePath (Join-Path $comms "tasks/$Task") "$utc-$author-$Event" '.md'
             $text = @"
@@ -723,6 +789,8 @@ function Test-SwDoctor {
 
     $rows | Format-Table -AutoSize | Out-String -Width 200 | Write-Output
     Write-Output 'Reminder: OpenCode Desktop -> default environment = "Local directory" (automatic worktrees create branches outside the policy; cannot be detected).'
+    Write-Output 'Startup budget (validate) counts kit files only. Harness prompt, tool schemas, user files, hooks and plugins are not counted; check `/context` (Claude) for the real total.'
+    Write-Output 'Branch protection on main: not checked (needs `gh api`, which agents are denied); see .sw/collaboration.md (Protect main).'
     $global:LASTEXITCODE = if (@($rows | Where-Object State -eq 'MISSING').Count) { 1 } else { 0 }
 }
 
