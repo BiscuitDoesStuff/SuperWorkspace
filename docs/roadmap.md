@@ -34,6 +34,8 @@ Work packages (records in `.sw/comms/tasks/`; process in
 - [ ] One work package per research topic 1–10.
   - [x] `p0-research-01`: topic 1, `docs/research/01-structure-and-extension.md`
     (R1–R4 adopted 2026-09-27, R2 corrected).
+  - [x] `p0-research-02`: topic 2, `docs/research/02-multi-harness.md`
+    (reviewed 2026-09-27; R5 revised, option b and R3 deferred).
 
 ## Research inputs found during Phase 0
 
@@ -46,11 +48,24 @@ Work packages (records in `.sw/comms/tasks/`; process in
   `instructions` accepts `~/` paths and whether project arrays replace or
   extend the global one. Until then, do not run `global install` on a machine
   with personal lines in that block.
-- **Skills location (topic 2):** OpenCode also reads `.claude/skills/` and
-  `.agents/skills/` (topic 1, F7); weigh this against generating Claude copies.
+- **Multi-harness (decided in topic 2):** `AGENTS.md` stays the one shared
+  instruction file (all six harnesses read it). The Claude skills copy stays
+  (Claude reads only `.claude/skills`). Cursor and Copilot need no adapter:
+  they read `.claude/agents` and `.claude/skills` after `sw claude enable`.
+  Universality is the goal, so adapters are planned scope; Codex comes first
+  (fewest files). The overlay reaches Claude, OpenCode and Gemini only; the
+  others are documented as not supported.
+- **Deferred to the rewrite (topic 2):** move canonical skills to
+  `.agents/skills` (read by five of six harnesses; decide with topic 7, after
+  testing duplicate skills in OpenCode), and fold commands into user-invocable
+  skills (touches topic 5). Runtime test: do Cursor and Copilot accept Claude
+  `model` aliases in `.claude/agents`?
 - **Research budget (topic 0 follow-up):** topic 1 used 21 research calls and
   about 30 in total. Proposal: the cap counts research calls only; say whether
   re-verifying from saved fetch output, or from a fetch tool's summary, counts.
+  Topic 2 tried the research-only count: 25 calls, at the cap, which forced
+  summary-only findings. Proposal: save raw page text to the scratchpad so
+  re-verifying spends no research calls.
 - **Duplicated subagent list (topics 5, 9):** the validator hard-codes which
   commands run as subagents, duplicating each command's `subagent:` field.
 - **`-Adopt` gap (topic 7):** adopting a repo with an existing `AGENTS.md`
