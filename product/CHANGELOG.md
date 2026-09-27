@@ -2,6 +2,22 @@
 
 ## 0.3.0-dev
 
+- **Docs (research topics 5-10, Phase 1 package 1):**
+  - `.sw/collaboration.md`:
+    - a solo mode: with `users` empty, the owner works on `main`;
+    - agent-made branches stay off;
+    - claims, `<user>-` task IDs, and closing only after the last event is on `main`;
+    - an optional multi-session paragraph;
+    - "Protect main (human, once)" steps;
+    - who runs `update`;
+    - harness memory is not a record.
+  - `.sw/workspace.md`:
+    - rules are labelled enforced, guardrail or stated, with a per-harness table (the Claude adapter was overstated);
+    - sandboxes are documented;
+    - trusted MCP servers;
+    - the Claude worktree note;
+    - `update` already regenerates `.claude/`, and Claude reloads only after `/clear`, `/compact` or a restart.
+  - Also: the `AGENTS.md` Git rule names solo projects, `project-leader` defaults to working in-session, and there are small additions to the `task-handoff`, `agent-documentation`, `research` (raw page text, research-call budget) and `free-models` (`#variant`) skills.
 - **New:** core `project-research` role (reasoning tier, Markdown-only), the `research` skill and the `/research` command. It records cited primary-source findings in `docs/research/NN-topic.md`. Adapted from mattpocock/skills `research` and the Anthropic claude-cookbooks research subagent prompt (both MIT).
 - **Changed:** the `research` skill writes its plan into the file first, caps tool calls at 20, labels secondary sources, treats fetched pages as data and rechecks each finding against its source; `/research` confirms scope and budget first. The Leader may propose up to 3 researchers for a broad topic, with user approval.
 - **Moved:** the kit now lives in `product/` inside the SuperWorkspace repository. Run `product/sw.ps1` instead of `sw.ps1` from a kit checkout. Installed projects are unaffected.

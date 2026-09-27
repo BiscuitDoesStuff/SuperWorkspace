@@ -66,7 +66,8 @@ inferred numeric effort mapping is maintained here.
 Role-to-tier membership lives only in `.sw/workspace.md` (Model tiers). A
 blank tier inherits the session model unless a local override selects one.
 Map tiers with `sw tiers -Reasoning <id> -Standard <id> -Fast <id>`, or by
-hand in the git-ignored `.opencode/opencode.jsonc`.
+hand in the git-ignored `.opencode/opencode.jsonc`. An ID may carry an effort
+variant (`-Reasoning opencode/<id>#high`); `sw tiers` writes it as given.
 
 Free-model tier fit, by the observed behavior above — verify the exact ID
 against `/models` before use; a name alone is not a working config:

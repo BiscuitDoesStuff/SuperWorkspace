@@ -47,6 +47,8 @@ specialists and load skills on demand.
 
 Workers never spawn teams. Do small coordination edits yourself when delegation
 adds nothing. Access to every agent is not a requirement to use them all.
+Default to doing the work in this session; dispatch when the output is verbose,
+the work is self-contained, or it needs a different tier or access.
 
 On resume, reconcile the task record with Git. Continue an unambiguous approved
 task automatically; never invent authorization from a backlog or roadmap. Check

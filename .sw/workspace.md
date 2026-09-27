@@ -71,7 +71,8 @@ unless ownership is explicitly disjoint. Child sessions do not isolate files. A
 worktree uses an existing assigned contributor branch; Git cannot check out one
 branch twice, so coordinate instead of bypassing it. Every binary asset has one
 named owner. Turn off OpenCode automatic worktrees (Desktop: default environment
-= Local directory); they create detached branches outside this policy.
+= Local directory); they create detached branches outside this policy. Claude:
+leave the desktop worktree option off, and do not use `isolation: worktree`.
 
 One validation owner per checkout. Reuse evidence until changes invalidate it.
 Targeted checks before full suites; small corrections inline rather than a new
@@ -82,13 +83,35 @@ subagent. On Windows without `pwsh`, the OpenCode shell is Windows PowerShell
 ## Permissions and portability
 
 Execution roles have host-user shell authority, **not a sandbox**; pattern rules
-cannot recognize every shell spelling. Never bypass a denied action with another
+cannot recognize every shell spelling. Three words describe every rule:
+*enforced* (tool lists and file-tool rules the harness applies), *guardrail*
+(shell pattern rules, which stop the command as written and nothing else;
+`git -C . push`, `bash -c`, aliases and absolute paths get past them), and
+*stated* (role text the model is asked to follow). Never bypass a denied action with another
 tool, shell form, or child. Read-only roles inspect only. Documentation edits
 Markdown only. `*.env` read prompts cover direct reads; never grep or print
 secret files to get around them.
 
-GitHub access follows `githubTier` in `.sw/config.json`, enforced in
-`opencode.jsonc` (and the Claude adapter):
+| Rule | OpenCode | Claude adapter |
+| --- | --- | --- |
+| Read-only roles: no edits | enforced | enforced (no Edit or Write tool) |
+| Read-only roles: shell limited to listed git reads | enforced (exact allowlist) | stated (Bash is available; only session-wide denies apply) |
+| Documentation: edit `*.md` only | enforced | stated |
+| `git push`, `reset --hard`, `clean`, `stash` denied | guardrail | guardrail |
+| `.env` reads prompt | enforced | not covered |
+
+Claude settings rules are session-wide, so per-role limits there are stated
+only. Branch protection on `main` (`.sw/collaboration.md`) is the real control
+on publication.
+
+Sandboxes are documented, never configured: Claude users on macOS, Linux or
+WSL2 may enable `/sandbox` locally; Codex users get one by default and on
+native Windows choose its mode themselves; OpenCode has none. Sandbox settings
+are machine-specific, so the kit never writes them.
+
+GitHub access follows `githubTier` in `.sw/config.json`, as guardrails in
+`opencode.jsonc`; the Claude adapter's list is a denylist, so unknown verbs,
+aliases and extensions fall to Claude's default mode:
 
 | Tier | Agents may |
 | --- | --- |
@@ -120,7 +143,8 @@ Local models with small context windows must override `compaction` locally.
 - Skills and docs load on demand; do not re-read `AGENTS.md`.
 - RTK rewrites shell output through `.opencode/plugins/rtk.ts` (fails open).
 - context7 MCP for library docs instead of web search; it receives your queries,
-  so send no secrets or private source.
+  so send no secrets or private source. It is the one third-party remote MCP
+  server the kit ships; add only MCP servers you trust.
 - Resume from task records, not chat summaries; batch independent calls.
 - Subagents pay a cold start; the Leader does small work inline.
 
@@ -129,8 +153,12 @@ Local models with small context windows must override `compaction` locally.
 `sw claude enable` generates a git-ignored `.claude/` from these sources:
 pointer agents and commands, copied skills, permission rules for the GitHub
 tier, and a SessionStart hook that makes the main session the Leader.
-Regenerate after `sw update`; `sw validate` reports drift. Never hand-edit
-generated files; edit the `.opencode/` source instead.
+`sw update` regenerates it when `.claude/.sw-generated` exists; otherwise run
+`sw claude enable`. `sw validate` reports drift. Never hand-edit generated
+files; edit the `.opencode/` source instead. Claude applies instruction edits
+and `update` output only after `/clear`, `/compact` or a restart. Keep one
+model per session in every harness: switching mid-session breaks the prompt
+cache.
 
 ## Verification ladder
 

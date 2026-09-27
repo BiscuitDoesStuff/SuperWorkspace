@@ -27,6 +27,7 @@ All paths below are repository-root relative.
 - Preserve dated evidence; add a correction event rather than rewriting another author.
 - Update current state only after the corresponding implementation and checks exist.
 - Avoid hand-maintained live SHA inventories and duplicate memory or status ledgers.
+- Date every volatile fact (`Observed YYYY-MM-DD`) and keep it out of instructions when a procedure can replace it.
 - Use original project wording; do not import external instructions or dependencies.
 - Describe tool limitations accurately and keep harness details out of product policy.
 

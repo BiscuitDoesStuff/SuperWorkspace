@@ -1,0 +1,42 @@
+# p1-01-shipped-text - submission - 2026-09-27T054602Z - leader
+
+- **Author / audience:** leader (cloud Leader session, implementing); reader: the owner (review).
+- **Approval:** Phase 1 plan approved by the owner on 2026-09-27; package 1 assigned 2026-09-27T054426Z.
+- **Scope / acceptance:** all assignment items done:
+  - `product/project/base/.sw/collaboration.md`:
+    - memory sentence (06 R1);
+    - Claims paragraph (10 R3);
+    - Closing `-Outcome` and close-after-`main` (06 R3, 10 R3);
+    - "Multi-session work (optional)" (05 R4, 10 R5);
+    - Branches solo mode, `sw user add` on `main`, agent-made branches off, `git lfs lock` (10 R1-R3, 05 R5);
+    - "Protect main (human, once)" (10 R6);
+    - "Kit updates" under Receive (10 R4).
+  - `product/project/base/.sw/workspace.md`:
+    - Claude worktree sentence (05 R5);
+    - three words plus a five-row harness table, sandboxes, and the `gh` denylist note (08 R1, R2 note, R4);
+    - trusted MCP servers (08 R6);
+    - the Claude adapter regenerate fix and caching (07-F21, 04 R6).
+  - `AGENTS.md` template Git rule (10 R1).
+  - `project-leader.md` routing default (05 R3).
+  - Skill lines:
+    - `task-handoff` and `agent-documentation` (06 R4);
+    - `research` raw text and the research-call count (topic 0 follow-up);
+    - `free-models` `#variant` (03 R2).
+  - `product/CHANGELOG.md` 0.3.0-dev entry.
+  - `docs/decisions.md` Known-gap line (08 R1, F26).
+  - Dogfood refreshed by `pwsh product/sw.ps1 update .` (8 files, then 1 after a line-wrap fix).
+- **Status:** complete
+- **Branch / base:** cloud branch `main-ahb0v0`; published main 0ee9b5eb864b1a410e4d45da0b541f7da5c88019
+- **Checked revision / changed:** 845131b plus uncommitted: the files above, their dogfood copies (`.opencode/`, `.sw/`, `AGENTS.md` core block, `.sw/manifest.json`), this event and a p1-leader handoff.
+- **Owners / dependencies:** the Leader wrote everything; the owner reviews.
+- **Decisions / remaining:**
+  - The harness table describes the generator today. Package 3 changes the Claude `.env` row, and the subagent row it will add.
+  - The version stays 0.3.0-dev because it is unreleased. The entry is added under it rather than bumping.
+- **Validation:** leader, 2026-09-27 ~05:46 UTC, cloud container (pwsh 7.6.6):
+  - `pwsh -NoProfile -File .sw/sw.ps1 validate`: PASS. Leader startup 8987 bytes, cap 12100.
+  - Fresh `pwsh -NoProfile -File product/sw.ps1 init <scratch>/sw-check -Profile unreal -Name Check`, then its `validate`: PASS.
+  - `git diff --check`: clean.
+  - Pester: not run locally (PSGallery blocked). The tests grep none of the changed text, and the leak guard is unaffected. CI on the pushed tip is the Pester evidence.
+- **Not validated / risks:** no runtime check (text only). Pester waits on CI.
+- **Publication:** pushed to `main-ahb0v0`; `main` is the owner's.
+- **Next action:** owner; review the package-1 diff (the `product/` files), then approve or correct. After approval, the Leader assigns package 2 (known defects).

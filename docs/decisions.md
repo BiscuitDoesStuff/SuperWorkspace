@@ -126,7 +126,10 @@ guidance.
 - `gh pr create` is set to "ask" at tier 1, because Claude can't require
   `--draft`.
 
-**Known gap:** a prompt-level bypass through `bash -c` is still possible.
+**Known gap:** a prompt-level bypass through `bash -c` is still possible, and
+so are `git -C . push`, `git -c k=v push`, quoted verbs, an absolute path to
+`git`, other shell wrappers and git aliases (research 08-F26). Branch
+protection is the real control (08 R3).
 Permissions are guardrails, not a sandbox.
 
 ## 2026-09-26: In-repo comms over a separate service (accepted)

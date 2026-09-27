@@ -29,6 +29,7 @@ If no task ID or approved scope exists, resolve that assignment before recording
 - Exact checked SHA or an explicit uncommitted draft and its affected paths.
 - Validation runner, timestamp, commands, results, evidence paths, and unverified checks.
 - A concrete resume action, its owner, and the evidence needed to call it complete.
+- Write the record so it stands without the session transcript; harness transcripts expire.
 
 ## Resume or transfer
 
