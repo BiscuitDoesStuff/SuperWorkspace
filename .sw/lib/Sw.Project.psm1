@@ -182,7 +182,7 @@ $script:Routes = [ordered]@{ work = 'project-leader'; resume = 'project-leader';
     handoff = 'project-leader'; inbox = 'project-leader'; validate = 'project-build'; review = 'project-review';
     status = 'project-review'; research = 'project-research' }
 $script:ClaudeModels = @{ reasoning = 'opus'; standard = 'sonnet'; fast = 'haiku' }
-$script:MojibakePattern =([char]0x00E2 + [char]0x20AC) + '|' + ([char]0x00C3 + [char]0x00E9) + '|' + ([char]0x00C2 + [char]0x00A0)
+$script:MojibakePattern = ([char]0x00E2 + [char]0x20AC) + '|' + ([char]0x00C3 + [char]0x00E9) + '|' + ([char]0x00C2 + [char]0x00A0)
 
 function Test-SwLocalOnly([string]$Root, [string]$Relative) {
     # A per-user override is allowed only when untracked AND git-ignored; git failure fails closed.
