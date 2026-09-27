@@ -40,6 +40,8 @@ Work packages (records in `.sw/comms/tasks/`; process in
     (reviewed 2026-09-27; advisor is a skill; `effort` deferred).
   - [x] `p0-research-04`: topic 4, `docs/research/04-context-efficiency.md`
     (reviewed 2026-09-27; R1-R7 adopted).
+  - [x] `p0-research-05`: topic 5, `docs/research/05-orchestration-roles.md`
+    (reviewed 2026-09-27; R1-R7 adopted, R7 minimal).
 
 ## Research inputs found during Phase 0
 
@@ -89,7 +91,8 @@ Work packages (records in `.sw/comms/tasks/`; process in
 - **Deferred to the rewrite (topic 2):** move canonical skills to
   `.agents/skills` (read by five of six harnesses; decide with topic 7, after
   testing duplicate skills in OpenCode), and fold commands into user-invocable
-  skills (touches topic 5). Runtime test: do Cursor and Copilot accept Claude
+  skills (closed by topic 5 R6: OpenCode skills cannot pick an agent, so
+  commands stay). Runtime test: do Cursor and Copilot accept Claude
   `model` aliases in `.claude/agents`?
 - **Research budget (topic 0 follow-up):** topic 1 used 21 research calls and
   about 30 in total. Proposal: the cap counts research calls only; say whether
@@ -98,14 +101,28 @@ Work packages (records in `.sw/comms/tasks/`; process in
   summary-only findings. Topic 3 saved raw page text to the scratchpad: 17
   calls, every finding re-checked from source text. Proposal: make saving raw
   text a research-skill rule and count research calls only.
-- **Duplicated subagent list (topics 5, 9):** the validator hard-codes which
-  commands run as subagents, duplicating each command's `subagent:` field.
+- **Duplicated subagent list (decided in topic 5, R7):** each command's
+  `subagent:` frontmatter owns the flag. Drop the validator's hard-coded list
+  (`Sw.Project.psm1` around line 307) and generate the Claude leader
+  pointer's dispatch line from the files. The routing pin (`$script:Routes`)
+  stays. Tests change with it (topic 9).
 - **`-Adopt` gap (topic 7):** adopting a repo with an existing `AGENTS.md`
   adds no project sections, so the core block's Project identity reference
   dangles until a human adds one.
-- **Session tier (topics 5, 10):** the dev process runs a Leader session with
-  worker sessions (see `docs/development.md`). Test whether the product
-  should ship it.
+- **Orchestration (decided in topic 5):** keep the Leader plus one level of
+  subagents; no nesting and no agent teams. Generated Claude agents get
+  `disallowedTools: Agent`: today developer, worker and build can nest three
+  layers in Claude. Keep all 9 roles and the nine commands. Add one routing
+  default to `project-leader.md`: work in-session unless the output is
+  verbose, the work is self-contained, or it needs another tier or access.
+  Extend the worktree-off note to Claude (desktop worktree option,
+  `isolation: worktree`). Runtime tests: does OpenCode V1 honour `subagent:`
+  (else three commands run inline; see the `$schema` defect), and OpenCode
+  nesting and messaging.
+- **Session tier (topic 5 R4; multi-human part to topic 10):** ship as an
+  optional paragraph in `.sw/collaboration.md`. Records are the truth; "go"
+  and "done" use harness messaging where available, else the human relays
+  them. No command or code.
 - **Record bloat (topic 6):** `sw comms event` writes every dirty path into
   the record, which is noise on a large uncommitted tree.
 - **Research lint (topic 9):** a `validate` check that each finding has a URL
