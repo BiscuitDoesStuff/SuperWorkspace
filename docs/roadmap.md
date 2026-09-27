@@ -44,6 +44,8 @@ Work packages (records in `.sw/comms/tasks/`; process in
     (reviewed 2026-09-27; R1-R7 adopted, R7 minimal).
   - [x] `p0-research-06`: topic 6, `docs/research/06-upkeep-memory.md`
     (reviewed 2026-09-27; R1-R6 adopted).
+  - [x] `p0-research-07`: topic 7, `docs/research/07-lifecycle.md`
+    (reviewed 2026-09-27; R1-R7 adopted).
 
 ## Research inputs found during Phase 0
 
@@ -91,8 +93,8 @@ Work packages (records in `.sw/comms/tasks/`; process in
   2026-06-18, which weakens the Gemini adapter case in topic 2 R4. Codex CLI
   and LM Studio are installed on the owner's machine.
 - **Deferred to the rewrite (topic 2):** move canonical skills to
-  `.agents/skills` (read by five of six harnesses; decide with topic 7, after
-  testing duplicate skills in OpenCode), and fold commands into user-invocable
+  `.agents/skills` (now planned by topic 7; test duplicate skills in OpenCode
+  first), and fold commands into user-invocable
   skills (closed by topic 5 R6: OpenCode skills cannot pick an agent, so
   commands stay). Runtime test: do Cursor and Copilot accept Claude
   `model` aliases in `.claude/agents`?
@@ -108,9 +110,19 @@ Work packages (records in `.sw/comms/tasks/`; process in
   (`Sw.Project.psm1` around line 307) and generate the Claude leader
   pointer's dispatch line from the files. The routing pin (`$script:Routes`)
   stays. Tests change with it (topic 9).
-- **`-Adopt` gap (topic 7):** adopting a repo with an existing `AGENTS.md`
-  adds no project sections, so the core block's Project identity reference
-  dangles until a human adds one.
+- **Lifecycle (decided in topic 7):** keep the hash manifest plus managed
+  blocks. The manifest records `kitCommit`, and `update` refuses a downgrade
+  unless `-Force` (today `kitVersion` is never read). `skip-modified` splits:
+  `kept-local` when the kit did not change the file; otherwise the incoming
+  version goes to `.sw/backup/<stamp>/incoming/` with a `git diff` line. The
+  `-Adopt` gap is fixed by inserting the template's project sections into an
+  existing `AGENTS.md` that lacks `## Project identity`, touching no existing
+  text. A kit-side rename map moves files, including edited ones. Tag
+  releases in git as the pin; no PowerShell Gallery yet. Fix
+  `.sw/workspace.md` "Regenerate after `sw update`" (update already does it).
+- **Skills move (topic 7 R7, owner 2026-09-27):** moving canonical skills to
+  `.agents/skills` is planned next-phase work, after the rename map; it
+  reverses part of the 2026-09-26 "OpenCode is canonical" decision.
 - **Orchestration (decided in topic 5):** keep the Leader plus one level of
   subagents; no nesting and no agent teams. Generated Claude agents get
   `disallowedTools: Agent`: today developer, worker and build can nest three
