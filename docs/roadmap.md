@@ -4,7 +4,7 @@ SuperWorkspace is a neutral building platform for any user and any project.
 Outside research drives the design. Findings live in `docs/research/NN-*.md`;
 this file cites them as `NN Rk` (topic NN, recommendation k).
 
-## Phase 0: structure and research (step 6 awaiting owner review)
+## Phase 0: structure and research (done 2026-09-27)
 
 1. [x] Split `product/` (what ships) from the dev workspace at the root.
 2. [x] Remove personal names, paths and opinions from `product/`.
@@ -12,8 +12,8 @@ this file cites them as `NN Rk` (topic NN, recommendation k).
 4. [x] Add a core `project-research` role (revised by topic 0).
 5. [x] Research topics 0–10, one owner review per topic (all reviewed
    2026-09-26/27; records in `.sw/comms/archive/p0-research-NN/`).
-6. [ ] Rewrite this roadmap from the reviewed research (this draft,
-   `p0-roadmap-rewrite`).
+6. [x] Rewrite this roadmap from the reviewed research (`p0-roadmap-rewrite`,
+   accepted by the owner 2026-09-27).
 
 What Phase 0 settled, in one line each:
 - **Structure (01):** profiles stay the extension unit; no pack format yet.
@@ -34,9 +34,11 @@ What Phase 0 settled, in one line each:
 - **Collaboration (10):** the branch model stays fixed, with a solo mode when
   `users` is empty.
 
-## Phase 1: apply the research (proposal, not approved)
+## Phase 1: apply the research (approved 2026-09-27, in progress)
 
-Kit behavior changes only here, one work package at a time, in this order.
+The owner approved this plan and its order on 2026-09-27. Kit behavior changes
+only here, one work package at a time, in this order, with an owner review
+after each. Records: `.sw/comms/tasks/p1-NN-*/`.
 Each package that installed projects receive bumps `product/VERSION` and adds
 a `product/CHANGELOG.md` entry, and adds Pester coverage for new code (09 R2).
 
