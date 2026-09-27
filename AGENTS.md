@@ -16,7 +16,8 @@ beyond that checklist is authorized.
   `product/project/base/.opencode/` are canonical. Role metadata (tier,
   access, Claude tools) lives only in `product/project/roles.json`. GitHub
   tier rules live only in `Get-SwGhRules` and `Get-SwClaudeGhDeny` in
-  `product/lib/Sw.Project.psm1`. The Claude adapter is generated, so never add
+  `product/lib/Sw.Project.psm1`. OpenCode session rules live only in
+  `Get-SwSessionRules` (same file); render prepends them to every agent. The Claude adapter is generated, so never add
   hand-written `.claude/` templates.
 - **Keep the frontmatter parser strict.** The subset is: scalar keys, plus a
   `permissions` rule list. Anything else fails loudly. That includes YAML

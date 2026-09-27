@@ -4,6 +4,24 @@ Format: `YYYY-MM-DD: Title (status)`. Newest first. Record no secret values.
 The earlier decision logs (ai-environment-foundation, MyMMO) are summarized
 here. Their repositories keep the full history.
 
+## 2026-09-27: OpenCode session rules live in every agent (accepted)
+
+- **Finding:** OpenCode desktop 2.0.17/2.0.18 ignores the project-level
+  `permissions` list in `opencode.jsonc` and applies only agent frontmatter
+  (`p1-checkpoint-runtime`). The solo ruleset on `main` blocks force pushes
+  and deletion, not ordinary pushes, so it is not a push control.
+- **Decision (package 5a):** one list, `Get-SwSessionRules` in
+  `Sw.Project.psm1` (base, profile edit denies, GitHub tier, `.env` asks),
+  is rendered at the head of every kit agent's `permissions`, of
+  `agents.build`, and into `opencode.jsonc`. The base list moved out of
+  `opencode.base.json` into code, because installed projects run `validate`
+  from `.sw/lib` without the kit's JSON. `validate` models each agent file
+  alone and reports drift.
+- **Supersedes:** "branch protection on `main` is the real push control" in
+  the branch-model entry below.
+- **Open:** whether OpenCode enforces the `.env` rule form; the desktop
+  re-test decides.
+
 ## 2026-09-27: The branch model stays fixed, with a solo mode (accepted)
 
 - **Model:** only `main` and owner-designated `<user>/<user>-worktree`
