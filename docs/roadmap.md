@@ -42,6 +42,8 @@ Work packages (records in `.sw/comms/tasks/`; process in
     (reviewed 2026-09-27; R1-R7 adopted).
   - [x] `p0-research-05`: topic 5, `docs/research/05-orchestration-roles.md`
     (reviewed 2026-09-27; R1-R7 adopted, R7 minimal).
+  - [x] `p0-research-06`: topic 6, `docs/research/06-upkeep-memory.md`
+    (reviewed 2026-09-27; R1-R6 adopted).
 
 ## Research inputs found during Phase 0
 
@@ -123,8 +125,17 @@ Work packages (records in `.sw/comms/tasks/`; process in
   optional paragraph in `.sw/collaboration.md`. Records are the truth; "go"
   and "done" use harness messaging where available, else the human relays
   them. No command or code.
-- **Record bloat (topic 6):** `sw comms event` writes every dirty path into
-  the record, which is noise on a large uncommitted tree.
+- **Upkeep and memory (decided in topic 6):** harness memory is never the
+  record; the kit neither uses nor disables it (one sentence in
+  `.sw/collaboration.md`). Record bloat: `sw comms event` drops `.sw/comms/`
+  paths from the changed line and caps it at 10 (`+N more`); measured at 14%
+  of record bytes. `.sw/collaboration.md` "Closing" must say `-Outcome`
+  carries the outcome, decisions and follow-ups (the doc promises more than
+  `close` writes). Shipped skills hold procedures, not snapshots: the
+  `free-models` per-model list moves to dated research, which also fixes the
+  GLM defect. One line each in `task-handoff` (records stand without
+  transcripts) and `agent-documentation` (date volatile facts). Instructions
+  are reviewed on recorded failures, not on a schedule.
 - **Research lint (topic 9):** a `validate` check that each finding has a URL
   and a date, deferred until several research files exist.
 
