@@ -251,6 +251,7 @@ Describe 'Claude adapter' {
         $roles = Read-SwJson (Join-Path $dir '.sw/roles.json')
         $workers = @($roles.Keys | Where-Object { $_ -notin 'project-leader', 'explore' })
         foreach ($r in $workers) { Test-Path (Join-Path $dir ".claude/agents/$r.md") | Should -BeTrue }
+        Get-Content -LiteralPath (Join-Path $dir '.claude/agents/project-worker.md') -Raw | Should -Match '(?m)^disallowedTools: Agent$'
         Get-Content -LiteralPath (Join-Path $dir '.claude/agents/project-research.md') -Raw | Should -Match 'WebSearch'
         Test-Path (Join-Path $dir '.claude/agents/project-leader.md') | Should -BeFalse
         Test-Path (Join-Path $dir '.claude/agents/explore.md') | Should -BeFalse
@@ -266,6 +267,23 @@ Describe 'Claude adapter' {
         $settings['permissions']['deny'] | Should -Contain 'Bash(git push:*)'
         $settings['permissions']['deny'] | Should -Contain 'Bash(gh pr merge:*)'
         $settings['permissions']['deny'] | Should -Contain 'Bash(gh pr create:*)'
+        $settings['permissions']['deny'] | Should -Contain 'Bash(gh alias:*)'
+        $settings['permissions']['ask'] | Should -Contain 'Read(**/.env)'
+        $settings['permissions']['ask'] | Should -Contain 'Read(**/.env.*)'
+    }
+
+    It 'builds the leader dispatch sentence from the command subagent flags' {
+        Invoke-SwClaude enable -Path $dir | Out-Null
+        $leader = Join-Path $dir '.claude/project-leader.md'
+        Read-SwText $leader | Should -Match '`/review` and `/status` dispatch `project-review`'
+
+        $f = Join-Path $dir '.opencode/commands/review.md'
+        Write-SwFile $f ((Read-SwText $f) -replace '(?m)^subagent: true$', 'subagent: false')
+        Invoke-SwClaude enable -Path $dir | Out-Null
+        $text = Read-SwText $leader
+        $text | Should -Match '`/status` dispatches `project-review`'
+        $text | Should -Not -Match '`/review`'
+        (Test-SwValidate $dir).ExitCode | Should -Be 0
     }
 
     It 'refuses to enable when .claude/ is not git-ignored' {

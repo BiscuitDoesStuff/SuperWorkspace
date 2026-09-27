@@ -22,7 +22,7 @@
     {
       "action": "external_directory",
       "resource": "*",
-      "effect": "allow"
+      "effect": "ask"
     },
     {
       "action": "skill",

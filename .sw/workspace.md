@@ -98,7 +98,8 @@ secret files to get around them.
 | Read-only roles: shell limited to listed git reads | enforced (exact allowlist) | stated (Bash is available; only session-wide denies apply) |
 | Documentation: edit `*.md` only | enforced | stated |
 | `git push`, `reset --hard`, `clean`, `stash` denied | guardrail | guardrail |
-| `.env` reads prompt | enforced | not covered |
+| `.env` reads prompt | enforced | enforced (ask) |
+| Non-leader roles: no subagent launch | enforced | enforced (`disallowedTools: Agent`) |
 
 Claude settings rules are session-wide, so per-role limits there are stated
 only. Branch protection on `main` (`.sw/collaboration.md`) is the real control

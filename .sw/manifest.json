@@ -31,7 +31,7 @@
     ".sw/collaboration.md": "8c8377f38af6a1e174e3dc22e011f89ce1ae83c49ccd176ed388828aad5db6f4",
     ".sw/comms/README.md": "ce988973da2e1fb9ecd2182afd05a64b8df0e5957cfdd173ad26aed9fe68da73",
     ".sw/onboarding.md": "0bd03b75abe8af8913e43af8916fb64ed984c30e1f204c56b6fae17cf1d666b6",
-    ".sw/workspace.md": "a111f47a83dc52cd1b3ed529c3e2d94893941d65c6aa0c1cca57f3ebf29b5f4b",
+    ".sw/workspace.md": "c7976a9812d08c2668ebaa4bab79ed895e1b0693a159340f9478320641171c7f",
     ".github/ISSUE_TEMPLATE/bug.yml": "18c069bfada2a6dce08e0556aa208e15fca5deb482b05a36b1e0ec08cfaf0b23",
     ".github/ISSUE_TEMPLATE/config.yml": "1f103c6a9dd07cd13a9a6f17ace6b813f47747eb9cb7e00488cb2073caaf91bb",
     ".github/ISSUE_TEMPLATE/decision.yml": "8196b2852dcd751860543d375804ba9046bfd8b1112a0339f3a071ed969e78e0",
@@ -42,7 +42,7 @@
     ".sw/roles.json": "7899406b14bf940d174575efbecf146c85f73789ab6e3487bf5ff3792665686c",
     ".sw/profile.json": "40409c166bf36cce15c3f5b2700d0c44cc40b4a0b342fbc79c9ee581f0396210",
     ".sw/sw.ps1": "fea95499b0d56059ba69dc9a4c828beeb679e5a0c24a81cac7d14c422338316b",
-    ".sw/lib/Sw.Project.psm1": "04cb8f4ff1b41df39f7689effc53067d34e5168badbbea406456b0d52edbc558",
-    "opencode.jsonc": "44a543436488a01c5b7879278d59a4299ab6bc5c4502b7f3d7564ac0bcfa5839"
+    ".sw/lib/Sw.Project.psm1": "76269736208f3165c27f0dacf0d9ac80b34d134625abcdd3b2ec29147eb9ef43",
+    "opencode.jsonc": "7619c26f7658a91c5850a308e541ddeb2364a14cec2b2db4e1ce39fb6bcea6fa"
   }
 }

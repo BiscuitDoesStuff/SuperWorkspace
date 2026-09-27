@@ -168,7 +168,7 @@ function Get-SwClaudeGhDeny([int]$Tier) {
         'gh issue lock', 'gh issue transfer', 'gh issue pin', 'gh ruleset', 'gh cache delete',
         'gh pr update-branch', 'gh pr reopen', 'gh issue reopen', 'gh issue develop', 'gh pr lock', 'gh issue unpin',
         'gh repo deploy-key', 'gh repo unarchive', 'gh ssh-key', 'gh gpg-key', 'gh auth token', 'gh auth logout',
-        'gh auth refresh', 'gh extension', 'gh project', 'gh codespace', 'gh org'
+        'gh auth refresh', 'gh extension', 'gh project', 'gh codespace', 'gh org', 'gh alias'
     $tier0 = 'gh issue create', 'gh issue edit', 'gh issue comment', 'gh pr create', 'gh pr edit', 'gh pr comment'
     $verbs = @($always) + $(if ($Tier -lt 1) { $tier0 } else { @() })
     $verbs | ForEach-Object { "Bash($_`:*)" }
@@ -304,9 +304,7 @@ function Test-SwProject {
         Require ($agents['project-worker']['mode'] -ceq 'subagent') 'project-worker must be subagent (Leader-dispatched only)'
         foreach ($name in $commands.Keys) { Require ($agents.ContainsKey([string]$commands[$name]['agent'])) "Command $name references missing agent: $($commands[$name]['agent'])" }
         foreach ($name in $script:Routes.Keys) {
-            $child = if ($name -in 'review', 'status', 'research') { 'true' } else { 'false' }
             Require ($commands.ContainsKey($name) -and $commands[$name]['agent'] -ceq $script:Routes[$name]) "Command $name must route to $($script:Routes[$name])"
-            Require ($commands.ContainsKey($name) -and $commands[$name]['subagent'] -ceq $child) "Command $name must set subagent: $child"
         }
         $ocAgents = if ($oc.Contains('agents')) { $oc['agents'] } else { @{} }
         foreach ($name in $ocAgents.Keys) {
@@ -438,11 +436,14 @@ function Get-SwClaudeFiles([string]$Root) {
         $src = Read-SwFrontmatter (Join-Path $Root ".opencode/agents/$role.md") @('description', 'mode', 'color', 'permissions')
         $fm = "---`nname: $role`ndescription: $($src['description'])`nmodel: $($models[$roles[$role]['tier']])`n"
         if ($roles[$role]['claudeTools']) { $fm += "tools: $($roles[$role]['claudeTools'])`n" }
+        $fm += "disallowedTools: Agent`n"
         $out[".claude/agents/$role.md"] = $fm + "---`n`n$note`nYou are ``$role``. Your role contract is ``.opencode/agents/$role.md``: read it first and follow its body. Treat its OpenCode ``permissions`` as binding intent; Claude enforces only this file's ``tools`` and ``.claude/settings.json``, so honor the rest yourself. Project rules are in ``AGENTS.md``, already loaded.`n`nLoad a skill it names with the Skill tool, or Read ``.claude/skills/<name>/SKILL.md``. You cannot spawn agents or ask the user; return questions and blockers to the main session (Project Leader).`n"
     }
+    $dispatch = [ordered]@{}
     foreach ($file in Get-ChildItem -LiteralPath (Join-Path $Root '.opencode/commands') -Filter *.md -File -Force | Sort-Object Name) {
         $cmd = Read-SwFrontmatter $file.FullName @('description', 'agent', 'subagent')
         $name = $file.BaseName; $agent = $cmd['agent']; $srcPath = ".opencode/commands/$name.md"
+        if ($cmd['subagent'] -eq 'true') { $dispatch[$agent] = @($dispatch[$agent] | Where-Object { $_ }) + "``/$name``" }
         $body = if ($cmd['subagent'] -eq 'true') {
             "Dispatch the ``$agent`` agent with the Agent tool to carry out ``$srcPath`` (read it for the task text) with arguments: `$ARGUMENTS. Relay its report."
         } elseif ($agent -eq 'project-leader') {
@@ -459,6 +460,9 @@ function Get-SwClaudeFiles([string]$Root) {
         }
     }
     $list = ($workers | ForEach-Object { "``$_``" }) -join ', '
+    $dispatchLine = if ($dispatch.Count) {
+        (@($dispatch.Keys | ForEach-Object { "$($dispatch[$_] -join ' and ') $(if ($dispatch[$_].Count -gt 1) { 'dispatch' } else { 'dispatches' }) ``$_``" }) -join '; ') + '.'
+    } else { 'No command dispatches a subagent.' }
     $out['.claude/project-leader.md'] = @"
 # Project Leader (Claude main session)
 
@@ -471,13 +475,12 @@ and follow its body; ``.sw/workspace.md`` owns orchestration. Claude adaptation:
 - Only this session spawns agents. Subagents cannot delegate or ask the user.
 - Skills: the Skill tool, or Read ``.claude/skills/<name>/SKILL.md``.
 - Commands pinned ``subagent: false`` run here; ``/validate`` applies the
-  ``project-build`` contract inline. ``/review`` and ``/status`` dispatch ``project-review``;
-  ``/research`` dispatches ``project-research``.
+  ``project-build`` contract inline. $dispatchLine
 - GitHub tier $tier (see ``.sw/workspace.md``). Never push, merge, or release.
 "@ + "`n"
     $deny = @('Bash(git push:*)', 'Bash(git reset --hard:*)', 'Bash(git clean:*)', 'Bash(git stash:*)') + @(Get-SwClaudeGhDeny $tier) +
         @($profileData['editDeny'] | ForEach-Object { "Edit(**/$_)" })
-    $ask = @('Bash(git commit:*)') + $(if ($tier -ge 1) { @('Bash(gh pr create:*)') } else { @() })
+    $ask = @('Bash(git commit:*)', 'Read(**/.env)', 'Read(**/.env.*)') + $(if ($tier -ge 1) { @('Bash(gh pr create:*)') } else { @() })
     $settings = [ordered]@{
         permissions = [ordered]@{ allow = @('Skill'); ask = $ask; deny = $deny }
         hooks       = [ordered]@{ SessionStart = @([ordered]@{ hooks = @([ordered]@{ type = 'command'; command = 'cat "$CLAUDE_PROJECT_DIR/.claude/project-leader.md"' }) }) }
