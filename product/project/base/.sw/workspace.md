@@ -92,18 +92,24 @@ tool, shell form, or child. Read-only roles inspect only. Documentation edits
 Markdown only. `*.env` read prompts cover direct reads; never grep or print
 secret files to get around them.
 
-| Rule | OpenCode | Claude adapter |
+| Rule | OpenCode (agent frontmatter) | Claude adapter |
 | --- | --- | --- |
 | Read-only roles: no edits | enforced | enforced (no Edit or Write tool) |
-| Read-only roles: shell limited to listed git reads | enforced (exact allowlist) | stated (Bash is available; only session-wide denies apply) |
+| Read-only roles: shell limited to listed git reads | enforced (read forms of `status`, `diff`, `log`, `show`; `--output`, `--ext-diff`, `--textconv` denied) | stated (Bash is available; only session-wide denies apply) |
 | Documentation: edit `*.md` only | enforced | stated |
 | `git push`, `reset --hard`, `clean`, `stash` denied | guardrail | guardrail |
-| `.env` reads prompt | enforced | enforced (ask) |
+| `.env` reads prompt | unverified (desktop re-test pending) | guardrail (Read tool only; shell reads are not covered) |
 | Non-leader roles: no subagent launch | enforced | enforced (`disallowedTools: Agent`) |
 
-Claude settings rules are session-wide, so per-role limits there are stated
-only. Branch protection on `main` (`.sw/collaboration.md`) is the real control
-on publication.
+OpenCode applies only each agent's own frontmatter rules; desktop 2.0.17 and
+2.0.18 ignore the project-level list in `opencode.jsonc`. So `sw update`
+writes the session rules (base denies and asks, profile edit denies, GitHub
+tier, `.env` asks) at the head of every kit agent's `permissions`, and the
+role's own rules follow (last match wins). OpenCode's built-in agents other
+than Build carry no kit rules; Build gets them only from `opencode.jsonc`
+(`agents.build`). Claude settings rules are session-wide, so per-role limits
+there are stated only. The solo ruleset on `main` (`.sw/collaboration.md`)
+stops force pushes and branch deletion, not ordinary pushes.
 
 Sandboxes are documented, never configured: Claude users on macOS, Linux or
 WSL2 may enable `/sandbox` locally; Codex users get one by default and on
@@ -111,8 +117,9 @@ native Windows choose its mode themselves; OpenCode has none. Sandbox settings
 are machine-specific, so the kit never writes them.
 
 GitHub access follows `githubTier` in `.sw/config.json`, as guardrails in
-`opencode.jsonc`; the Claude adapter's list is a denylist, so unknown verbs,
-aliases and extensions fall to Claude's default mode:
+every kit agent (run `sw update` after a change); the Claude adapter's list
+is a denylist, so unknown verbs, aliases and extensions fall to Claude's
+default mode:
 
 | Tier | Agents may |
 | --- | --- |

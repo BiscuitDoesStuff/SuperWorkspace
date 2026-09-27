@@ -132,9 +132,11 @@ branch, resolve conflicts by intent, revalidate, publish, and retry. Never
 force-push, rebase a published branch, or reset. With GitHub tier 1 the same
 rule holds: a PR is a review surface, and a human merges it.
 
-**Protect main (human, once).** Branch protection is the real control on
-`main`; the kit prints these steps and never applies them. In the repository
-settings, add a branch ruleset for the default branch:
+**Protect main (human, once).** A ruleset stops force pushes and deletion of
+`main`; the solo ruleset does not stop ordinary pushes, so agent push denies
+and human integration remain the controls. The kit prints these steps and
+never applies them. In the repository settings, add a branch ruleset for the
+default branch:
 
 - Solo: block force pushes, restrict deletions, and allow no bypass (admins
   included). Do not require pull requests or status checks; both block

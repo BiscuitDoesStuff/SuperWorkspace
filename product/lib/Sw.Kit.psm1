@@ -55,6 +55,20 @@ function Get-SwBlockBody([string]$Text, [string]$Name) {
     $Text.Substring($s + $b.Length, $t - $s - $b.Length).Trim("`n")
 }
 
+function Add-SwSessionRules([string]$Text, $Rules, [string]$Label) {
+    # Prepend $Rules to the frontmatter `permissions:` list (created before the closing `---` if absent).
+    $q = { param($v) if ($v -match '["\\]') { throw "${Label}: cannot quote rule value $v" }; if ($v -cmatch '^[a-z_]+$') { $v } else { "`"$v`"" } }
+    $lines = foreach ($r in $Rules) { "  - action: $(& $q $r['action'])"; "    resource: `"$($r['resource'])`""; "    effect: $($r['effect'])" }
+    $block = $lines -join "`n"
+    if ($Text -notmatch '\A---\n') { throw "${Label}: missing frontmatter" }
+    $close = $Text.IndexOf("`n---`n", 3)
+    if ($close -lt 0) { throw "${Label}: missing closing frontmatter delimiter" }
+    $head = $Text.Substring(0, $close + 1)
+    $m = [regex]::Match($head, '(?m)^permissions:\n')
+    if ($m.Success) { return $Text.Insert($m.Index + $m.Length, "$block`n") }
+    $Text.Insert($close + 1, "permissions:`n$block`n")
+}
+
 function Get-SwRender([Collections.IDictionary]$Config) {
     # Everything the kit owns in a project, rendered from $Config. Pure: writes nothing.
     $profileDir = Join-Path $script:Kit "project/profiles/$($Config['profile'])"
@@ -78,14 +92,15 @@ function Get-SwRender([Collections.IDictionary]$Config) {
     $files['.sw/sw.ps1'] = Read-SwText (Join-Path $script:Kit 'sw.ps1')
     $files['.sw/lib/Sw.Project.psm1'] = Read-SwText (Join-Path $script:Kit 'lib/Sw.Project.psm1')
 
-    # opencode.jsonc: base + profile edit denies + GitHub tier + build delegation allowlist.
+    # Session rules lead every agent's own list (OpenCode ignores the project-level one).
+    $session = @(Get-SwSessionRules $profileData['editDeny'] ([int]$Config['githubTier']))
+    foreach ($rel in @($files.Keys | Where-Object { $_ -match '^\.opencode/agents/[^/]+\.md$' })) { $files[$rel] = Add-SwSessionRules $files[$rel] $session $rel }
+
+    # opencode.jsonc: session rules (kept for an OpenCode that honours them) + build delegation allowlist.
     $oc = Read-SwJson (Join-Path $script:Kit 'project/opencode.base.json')
-    $perms = [Collections.Generic.List[object]]@($oc['permissions'])
-    foreach ($g in @($profileData['editDeny'])) { $perms.Add([ordered]@{ action = 'edit'; resource = $g; effect = 'deny' }) }
-    foreach ($r in Get-SwGhRules ([int]$Config['githubTier'])) { $perms.Add($r) }
-    $oc['permissions'] = @($perms)
+    $oc['permissions'] = $session
     $roles = Read-SwJson (Join-Path $script:Kit 'project/roles.json')
-    $build = [Collections.Generic.List[object]]::new()
+    $build = [Collections.Generic.List[object]]@($session)
     $build.Add([ordered]@{ action = 'subagent'; resource = '*'; effect = 'deny' })
     foreach ($r in @($roles.Keys | Where-Object { $_ -notin 'project-leader', 'explore' }) + 'general', 'explore') { $build.Add([ordered]@{ action = 'subagent'; resource = $r; effect = 'allow' }) }
     $oc['agents'] = [ordered]@{ build = [ordered]@{ permissions = @($build) } }

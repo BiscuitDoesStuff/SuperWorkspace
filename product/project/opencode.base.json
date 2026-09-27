@@ -4,17 +4,5 @@
   "mcp": {
     "context7": { "type": "remote", "url": "https://mcp.context7.com/mcp", "oauth": false }
   },
-  "compaction": { "auto": true, "preserve_recent_tokens": 50000, "reserved": 32000 },
-  "permissions": [
-    { "action": "shell", "resource": "*", "effect": "allow" },
-    { "action": "external_directory", "resource": "*", "effect": "ask" },
-    { "action": "skill", "resource": "*", "effect": "allow" },
-    { "action": "subagent", "resource": "*", "effect": "deny" },
-    { "action": "shell", "resource": "git commit *", "effect": "ask" },
-    { "action": "shell", "resource": "git push *", "effect": "deny" },
-    { "action": "shell", "resource": "git reset --hard *", "effect": "deny" },
-    { "action": "shell", "resource": "git clean *", "effect": "deny" },
-    { "action": "shell", "resource": "git stash *", "effect": "deny" },
-    { "action": "shell", "resource": "gh *", "effect": "deny" }
-  ]
+  "compaction": { "auto": true, "preserve_recent_tokens": 50000, "reserved": 32000 }
 }

@@ -158,6 +158,25 @@ function Get-SwGhRules([int]$Tier) {
     foreach ($r in $allow) { [ordered]@{ action = 'shell'; resource = $r; effect = 'allow' } }
 }
 
+# --- session rules: one list, rendered into opencode.jsonc and every agent -----------
+
+# OpenCode desktop 2.0.17/2.0.18 ignores the project-level list; agent frontmatter works.
+$script:SessionBase = @(
+    @('shell', '*', 'allow'), @('external_directory', '*', 'ask'), @('skill', '*', 'allow'),
+    @('subagent', '*', 'deny'), @('shell', 'git commit *', 'ask'), @('shell', 'git push *', 'deny'),
+    @('shell', 'git reset --hard *', 'deny'), @('shell', 'git clean *', 'deny'),
+    @('shell', 'git stash *', 'deny'), @('shell', 'gh *', 'deny'))
+
+function Get-SwSessionRules($EditDeny, [int]$Tier) {
+    # Base, profile edit denies, GitHub tier allows, then the .env read asks. Agent rules follow; last match wins.
+    foreach ($r in $script:SessionBase) { [ordered]@{ action = $r[0]; resource = $r[1]; effect = $r[2] } }
+    foreach ($g in @($EditDeny)) { if ($g) { [ordered]@{ action = 'edit'; resource = $g; effect = 'deny' } } }
+    Get-SwGhRules $Tier
+    [ordered]@{ action = 'read'; resource = '*.env'; effect = 'ask' }
+    [ordered]@{ action = 'read'; resource = '*.env.*'; effect = 'ask' }
+    [ordered]@{ action = 'read'; resource = '*.env.example'; effect = 'allow' }
+}
+
 function Get-SwClaudeGhDeny([int]$Tier) {
     # Claude cannot deny-all-then-allow (deny always wins), so write verbs are enumerated.
     $always = 'gh pr merge', 'gh pr ready', 'gh pr close', 'gh pr review', 'gh release create', 'gh release edit',
@@ -353,9 +372,25 @@ function Test-SwProject {
         foreach ($glob in @($profileData['editDeny'])) {
             Require (@($oc['permissions'] | Where-Object { $_['action'] -ceq 'edit' -and $_['resource'] -ceq $glob -and $_['effect'] -ceq 'deny' }).Count) "opencode.jsonc must deny edit $glob for every role"
         }
+        # OpenCode loads each agent's own list only, so the session rules must lead every kit agent.
+        $session = @(Get-SwSessionRules $profileData['editDeny'] $tier)
+        $leads = {
+            param($Items)
+            $items = @($Items)
+            if ($items.Count -lt $session.Count) { return $false }
+            for ($i = 0; $i -lt $session.Count; $i++) {
+                foreach ($key in 'action', 'resource', 'effect') { if ($items[$i][$key] -cne $session[$i][$key]) { return $false } }
+            }
+            $true
+        }
+        foreach ($name in $roleNames) {
+            Require (& $leads $(if ($agents[$name].Contains('permissions')) { $agents[$name]['permissions'] } else { @() })) "Session rule drift: .opencode/agents/$name.md does not start with the session rules for this config; run sw update"
+        }
         $buildAllowed = @($roleNames | Where-Object { $_ -ne 'project-leader' }) + 'general', 'explore'
         $buildPerms = @($ocAgents['build']['permissions'])
-        Require ($buildPerms.Count -and $buildPerms[0]['action'] -ceq 'subagent' -and $buildPerms[0]['resource'] -ceq '*' -and $buildPerms[0]['effect'] -ceq 'deny') 'agents.build must start with a subagent wildcard deny'
+        Require (& $leads $buildPerms) 'Session rule drift: opencode.jsonc agents.build does not start with the session rules for this config; run sw update'
+        $next = if ($buildPerms.Count -gt $session.Count) { $buildPerms[$session.Count] } else { @{} }
+        Require ($next['action'] -ceq 'subagent' -and $next['resource'] -ceq '*' -and $next['effect'] -ceq 'deny') 'agents.build must follow the session rules with a subagent wildcard deny'
         $actual = @($buildPerms | Where-Object { $_['action'] -ceq 'subagent' -and $_['effect'] -ceq 'allow' } | ForEach-Object { [string]$_['resource'] } | Sort-Object -Unique)
         Require (-not @(Compare-Object $actual @($buildAllowed | Sort-Object)).Count) "agents.build allowlist must be exactly: $($buildAllowed -join ', ')"
         $ghRules = @(Get-SwGhRules $tier | ForEach-Object { $_['resource'] })
@@ -379,18 +414,11 @@ function Test-SwProject {
             Require ($total -le $cap) "Startup budget exceeded for ${name}: $total > $cap bytes (trim AGENTS.md or raise startupBudgetBytes with evidence)"
         }
 
-        # Permission matrix: documented V2 base -> shared -> agent order.
-        $base = @(
-            @{ action = '*'; resource = '*'; effect = 'allow' },
-            @{ action = 'external_directory'; resource = '*'; effect = 'ask' },
-            @{ action = 'read'; resource = '*.env'; effect = 'ask' },
-            @{ action = 'read'; resource = '*.env.*'; effect = 'ask' },
-            @{ action = 'read'; resource = '*.env.example'; effect = 'allow' })
+        # Permission matrix: what OpenCode loads, each agent's own list only (build: agents.build).
         Require (Test-SwPattern 'docs/*.m?' 'docs/nested/file.md') 'Wildcard model regression'
         Require (-not (Test-SwPattern '*.md' 'file.md.cpp')) 'Whole-value model regression'
         foreach ($name in @($roleNames) + 'build') {
-            $local = if ($name -eq 'build') { $buildPerms } elseif ($agents[$name].Contains('permissions')) { @($agents[$name]['permissions']) } else { @() }
-            $policy = $base + @($oc['permissions']) + @($local)
+            $policy = if ($name -eq 'build') { $buildPerms } elseif ($agents[$name].Contains('permissions')) { @($agents[$name]['permissions']) } else { @() }
             $access = if ($name -eq 'build') { 'full' } else { $roles[$name]['access'] }
             if ($name -eq 'project-leader') { foreach ($t in $roleNames + 'future-agent') { Expect $policy $name subagent $t allow } }
             elseif ($name -eq 'build') {
@@ -404,8 +432,13 @@ function Test-SwProject {
             Expect $policy $name shell 'git commit -m probe' $(if ($access -eq 'readonly') { 'deny' } else { 'ask' })
             foreach ($g in @($profileData['editDeny'])) { Expect $policy $name edit ("Content/Probe" + $g.TrimStart('*')) deny }
             if ($access -eq 'readonly') {
-                foreach ($c in 'git log --oneline -10', 'git rev-parse HEAD', 'git diff --check', 'git show --no-ext-diff --no-textconv HEAD -- src/probe.c') { Expect $policy $name shell $c allow }
-                foreach ($c in 'git diff --output=probe.txt', 'git diff --ext-diff', 'git show --textconv HEAD', 'git tag probe', 'git branch probe', 'git switch main', 'Write-Output probe') { Expect $policy $name shell $c deny }
+                foreach ($c in 'git log --oneline -10', 'git rev-parse HEAD', 'git diff --check', 'git show --no-ext-diff --no-textconv HEAD -- src/probe.c',
+                    'git status -sb', 'git status --porcelain', 'git diff HEAD~1 -- src/probe.c', 'git diff --stat HEAD', 'git diff --cached --name-only',
+                    'git log -5 --stat', 'git log --format=%h HEAD', 'git log --oneline', 'git log --oneline -20', 'git show HEAD', 'git show --stat HEAD~1',
+                    'git ls-files --others --exclude-standard') { Expect $policy $name shell $c allow }
+                foreach ($c in 'git diff --output=probe.txt', 'git diff --ext-diff', 'git show --textconv HEAD', 'git tag probe', 'git branch probe', 'git switch main', 'Write-Output probe',
+                    'git status --output=probe.txt', 'git log --output=probe.txt', 'git log --oneline -20 --output=probe.txt', 'git log --oneline --output=probe.txt', 'git show --output=probe.txt HEAD',
+                    'git diff HEAD --ext-diff', 'git log -p --ext-diff', 'git show --ext-diff HEAD', 'git diff --textconv HEAD', 'git log -p --textconv', 'git status --textconv') { Expect $policy $name shell $c deny }
                 foreach ($p in 'src/probe.c', 'AGENTS.md') { Expect $policy $name edit $p deny }
                 Expect $policy $name unknown_tool '*' deny
             } else {
@@ -842,6 +875,6 @@ function Get-SwUsage {
 }
 
 Export-ModuleMember -Function Resolve-SwRoot, Write-SwFile, Read-SwText, Read-SwJson, ConvertTo-SwJson, Get-SwHash,
-    Get-SwConfig, Read-SwFrontmatter, Get-SwDecision, Test-SwPattern, Get-SwGhRules, Get-SwClaudeGhDeny, Test-SwProject,
+    Get-SwConfig, Read-SwFrontmatter, Get-SwDecision, Test-SwPattern, Get-SwGhRules, Get-SwSessionRules, Get-SwClaudeGhDeny, Test-SwProject,
     Get-SwClaudeFiles, Invoke-SwClaude, Set-SwTiers, Invoke-SwComms, Add-SwUser, Invoke-SwGitHub, Get-SwUsage, Test-SwLocalOnly,
     Get-SwToolVersion, Test-SwDoctor

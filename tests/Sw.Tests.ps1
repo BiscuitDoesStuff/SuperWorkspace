@@ -86,6 +86,82 @@ Describe 'Permission model' {
     }
 }
 
+Describe 'Session rules' {
+    BeforeAll {
+        function Get-Key($Rules) { @($Rules | ForEach-Object { "$($_['action'])|$($_['resource'])|$($_['effect'])" }) }
+        function Get-AgentRules([string]$Root, [string]$Role) {
+            @((Read-SwFrontmatter (Join-Path $Root ".opencode/agents/$Role.md") @('description', 'mode', 'color', 'permissions'))['permissions'])
+        }
+    }
+
+    It 'orders base, profile edit denies, GitHub tier, then the .env asks' {
+        $keys = Get-Key (Get-SwSessionRules @('*.uasset') 1)
+        $keys[0] | Should -Be 'shell|*|allow'
+        $keys | Should -Contain 'shell|git push *|deny'
+        $keys | Should -Contain 'shell|git commit *|ask'
+        $keys | Should -Contain 'external_directory|*|ask'
+        $edit = [array]::IndexOf($keys, 'edit|*.uasset|deny')
+        $edit | Should -BeGreaterThan ([array]::IndexOf($keys, 'shell|gh *|deny'))
+        [array]::IndexOf($keys, 'shell|gh issue create *|allow') | Should -BeGreaterThan $edit
+        $keys[-3..-1] | Should -Be @('read|*.env|ask', 'read|*.env.*|ask', 'read|*.env.example|allow')
+        (Get-Key (Get-SwSessionRules @() 0)) | Should -Not -Contain 'shell|gh issue create *|allow'
+    }
+
+    It 'leads every rendered agent, which the frontmatter parser accepts, with the role rules after' {
+        $dir = New-SwProject "session$(New-Id)" unreal 1
+        $session = Get-Key (Get-SwSessionRules @('*.uasset', '*.umap') 1)
+        $agents = @(Get-ChildItem -LiteralPath (Join-Path $dir '.opencode/agents') -Filter *.md -File -Force)
+        $agents.Count | Should -Be 9
+        foreach ($a in $agents) {
+            $keys = Get-Key (Get-AgentRules $dir $a.BaseName)
+            $keys[0..($session.Count - 1)] | Should -Be $session -Because $a.Name
+        }
+        # An agent without a permissions block gets one; a role's own rules follow the session rules.
+        (Get-Key (Get-AgentRules $dir 'project-developer')).Count | Should -Be $session.Count
+        (Get-Key (Get-AgentRules $dir 'project-review'))[$session.Count] | Should -Be '*|*|deny'
+        (Get-Key (Get-AgentRules $dir 'project-leader'))[$session.Count] | Should -Be 'subagent|*|allow'
+        $oc = Read-SwJson (Join-Path $dir 'opencode.jsonc')
+        (Get-Key $oc['permissions']) | Should -Be $session
+        (Get-Key $oc['agents']['build']['permissions'])[0..$session.Count] | Should -Be (@($session) + 'subagent|*|deny')
+    }
+
+    It 'keeps the canonical agent files free of session rules' {
+        foreach ($f in Get-ChildItem -LiteralPath (Join-Path $RepoRoot 'product/project/base/.opencode/agents') -Filter *.md -File -Force) {
+            (Read-SwText $f.FullName) | Should -Not -Match 'git push' -Because $f.Name
+        }
+    }
+
+    It 'a githubTier change is applied to every agent by update, and -WhatIf writes nothing' {
+        $dir = New-SwProject "sessionTier$(New-Id)" generic
+        $f = Join-Path $dir '.sw/config.json'
+        $c = Read-SwJson $f; $c['githubTier'] = 1; Write-SwFile $f (ConvertTo-SwJson $c)
+        $before = Get-ChildItem -LiteralPath (Join-Path $dir '.opencode/agents') -File -Force | ForEach-Object { Get-SwHash (Read-SwText $_.FullName) }
+        Update-SwProject -Path $dir -WhatIf | Out-Null
+        $after = Get-ChildItem -LiteralPath (Join-Path $dir '.opencode/agents') -File -Force | ForEach-Object { Get-SwHash (Read-SwText $_.FullName) }
+        $after | Should -Be $before
+        (Test-SwValidate $dir).ExitCode | Should -Be 1
+        Update-SwProject -Path $dir | Out-Null
+        foreach ($role in 'project-developer', 'project-review') { (Get-Key (Get-AgentRules $dir $role)) | Should -Contain 'shell|gh issue create *|allow' }
+        (Test-SwValidate $dir).ExitCode | Should -Be 0
+    }
+
+    It 'read-only roles allow read forms of status/diff/log/show and deny <Flag>' -ForEach @(
+        @{ Flag = '--output'; Denied = 'git diff --output=probe.txt', 'git log --output=probe.txt', 'git show --output=probe.txt HEAD', 'git status --output=probe.txt', 'git log --oneline -20 --output=probe.txt' }
+        @{ Flag = '--ext-diff'; Denied = 'git diff --ext-diff', 'git log -p --ext-diff', 'git show --ext-diff HEAD' }
+        @{ Flag = '--textconv'; Denied = 'git diff --textconv HEAD', 'git log -p --textconv', 'git show --textconv HEAD' }
+    ) {
+        $dir = New-SwProject "readonly$(New-Id)" generic
+        foreach ($role in 'project-plan', 'project-architect', 'project-review') {
+            $rules = Get-AgentRules $dir $role
+            foreach ($c in 'git status', 'git status -sb', 'git diff', 'git diff HEAD~1 -- src/a.c', 'git log -5 --stat', 'git log --oneline', 'git log --oneline -20', 'git show HEAD', 'git show --no-ext-diff --no-textconv HEAD -- a.c') {
+                Get-SwDecision $rules shell $c | Should -Be 'allow' -Because "$role $c"
+            }
+            foreach ($c in $Denied) { Get-SwDecision $rules shell $c | Should -Be 'deny' -Because "$role $c" }
+            Get-SwDecision $rules shell 'git push' | Should -Be 'deny'
+        }
+    }
+}
+
 Describe 'Sync and init lifecycle' {
     It 'fresh init (generic) then CLI validate exits 0' {
         $dir = New-SwProject 'freshGeneric' generic
@@ -347,6 +423,16 @@ Describe 'Validator negative fixtures' {
                 param($d) $f = Join-Path $d '.sw/config.json'
                 $c = Read-SwJson $f; $c['githubTier'] = 1
                 Write-SwFile $f (ConvertTo-SwJson $c)
+            }
+        }
+        @{ Name = 'agent leading rules differ from the session rules'; Match = 'Session rule drift: \.opencode/agents/project-developer\.md .*run sw update'; Mutate = {
+                param($d) $f = Join-Path $d '.opencode/agents/project-developer.md'
+                Write-SwFile $f ((Read-SwText $f).Replace("resource: `"git push *`"`n    effect: deny", "resource: `"git push *`"`n    effect: ask"))
+            }
+        }
+        @{ Name = 'read-only shell list re-opens --output'; Match = 'STATIC project-review shell \[git diff --output=probe\.txt\]: expected deny, got allow'; Mutate = {
+                param($d) $f = Join-Path $d '.opencode/agents/project-review.md'
+                Write-SwFile $f ((Read-SwText $f).Replace("`n---`n", "`n  - action: shell`n    resource: `"git diff *`"`n    effect: allow`n---`n"))
             }
         }
         @{ Name = 'startupBudgetBytes set tiny'; Match = 'Startup budget exceeded for'; Mutate = {

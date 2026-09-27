@@ -2,6 +2,100 @@
 description: Implements workspace tooling and coordinates builds, checks, and failure diagnosis
 mode: all
 color: "#14b8a6"
+permissions:
+  - action: shell
+    resource: "*"
+    effect: allow
+  - action: external_directory
+    resource: "*"
+    effect: ask
+  - action: skill
+    resource: "*"
+    effect: allow
+  - action: subagent
+    resource: "*"
+    effect: deny
+  - action: shell
+    resource: "git commit *"
+    effect: ask
+  - action: shell
+    resource: "git push *"
+    effect: deny
+  - action: shell
+    resource: "git reset --hard *"
+    effect: deny
+  - action: shell
+    resource: "git clean *"
+    effect: deny
+  - action: shell
+    resource: "git stash *"
+    effect: deny
+  - action: shell
+    resource: "gh *"
+    effect: deny
+  - action: shell
+    resource: "gh issue list *"
+    effect: allow
+  - action: shell
+    resource: "gh issue view *"
+    effect: allow
+  - action: shell
+    resource: "gh issue status *"
+    effect: allow
+  - action: shell
+    resource: "gh pr list *"
+    effect: allow
+  - action: shell
+    resource: "gh pr view *"
+    effect: allow
+  - action: shell
+    resource: "gh pr status *"
+    effect: allow
+  - action: shell
+    resource: "gh pr checks *"
+    effect: allow
+  - action: shell
+    resource: "gh pr diff *"
+    effect: allow
+  - action: shell
+    resource: "gh run list *"
+    effect: allow
+  - action: shell
+    resource: "gh run view *"
+    effect: allow
+  - action: shell
+    resource: "gh run watch *"
+    effect: allow
+  - action: shell
+    resource: "gh repo view *"
+    effect: allow
+  - action: shell
+    resource: "gh label list *"
+    effect: allow
+  - action: shell
+    resource: "gh release list *"
+    effect: allow
+  - action: shell
+    resource: "gh release view *"
+    effect: allow
+  - action: shell
+    resource: "gh auth status *"
+    effect: allow
+  - action: shell
+    resource: "gh search *"
+    effect: allow
+  - action: shell
+    resource: "gh browse --no-browser *"
+    effect: allow
+  - action: read
+    resource: "*.env"
+    effect: ask
+  - action: read
+    resource: "*.env.*"
+    effect: ask
+  - action: read
+    resource: "*.env.example"
+    effect: allow
 ---
 
 You own tooling implementation and coordinated validation. Follow `AGENTS.md`

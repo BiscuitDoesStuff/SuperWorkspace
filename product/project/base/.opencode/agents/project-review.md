@@ -34,13 +34,16 @@ permissions:
     resource: "*"
     effect: allow
   - action: shell
-    resource: "git status"
+    resource: "git status *"
     effect: allow
   - action: shell
-    resource: "git status --short --branch"
+    resource: "git diff *"
     effect: allow
   - action: shell
-    resource: "git log --oneline -10"
+    resource: "git log *"
+    effect: allow
+  - action: shell
+    resource: "git show *"
     effect: allow
   - action: shell
     resource: "git rev-parse HEAD"
@@ -49,28 +52,7 @@ permissions:
     resource: "git rev-parse origin/main"
     effect: allow
   - action: shell
-    resource: "git diff"
-    effect: allow
-  - action: shell
-    resource: "git diff --stat"
-    effect: allow
-  - action: shell
-    resource: "git diff --check"
-    effect: allow
-  - action: shell
-    resource: "git diff --cached"
-    effect: allow
-  - action: shell
     resource: "git ls-files --others --exclude-standard"
-    effect: allow
-  - action: shell
-    resource: "git diff --no-ext-diff --no-textconv -- *"
-    effect: allow
-  - action: shell
-    resource: "git diff --no-ext-diff --no-textconv * -- *"
-    effect: allow
-  - action: shell
-    resource: "git show --no-ext-diff --no-textconv * -- *"
     effect: allow
   - action: shell
     resource: "git *--o*"
@@ -82,7 +64,10 @@ permissions:
     resource: "git *--textconv*"
     effect: deny
   - action: shell
-    resource: "git log --oneline -10"
+    resource: "git log --oneline"
+    effect: allow
+  - action: shell
+    resource: "git log --oneline -??"
     effect: allow
   - action: shell
     resource: "git ls-files --others --exclude-standard"

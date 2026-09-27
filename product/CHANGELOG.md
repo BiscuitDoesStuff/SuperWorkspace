@@ -2,6 +2,12 @@
 
 ## 0.3.0-dev
 
+- **Changed (OpenCode permissions, Phase 1 package 5a):** OpenCode desktop 2.0.17/2.0.18 ignores the project-level `permissions` list in `opencode.jsonc` and applies only agent frontmatter.
+  - `update` writes the session rules (shell allow, `external_directory` ask, skill allow, subagent deny, commit ask, push/reset/clean/stash/`gh` deny, the profile's edit denies, the GitHub tier allows, then the `.env` read asks) at the head of every `.opencode/agents/*.md` `permissions` list, and of `agents.build`. The role's own rules follow and still win. `opencode.jsonc` keeps the same list. The rules now live in `Get-SwSessionRules`; `opencode.base.json` no longer holds a `permissions` list.
+  - A `githubTier` change needs `update`, which now rewrites the agents too. A locally edited agent follows the usual `skip-modified` / `incoming/` path.
+  - `validate` models each role from its agent file only (`build` from `agents.build`), and reports `Session rule drift: .opencode/agents/<role>.md ...; run sw update` when an agent's leading rules differ from the session rules for the project's config.
+  - Read-only roles (`project-plan`, `project-architect`, `project-review`) may run `git status *`, `git diff *`, `git log *` and `git show *`, plus `git log --oneline` and `git log --oneline -??`. `--output`, `--ext-diff` and `--textconv` stay denied; `validate` checks both.
+  - `.sw/workspace.md`: the harness table states OpenCode enforcement through agent frontmatter, OpenCode `.env` prompts as unverified, and Claude `.env` prompts as a guardrail (Read tool only). Built-in OpenCode agents other than Build carry no kit rules. `.sw/workspace.md` and `.sw/collaboration.md` no longer call branch protection the real push control: the solo ruleset stops force pushes and deletion, not ordinary pushes.
 - **Changed (update, Phase 1 package 5): lifecycle.**
   - `.sw/manifest.json` gains `kitCommit`, the kit clone's `git rev-parse HEAD` (`null` outside a git clone, or when the kit was copied into another repository).
   - `update` and `init` refuse to run when the manifest's `kitVersion` is newer than the running kit (a `-dev` build is older than its release), and write nothing. Update the kit clone, or pass `-Force` to downgrade on purpose. `update` also accepts `-Adopt`.
