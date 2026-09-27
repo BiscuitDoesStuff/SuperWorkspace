@@ -54,6 +54,15 @@ folder on `main`; each runs one work package and reports back.
   updates `main`, by fast-forward after review. The cloud Leader keeps a
   `handoff` event current after each milestone so a local session (OpenCode or
   Claude) can take over at any point.
+- Cloud workers: the cloud Leader starts each worker as a separate cloud
+  session from the tip of its own branch, with the assignment as the first
+  message. The worker installs PowerShell 7 itself (Microsoft apt repository),
+  works only in its owned paths, writes its `submission` event, commits, and
+  pushes only to the branch named in the assignment (`cloud/<task-id>`). It
+  cannot message the Leader, so the owner says when it is done. The Leader does
+  not commit to its own branch while a writing worker runs. After review it
+  fast-forwards its branch to the worker's tip. The owner deletes the worker
+  branch after integration.
 
 ## Commits
 
