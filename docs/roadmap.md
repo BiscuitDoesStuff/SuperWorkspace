@@ -36,6 +36,8 @@ Work packages (records in `.sw/comms/tasks/`; process in
     (R1–R4 adopted 2026-09-27, R2 corrected).
   - [x] `p0-research-02`: topic 2, `docs/research/02-multi-harness.md`
     (reviewed 2026-09-27; R5 revised, option b and R3 deferred).
+  - [x] `p0-research-03`: topic 3, `docs/research/03-model-advisor.md`
+    (reviewed 2026-09-27; advisor is a skill; `effort` deferred).
 
 ## Research inputs found during Phase 0
 
@@ -55,6 +57,22 @@ Work packages (records in `.sw/comms/tasks/`; process in
   Universality is the goal, so adapters are planned scope; Codex comes first
   (fewest files). The overlay reaches Claude, OpenCode and Gemini only; the
   others are documented as not supported.
+- **Model advisor (decided in topic 3):** a skill, no command. It rewrites
+  `free-models` to list what the user has (`opencode models`, local Ollama or
+  LM Studio), mark free models by a strict $0 filter over public keyless lists
+  (OpenRouter, Zen), show data-use terms, and propose one `sw tiers` line
+  without running it. `sw tiers` stays the only writer; `#variant` needs no
+  code. No ranking data ships. A personal snapshot report is reached through
+  `rules.local.md`. Deferred: `effort` in generated Claude agents. Open: the
+  Artificial Analysis attribution duty for data read through OpenRouter.
+- **Known defects (topic 3; fix after the rewrite):** the `free-models` skill
+  lists GLM 5.2 as free, and it is not (F13). The kit's `$schema` URL
+  `https://opencode.ai/config.json` serves the V1 schema, which has no
+  `agents` key (F20). Runtime tests: whether OpenCode V2 warns on it, and what
+  `opencode models --verbose` prints for free models.
+- **Gemini CLI (topic 3 F6):** replaced by Antigravity CLI for unpaid users on
+  2026-06-18, which weakens the Gemini adapter case in topic 2 R4. Codex CLI
+  and LM Studio are installed on the owner's machine.
 - **Deferred to the rewrite (topic 2):** move canonical skills to
   `.agents/skills` (read by five of six harnesses; decide with topic 7, after
   testing duplicate skills in OpenCode), and fold commands into user-invocable
@@ -64,8 +82,9 @@ Work packages (records in `.sw/comms/tasks/`; process in
   about 30 in total. Proposal: the cap counts research calls only; say whether
   re-verifying from saved fetch output, or from a fetch tool's summary, counts.
   Topic 2 tried the research-only count: 25 calls, at the cap, which forced
-  summary-only findings. Proposal: save raw page text to the scratchpad so
-  re-verifying spends no research calls.
+  summary-only findings. Topic 3 saved raw page text to the scratchpad: 17
+  calls, every finding re-checked from source text. Proposal: make saving raw
+  text a research-skill rule and count research calls only.
 - **Duplicated subagent list (topics 5, 9):** the validator hard-codes which
   commands run as subagents, duplicating each command's `subagent:` field.
 - **`-Adopt` gap (topic 7):** adopting a repo with an existing `AGENTS.md`
