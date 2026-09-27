@@ -10,7 +10,7 @@ research revises this roadmap.
 2. [x] Remove personal names, paths and opinions from `product/`.
 3. [x] Dogfood: install the kit into its own repository.
 4. [x] Add a core `project-research` role.
-5. [ ] Research topics 0–10 into `docs/research/NN-topic.md`, one review per
+5. [x] Research topics 0–10 into `docs/research/NN-topic.md`, one review per
    topic:
    0. research-agent design
    1. structure and extension (packs, plugins, manifests, overlays, registries)
@@ -31,7 +31,7 @@ Work packages (records in `.sw/comms/tasks/`; process in
 - [x] `p0-researcher-revision`: apply topic 0's R1–R4 and the user's answers.
 - [x] Checkpoint commits `fa7115d`, `65d6b70`, then a Leader handoff
   (`.sw/comms/tasks/p0-leader/`).
-- [ ] One work package per research topic 1–10.
+- [x] One work package per research topic 1–10.
   - [x] `p0-research-01`: topic 1, `docs/research/01-structure-and-extension.md`
     (R1–R4 adopted 2026-09-27, R2 corrected).
   - [x] `p0-research-02`: topic 2, `docs/research/02-multi-harness.md`
@@ -40,10 +40,6 @@ Work packages (records in `.sw/comms/tasks/`; process in
     (reviewed 2026-09-27; advisor is a skill; `effort` deferred).
   - [x] `p0-research-04`: topic 4, `docs/research/04-context-efficiency.md`
     (reviewed 2026-09-27; R1-R7 adopted).
-  - [x] `p0-research-08`: topic 8, `docs/research/08-permissions-safety.md`
-    (reviewed 2026-09-27; R5 hook not now).
-  - [x] `p0-research-09`: topic 9, `docs/research/09-validation-evaluation.md`
-    (reviewed 2026-09-27; R1-R8 adopted).
   - [x] `p0-research-05`: topic 5, `docs/research/05-orchestration-roles.md`
     (reviewed 2026-09-27; R1-R7 adopted, R7 minimal).
   - [x] `p0-research-06`: topic 6, `docs/research/06-upkeep-memory.md`
@@ -54,6 +50,8 @@ Work packages (records in `.sw/comms/tasks/`; process in
     (reviewed 2026-09-27; R5 hook not now).
   - [x] `p0-research-09`: topic 9, `docs/research/09-validation-evaluation.md`
     (reviewed 2026-09-27; R1-R8 adopted).
+  - [x] `p0-research-10`: topic 10, `docs/research/10-collaboration-branches.md`
+    (reviewed 2026-09-27; R1-R6 adopted, R3 text only).
 
 ## Research inputs found during Phase 0
 
@@ -154,10 +152,12 @@ Work packages (records in `.sw/comms/tasks/`; process in
   `isolation: worktree`). Runtime tests: does OpenCode V1 honour `subagent:`
   (else three commands run inline; see the `$schema` defect), and OpenCode
   nesting and messaging.
-- **Session tier (topic 5 R4; multi-human part to topic 10):** ship as an
+- **Session tier (topic 5 R4, multi-human part topic 10 R5):** ship as an
   optional paragraph in `.sw/collaboration.md`. Records are the truth; "go"
   and "done" use harness messaging where available, else the human relays
-  them. No command or code.
+  them. No command or code. One Leader per human, never shared; across
+  humans, coordination travels as files (inbox message or task event,
+  pushed and fetched) or, at tier 1, an issue comment.
 - **Upkeep and memory (decided in topic 6):** harness memory is never the
   record; the kit neither uses nor disables it (one sentence in
   `.sw/collaboration.md`). Record bloat: `sw comms event` drops `.sw/comms/`
@@ -182,6 +182,24 @@ Work packages (records in `.sw/comms/tasks/`; process in
   `git push`, a readonly edit, a `.env` read), recorded in a task record;
   install OpenCode first. Skill evaluation is a practice (three scenarios
   plus a baseline, run by hand), not a tool.
+- **Collaboration and branches (decided in topic 10):** the branch model
+  stays fixed (`main` plus `<user>/<user>-worktree`); no config field. Solo
+  mode is derived from `users: []`: the owner works on `main` directly, which
+  is this repository's practice. Once `sw user add` records anyone, everyone,
+  the owner included, works on their own branch. `.sw/collaboration.md` and the
+  `AGENTS.md` Git rule say so. Agent-made branches (Claude `--worktree`,
+  Codex cloud, Copilot cloud agent) stay off, with the reason in one line.
+  Text only, no code: a claim is the `assignment` event on `main`, and the
+  ff-only push breaks ties. Multi-user task IDs start `<user>-`. Close a task
+  only after its last event is on `main`. Run `sw user add` on `main` as the
+  owner. `git lfs lock` is optional for binary assets. The owner or a named
+  contributor runs `update` as a task. Claude users then re-run
+  `sw claude enable`. Protecting `main` is a human action: `.sw/collaboration.md`
+  prints the steps, and `sw doctor` adds one reminder line. For a solo repo,
+  block force pushes and deletion, with no admin bypass. Teams also require
+  the `validate` check. The repository became public on 2026-09-27, so Free
+  allows protection, and the owner will set the solo ruleset. Record the
+  branch-model rationale in `docs/decisions.md` (none exists).
 
 ## Standing rules
 
@@ -196,6 +214,8 @@ Work packages (records in `.sw/comms/tasks/`; process in
 
 - Personal opinions live in `rules.local.md`; packs are deferred and profiles
   stay the extension unit (topic 1, R3; revisit when a second bundle exists).
-- The branch model becomes configurable.
+- The branch model becomes configurable: not yet (topic 10 R1; revisit when
+  a team asks for task branches or a hosted agent, then list long-lived
+  branches rather than add a pattern).
 - Global rules become a neutral core plus a user overlay.
 - Generators, a pack registry, hooks and a spec flow.
