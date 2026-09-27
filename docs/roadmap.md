@@ -39,10 +39,14 @@ What Phase 0 settled, in one line each:
 The owner approved this plan and its order on 2026-09-27. Kit behavior changes
 only here, one work package at a time, in this order, with an owner review
 after each. Records: `.sw/comms/tasks/p1-NN-*/`.
+
+Status (realigned 2026-09-27 after the desktop checkpoint,
+`archive/p1-checkpoint-runtime/`): packages 1-5 and 10 are done (records in
+`.sw/comms/archive/p1-NN-*/`); 5a is next; 6-9 wait on their runtime tests.
 Each package that installed projects receive bumps `product/VERSION` and adds
 a `product/CHANGELOG.md` entry, and adds Pester coverage for new code (09 R2).
 
-1. **Shipped text (docs and role bodies only, no code).**
+1. [x] **Shipped text (docs and role bodies only, no code).**
    - `.sw/collaboration.md`:
      - Solo mode: with `users` empty the owner works on `main` directly; once
        `sw user add` records anyone, everyone works on their own branch
@@ -79,12 +83,13 @@ a `product/CHANGELOG.md` entry, and adds Pester coverage for new code (09 R2).
        and `agent-documentation` (date volatile facts) (06 R4).
      - `research`: save raw page text, count research calls only (topic 0
        follow-up, confirmed by topics 3-10).
-2. **Known defects.**
+2. [x] **Known defects.**
    - `free-models` lists GLM 5.2 as free, and it is not. Move the per-model
      list into dated research; the skill keeps the procedure (03 R3, 06 R5).
    - The `$schema` URL `https://opencode.ai/config.json` serves the V1
-     schema, which has no `agents` key (03-F20). Fix after runtime test 3.
-3. **Claude adapter and OpenCode permissions** (`Get-SwClaudeFiles`,
+     schema, which has no `agents` key (03-F20). No action: runtime test 3
+     showed no warning on OpenCode 2.0.17 or 2.0.18.
+3. [x] **Claude adapter and OpenCode permissions** (`Get-SwClaudeFiles`,
    `opencode.base.json`).
    - `disallowedTools: Agent` in every generated agent (05 R1, 08 R2).
    - `Read(**/.env)` and `Read(**/.env.*)` ask; `Bash(gh alias:*)` deny; the
@@ -94,7 +99,7 @@ a `product/CHANGELOG.md` entry, and adds Pester coverage for new code (09 R2).
      hard-coded list, generate the leader dispatch line from the files, keep
      `$script:Routes`; add a Pester test that the flag drives the line
      (05 R7, 09 R4).
-4. **`validate`, `doctor` and `comms`.**
+4. [x] **`validate`, `doctor` and `comms`.**
    - `validate`: `## Project identity` present; skill name/description
      against the spec; Claude structure from `roles.json` (09 R2). Research
      lint (six sections, header date, a citation per finding) as a shipped
@@ -107,7 +112,7 @@ a `product/CHANGELOG.md` entry, and adds Pester coverage for new code (09 R2).
    - `sw comms event`: drop `.sw/comms/` paths from the changed line and cap
      it at 10 (`+N more`) (06 R2).
    - No schema validation until OpenCode serves a V2 schema (09 R6).
-5. **Lifecycle** (`Sync-SwProject`, manifest).
+5. [x] **Lifecycle** (`Sync-SwProject`, manifest).
    - Record `kitCommit`; refuse a downgrade unless `-Force`; print
      "kit A -> B" (07 R2).
    - Split `skip-modified`: `kept-local` when the kit did not change the
@@ -117,6 +122,19 @@ a `product/CHANGELOG.md` entry, and adds Pester coverage for new code (09 R2).
      that lacks `## Project identity`, touching no existing text (07 R4).
    - A kit-side rename map that also moves edited files (07 R5).
    - Tag releases in git; no PowerShell Gallery yet (07 R6).
+5a. **Permission correction** (checkpoint finding, owner-approved
+    2026-09-27). OpenCode desktop 2.0.17/2.0.18 ignores the project-level
+    permission list in `opencode.jsonc`; agent-frontmatter rules work.
+    - Repeat the session-wide denies and asks (push, reset, clean, stash,
+      commit ask, `.env` ask, external directory) in every kit agent's
+      frontmatter.
+    - Correct the `.sw/workspace.md` harness table: OpenCode's session-wide
+      rows, and Claude `.env` as a guardrail only (`Read(**/.env)` does not
+      cover `Bash` `cat`).
+    - Widen the read-only shell allowlist (the review child could not run
+      `git status`).
+    - Note that OpenCode's built-in Build and Plan agents carry no kit rules.
+    - End with a desktop re-test of the smoke checklist.
 6. **Skills move to `.agents/skills`** (07 R7, 02 option b). After the rename
    map. Runtime test 4 first. It reverses part of the 2026-09-26 "OpenCode is
    canonical" decision; record that in `docs/decisions.md`.
@@ -128,7 +146,9 @@ a `product/CHANGELOG.md` entry, and adds Pester coverage for new code (09 R2).
    first. Until this ships, do not run `global install` on a machine with
    personal lines in that block.
 8. **Model advisor skill** (03 R1, R2, R7). It lists what the user has
-   (`opencode models`, local Ollama or LM Studio), marks free models with a
+   (the OpenCode model picker or plain `opencode models`, local Ollama or
+   LM Studio; `opencode models --verbose` no longer exists in 2.0.18, and
+   plain `models` is not yet checked), marks free models with a
    strict $0 filter over public keyless lists (OpenRouter, Zen), shows
    data-use terms, and proposes one `sw tiers` line without running it. It
    ships no ranking data. Open: the Artificial Analysis attribution duty for
@@ -136,7 +156,8 @@ a `product/CHANGELOG.md` entry, and adds Pester coverage for new code (09 R2).
 9. **Codex adapter** (02 R4-R5). `.codex/agents/<role>.toml` (generated,
    git-ignored) pointing at the canonical role files; `AGENTS.md` is native.
    Cursor and Copilot need no adapter (they read `.claude/`); runtime test 6.
-10. **Runtime smoke checklist** (09 R7), after packages 1-5. A human runs it
+10. [x] **Runtime smoke checklist** (09 R7), after packages 1-5. Done for
+    Claude and OpenCode in `p1-checkpoint-runtime`; re-run after 5a. A human runs it
     per harness in a throwaway init: a denied `git push`, a readonly edit, a
     `.env` read. Results go in a task record. Install OpenCode first. Skill
     evaluation stays a practice: three scenarios plus a baseline, by hand
@@ -144,13 +165,16 @@ a `product/CHANGELOG.md` entry, and adds Pester coverage for new code (09 R2).
 
 ### Runtime tests (manual; each gates the package named)
 
-1. A `/context` run in a fresh Claude session checks the bytes/4 estimate
-   (04, package 4).
-2. OpenCode: does it load `AGENTS.md` in child sessions, honour
+1. [x] A `/context` run in a fresh Claude session checks the bytes/4
+   estimate (04, package 4). 44.8k total, kit share about 2.3k; the estimate
+   is fine and harness tools dominate.
+2. [x] OpenCode: does it load `AGENTS.md` in child sessions, honour
    `subagent:` in V1, nest, and message between sessions? (04, 05;
-   package 3.)
-3. Does OpenCode V2 warn on the V1 `$schema`, and what does
+   package 3.) Children load `AGENTS.md`; `subagent:` is honoured both ways;
+   no nesting; no messaging between sessions.
+3. [x] Does OpenCode V2 warn on the V1 `$schema`, and what does
    `opencode models --verbose` print for free models? (03; packages 2, 8.)
+   No warning; `--verbose` no longer exists; the picker marks free models.
 4. Duplicate skills in OpenCode when both `.opencode/skills` and
    `.agents/skills` exist (07; package 6).
 5. Does OpenCode's `instructions` accept `~/` paths, and do project arrays
@@ -174,7 +198,8 @@ a `product/CHANGELOG.md` entry, and adds Pester coverage for new code (09 R2).
 
 ### Human actions (the kit prints, never runs)
 
-- Set the solo ruleset on `main` (10 R6). The repository is public since
+- Set the solo ruleset on `main` (10 R6), urgent: until 5a lands, OpenCode
+  sessions are not blocked from pushing. The repository is public since
   2026-09-27; `main` was unprotected when checked that day.
 - Fast-forward `main` from reviewed work; publish.
 
