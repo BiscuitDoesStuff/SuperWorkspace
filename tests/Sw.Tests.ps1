@@ -105,18 +105,18 @@ Describe 'Sync and init lifecycle' {
         @($plan | Where-Object Action -ne 'same').Count | Should -Be 0
     }
 
-    It 'a user-modified managed file becomes skip-modified, is not overwritten, and stays detected' {
+    It 'a user-modified managed file becomes kept-local, is not overwritten, and stays detected' {
         $dir = New-SwProject 'skipModified' generic
         $target = Join-Path $dir '.sw/workspace.md'
         $mine = (Read-SwText $target) + "`nmy local note`n"
         Write-SwFile $target $mine
 
         $plan1 = Sync-SwProject -Root $dir -Config (Get-SwConfig $dir)
-        ($plan1 | Where-Object Path -eq '.sw/workspace.md').Action | Should -Be 'skip-modified'
+        ($plan1 | Where-Object Path -eq '.sw/workspace.md').Action | Should -Be 'kept-local'
         Read-SwText $target | Should -Be $mine
 
         $plan2 = Sync-SwProject -Root $dir -Config (Get-SwConfig $dir)
-        ($plan2 | Where-Object Path -eq '.sw/workspace.md').Action | Should -Be 'skip-modified'
+        ($plan2 | Where-Object Path -eq '.sw/workspace.md').Action | Should -Be 'kept-local'
     }
 
     It 'init throws and writes nothing when an unmanaged file already exists at a managed path' {
@@ -149,6 +149,135 @@ Describe 'Sync and init lifecycle' {
         $text | Should -Match 'Custom project text\.'
         $text | Should -Match '<!-- sw:begin core -->'
         $text | Should -Match '<!-- sw:begin profile -->'
+    }
+
+    It 'the manifest records kitVersion and kitCommit' {
+        $dir = New-SwProject 'kitCommit' generic
+        $m = Read-SwJson (Join-Path $dir '.sw/manifest.json')
+        $m['kitVersion'] | Should -Be (Get-SwKitVersion)
+        $m.Contains('kitCommit') | Should -BeTrue
+        $m['kitCommit'] | Should -Be (Get-SwKitCommit)
+    }
+
+    It 'Compare-SwVersion orders <A> vs <B> as <Expected>' -ForEach @(
+        @{ A = '0.3.0-dev'; B = '0.3.0'; Expected = -1 }
+        @{ A = '0.3.0'; B = '0.3.0-dev'; Expected = 1 }
+        @{ A = '0.3.0'; B = '0.3.0'; Expected = 0 }
+        @{ A = '0.10.0'; B = '0.9.9'; Expected = 1 }
+        @{ A = '0.3.0-dev'; B = '0.4.0-dev'; Expected = -1 }
+    ) {
+        Compare-SwVersion $A $B | Should -Be $Expected
+    }
+
+    It 'refuses to downgrade a project a newer kit updated, unless -Force' {
+        $dir = New-SwProject 'downgrade' generic
+        $mPath = Join-Path $dir '.sw/manifest.json'
+        $m = Read-SwJson $mPath
+        $m['kitVersion'] = '99.0.0'
+        Write-SwFile $mPath (ConvertTo-SwJson $m)
+        { Sync-SwProject -Root $dir -Config (Get-SwConfig $dir) } | Should -Throw '*newer than this kit*'
+        (Read-SwJson $mPath)['kitVersion'] | Should -Be '99.0.0'
+        Sync-SwProject -Root $dir -Config (Get-SwConfig $dir) -Force | Out-Null
+        (Read-SwJson $mPath)['kitVersion'] | Should -Be (Get-SwKitVersion)
+    }
+
+    It 'Format-SwPlan prints kit A -> B' {
+        $dir = New-SwProject 'planKit' generic
+        $plan = Sync-SwProject -Root $dir -Config (Get-SwConfig $dir)
+        (Format-SwPlan $plan '0.2.0' '0.3.0')[0] | Should -Be 'kit 0.2.0 -> 0.3.0'
+    }
+
+    It 'an edited file the kit did not change is kept-local, with no incoming copy or merge hint' {
+        $dir = New-SwProject 'keptLocal' generic
+        $target = Join-Path $dir '.sw/workspace.md'
+        Write-SwFile $target ((Read-SwText $target) + "`nmy local note`n")
+        $plan = Sync-SwProject -Root $dir -Config (Get-SwConfig $dir)
+        ($plan | Where-Object Path -eq '.sw/workspace.md').Action | Should -Be 'kept-local'
+        Test-Path (Join-Path $dir '.sw/backup') | Should -BeFalse
+        (Format-SwPlan $plan) -join "`n" | Should -Not -Match 'git diff'
+    }
+
+    It 'an edited file the kit changed gets an incoming copy and one git diff line' {
+        $dir = New-SwProject 'incoming' generic
+        $target = Join-Path $dir '.sw/workspace.md'
+        $mPath = Join-Path $dir '.sw/manifest.json'
+        $m = Read-SwJson $mPath
+        $m['files']['.sw/workspace.md'] = Get-SwHash "old kit text`n"
+        Write-SwFile $mPath (ConvertTo-SwJson $m)
+        Write-SwFile $target "old kit text`nmy local note`n"
+
+        $plan = Sync-SwProject -Root $dir -Config (Get-SwConfig $dir)
+        $row = $plan | Where-Object Path -eq '.sw/workspace.md'
+        $row.Action | Should -Be 'skip-modified'
+        Read-SwText $target | Should -Be "old kit text`nmy local note`n"
+        $incoming = @(Get-ChildItem -Path (Join-Path $dir '.sw/backup') -Recurse -File -Force)
+        $incoming.Count | Should -Be 1
+        $incoming[0].FullName.Replace('\', '/') | Should -Match '/\.sw/backup/[^/]+/incoming/\.sw/workspace\.md$'
+        Read-SwText $incoming[0].FullName | Should -Be (Get-SwRender (Get-SwConfig $dir)).Files['.sw/workspace.md']
+        @((Format-SwPlan $plan) -match '^\s*git diff --no-index \.sw/workspace\.md \.sw/backup/[^ ]+/incoming/\.sw/workspace\.md$').Count | Should -Be 1
+        (Read-SwJson $mPath)['files']['.sw/workspace.md'] | Should -Be (Get-SwHash "old kit text`n")
+    }
+
+    It 'an adopted AGENTS.md without Project identity gains the project sections above the core block' {
+        $dir = Join-Path $TestDrive 'adoptIdentity'
+        New-Item -ItemType Directory -Force -Path $dir | Out-Null
+        $mine = "# My Project`n`nCustom project text.`n"
+        Write-SwFile (Join-Path $dir 'AGENTS.md') $mine
+        $out = Initialize-SwProject -Path $dir -Profile generic -Name AdoptIdentity -Adopt
+
+        $text = Read-SwText (Join-Path $dir 'AGENTS.md')
+        $text.StartsWith($mine) | Should -BeTrue
+        $text | Should -Match '(?m)^## Project identity\s*$'
+        $text.IndexOf('## Project identity') | Should -BeLessThan $text.IndexOf('<!-- sw:begin core -->')
+        ($out -join "`n") | Should -Match 'fill Project identity'
+        (Test-SwValidate $dir).ExitCode | Should -Be 0
+        $again = Sync-SwProject -Root $dir -Config (Get-SwConfig $dir)
+        ($again | Where-Object Path -eq 'AGENTS.md').Action | Should -Be 'same'
+    }
+
+    Context 'rename map' {
+        BeforeEach { InModuleScope Sw.Kit { $script:Moved['.sw/old-workspace.md'] = '.sw/workspace.md' } }
+        AfterEach { InModuleScope Sw.Kit { $script:Moved.Clear() } }
+
+        BeforeAll {
+            function Set-OldLayout([string]$Dir, [string]$Content) {
+                # Simulate a project from a kit that shipped .sw/workspace.md as .sw/old-workspace.md.
+                $mPath = Join-Path $Dir '.sw/manifest.json'
+                $m = Read-SwJson $mPath
+                $m['files'].Remove('.sw/workspace.md')
+                $m['files']['.sw/old-workspace.md'] = Get-SwHash "old kit text`n"
+                Write-SwFile $mPath (ConvertTo-SwJson $m)
+                Remove-Item -LiteralPath (Join-Path $Dir '.sw/workspace.md') -Force
+                Write-SwFile (Join-Path $Dir '.sw/old-workspace.md') $Content
+            }
+        }
+
+        It 'an unedited old file is removed and the new one added' {
+            $dir = New-SwProject 'moveClean' generic
+            Set-OldLayout $dir "old kit text`n"
+            $plan = Sync-SwProject -Root $dir -Config (Get-SwConfig $dir)
+            ($plan | Where-Object Path -eq '.sw/old-workspace.md').Action | Should -Be 'remove'
+            ($plan | Where-Object Path -eq '.sw/workspace.md').Action | Should -Be 'add'
+            Test-Path (Join-Path $dir '.sw/old-workspace.md') | Should -BeFalse
+            Read-SwText (Join-Path $dir '.sw/workspace.md') | Should -Be (Get-SwRender (Get-SwConfig $dir)).Files['.sw/workspace.md']
+        }
+
+        It 'an edited old file moves with its edit and is skip-modified' {
+            $dir = New-SwProject 'moveEdited' generic
+            Set-OldLayout $dir "old kit text`nmy local note`n"
+            $plan = Sync-SwProject -Root $dir -Config (Get-SwConfig $dir)
+            @($plan | Where-Object Path -eq '.sw/old-workspace.md').Count | Should -Be 0
+            ($plan | Where-Object Path -eq '.sw/workspace.md').Action | Should -Be 'skip-modified'
+            Test-Path (Join-Path $dir '.sw/old-workspace.md') | Should -BeFalse
+            Read-SwText (Join-Path $dir '.sw/workspace.md') | Should -Be "old kit text`nmy local note`n"
+            @(Get-ChildItem -Path (Join-Path $dir '.sw/backup') -Recurse -File -Force -Filter 'workspace.md').Count | Should -Be 1
+            $files = (Read-SwJson (Join-Path $dir '.sw/manifest.json'))['files']
+            $files.Contains('.sw/old-workspace.md') | Should -BeFalse
+            $files['.sw/workspace.md'] | Should -Be (Get-SwHash "old kit text`n")
+
+            $again = Sync-SwProject -Root $dir -Config (Get-SwConfig $dir)
+            ($again | Where-Object Path -eq '.sw/workspace.md').Action | Should -Be 'skip-modified'
+        }
     }
 
     It '-WhatIf writes nothing' {

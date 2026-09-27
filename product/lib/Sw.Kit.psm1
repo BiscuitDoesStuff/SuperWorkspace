@@ -9,6 +9,28 @@ $script:SecretName = '(?i)(^service\.json$|^\.claude\.json$|^auth.*|credential|\
 
 function Get-SwKitVersion { (Get-Content -LiteralPath (Join-Path $script:Kit 'VERSION')).Trim() }
 
+function Get-SwKitCommit {
+    # The exact kit used, or $null when the kit is not a git clone.
+    $sha = & git -C $script:Kit rev-parse HEAD 2>$null
+    if ($LASTEXITCODE -eq 0 -and $sha) { "$sha".Trim() } else { $null }
+}
+
+function Compare-SwVersion([string]$A, [string]$B) {
+    # -1, 0 or 1 for X.Y.Z[-tag]; a tagged build (0.3.0-dev) is older than the release (0.3.0).
+    $pa, $pb = foreach ($v in $A, $B) {
+        if ($v -notmatch '^(\d+)\.(\d+)\.(\d+)(?:-(.+))?$') { throw "Not a kit version (X.Y.Z or X.Y.Z-tag): '$v'" }
+        , @([int]$Matches[1], [int]$Matches[2], [int]$Matches[3], $Matches[4])
+    }
+    for ($i = 0; $i -lt 3; $i++) { if ($pa[$i] -ne $pb[$i]) { return $(if ($pa[$i] -lt $pb[$i]) { -1 } else { 1 }) } }
+    if ($pa[3] -ceq $pb[3]) { return 0 }
+    if (-not $pa[3]) { return 1 }
+    if (-not $pb[3]) { return -1 }
+    [Math]::Sign([string]::CompareOrdinal($pa[3], $pb[3]))
+}
+
+# Kit-side renames (old path -> new path). An edited old file moves with its edit.
+$script:Moved = [ordered]@{}
+
 function Set-SwBlock([string]$Text, [string]$Name, [string]$Body, [ValidateSet('md', 'hash')][string]$Style = 'md') {
     # Insert or replace one named managed block; everything outside it is left alone.
     $b, $e = if ($Style -eq 'md') { "<!-- sw:begin $Name -->", "<!-- sw:end $Name -->" } else { "# sw:begin $Name", "# sw:end $Name" }
@@ -82,31 +104,53 @@ function Get-SwRender([Collections.IDictionary]$Config) {
 
 function Sync-SwProject {
     [CmdletBinding(SupportsShouldProcess)]
-    param([string]$Root, [Collections.IDictionary]$Config, [switch]$Adopt)
+    param([string]$Root, [Collections.IDictionary]$Config, [switch]$Adopt,
+        # Allow running an older kit over a project a newer kit last updated.
+        [switch]$Force)
     $render = Get-SwRender $Config
     $manifestPath = Join-Path $Root '.sw/manifest.json'
-    $old = if (Test-Path -LiteralPath $manifestPath) { (Read-SwJson $manifestPath)['files'] } else { @{} }
+    $prev = if (Test-Path -LiteralPath $manifestPath) { Read-SwJson $manifestPath } else { @{} }
+    $kitVersion = Get-SwKitVersion
+    if ($prev['kitVersion'] -and (Compare-SwVersion $prev['kitVersion'] $kitVersion) -gt 0 -and -not $Force) {
+        throw "This project was last updated by kit $($prev['kitVersion']), newer than this kit ($kitVersion); nothing was written. Update the kit clone, or re-run with -Force to downgrade."
+    }
+    $old = [ordered]@{}
+    if ($prev['files']) { foreach ($k in $prev['files'].Keys) { $old[$k] = $prev['files'][$k] } }
+    # An edited file at a moved path moves with its edit: its manifest hash follows it to the new path.
+    $movedFrom = @{}
+    foreach ($m in $script:Moved.GetEnumerator()) {
+        $src = Join-Path $Root $m.Key
+        if (-not $old.Contains($m.Key) -or $old.Contains($m.Value) -or $render.Files.Contains($m.Key) -or -not $render.Files.Contains($m.Value)) { continue }
+        if (-not (Test-Path -LiteralPath $src) -or (Test-Path -LiteralPath (Join-Path $Root $m.Value))) { continue }
+        if ((Get-SwHash (Read-SwText $src)) -eq $old[$m.Key]) { continue }  # unedited: plain remove + add
+        $movedFrom[$m.Value] = $m.Key
+        $old[$m.Value] = $old[$m.Key]
+        $old.Remove($m.Key)
+    }
     $plan = [Collections.Generic.List[object]]::new()
     foreach ($e in $render.Files.GetEnumerator()) {
         $target = Join-Path $Root $e.Key
+        $current = if ($movedFrom.Contains($e.Key)) { Join-Path $Root $movedFrom[$e.Key] } else { $target }
         $newHash = Get-SwHash $e.Value
         $known = $old.Contains($e.Key)
-        $action = if (-not (Test-Path -LiteralPath $target)) { 'add' }
+        $action = if (-not (Test-Path -LiteralPath $current)) { 'add' }
         else {
-            $cur = Get-SwHash (Read-SwText $target)
+            $cur = Get-SwHash (Read-SwText $current)
             if ($cur -eq $newHash) { 'same' }
             elseif ($known -and $cur -eq $old[$e.Key]) { 'update' }
+            elseif ($known -and $newHash -eq $old[$e.Key]) { 'kept-local' }  # edited, but the kit did not change it
             elseif ($known) { 'skip-modified' }
             elseif ($Adopt) { 'adopt' }
             else { 'conflict' }
         }
-        $plan.Add([pscustomobject]@{ Path = $e.Key; Action = $action; Hash = $newHash })
+        $note = if ($movedFrom.Contains($e.Key)) { "$($e.Key) moved from $($movedFrom[$e.Key]) with its local edits" } else { $null }
+        $plan.Add([pscustomobject]@{ Path = $e.Key; Action = $action; Hash = $newHash; Note = $note })
     }
     foreach ($rel in @($old.Keys)) {
         if ($render.Files.Contains($rel)) { continue }
         $target = Join-Path $Root $rel
         $action = if (-not (Test-Path -LiteralPath $target)) { 'gone' } elseif ((Get-SwHash (Read-SwText $target)) -eq $old[$rel]) { 'remove' } else { 'orphan-kept' }
-        $plan.Add([pscustomobject]@{ Path = $rel; Action = $action; Hash = $null })
+        $plan.Add([pscustomobject]@{ Path = $rel; Action = $action; Hash = $null; Note = $null })
     }
     $conflicts = @($plan | Where-Object Action -eq 'conflict')
     if ($conflicts.Count) {
@@ -114,9 +158,13 @@ function Sync-SwProject {
     }
 
     $stamp = [DateTime]::UtcNow.ToString('yyyyMMddTHHmmssZ')
-    $manifest = [ordered]@{ kitVersion = Get-SwKitVersion; files = [ordered]@{} }
+    $manifest = [ordered]@{ kitVersion = $kitVersion; kitCommit = Get-SwKitCommit; files = [ordered]@{} }
     foreach ($p in $plan) {
         $target = Join-Path $Root $p.Path
+        if ($movedFrom.Contains($p.Path) -and $PSCmdlet.ShouldProcess($p.Path, "move from $($movedFrom[$p.Path])")) {
+            New-Item -ItemType Directory -Force (Split-Path $target) | Out-Null
+            Move-Item -LiteralPath (Join-Path $Root $movedFrom[$p.Path]) -Destination $target -Force
+        }
         switch ($p.Action) {
             { $_ -in 'add', 'update', 'adopt' } {
                 if ($PSCmdlet.ShouldProcess($p.Path, $p.Action)) {
@@ -130,7 +178,16 @@ function Sync-SwProject {
                 $manifest.files[$p.Path] = $p.Hash
             }
             'same' { $manifest.files[$p.Path] = $p.Hash }
-            'skip-modified' { $manifest.files[$p.Path] = $old[$p.Path] }  # keep old hash so the edit stays detected
+            'kept-local' { $manifest.files[$p.Path] = $old[$p.Path] }
+            'skip-modified' {
+                $manifest.files[$p.Path] = $old[$p.Path]  # keep old hash so the edit stays detected
+                # Hand over the kit's new version to diff against; credential-like names are never copied.
+                if ((Split-Path $p.Path -Leaf) -notmatch $script:SecretName) {
+                    $incoming = ".sw/backup/$stamp/incoming/$($p.Path)"
+                    if ($PSCmdlet.ShouldProcess($incoming, 'write incoming kit version')) { Write-SwFile (Join-Path $Root $incoming) $render.Files[$p.Path] }
+                    $p.Note = @($p.Note, "git diff --no-index $($p.Path) $incoming") -ne $null -join "`n  "
+                }
+            }
             'remove' { if ($PSCmdlet.ShouldProcess($p.Path, 'remove (dropped from kit)')) { Remove-Item -LiteralPath $target -Force } }
         }
     }
@@ -139,6 +196,16 @@ function Sync-SwProject {
     $agentsPath = Join-Path $Root 'AGENTS.md'
     $agents = if (Test-Path -LiteralPath $agentsPath) { Set-SwBlock (Read-SwText $agentsPath) 'core' $render.AgentsCore } else { $render.AgentsTemplate }
     $agents = Set-SwBlock $agents 'profile' $render.AgentsProfile
+    $agentsNote = $null
+    if ($agents -cnotmatch '(?m)^## Project identity\s*$') {
+        # An adopted AGENTS.md lacks the project sections: insert the template's above the core block.
+        $t = $render.AgentsTemplate
+        $from = $t.IndexOf("`n") + 1
+        $sections = $t.Substring($from, $t.IndexOf('<!-- sw:begin core -->') - $from).Trim("`n") + "`n`n"
+        $at = $agents.IndexOf('<!-- sw:begin core -->')
+        $agents = $agents.Substring(0, $at) + $sections + $agents.Substring($at)
+        $agentsNote = 'fill Project identity (and the other inserted project sections) in AGENTS.md'
+    }
     $blocks = [ordered]@{ 'AGENTS.md' = $agents }
     $gi = Join-Path $Root '.gitignore'
     $blocks['.gitignore'] = Set-SwBlock $(if (Test-Path -LiteralPath $gi) { Read-SwText $gi } else { '' }) 'superworkspace' $render.GitIgnore 'hash'
@@ -149,19 +216,28 @@ function Sync-SwProject {
     foreach ($b in $blocks.GetEnumerator()) {
         $t = Join-Path $Root $b.Key
         $same = (Test-Path -LiteralPath $t) -and (Read-SwText $t) -ceq $b.Value
-        $plan.Add([pscustomobject]@{ Path = $b.Key; Action = $(if ($same) { 'same' } else { 'block' }); Hash = $null })
+        $plan.Add([pscustomobject]@{ Path = $b.Key; Action = $(if ($same) { 'same' } else { 'block' }); Hash = $null; Note = $(if ($b.Key -eq 'AGENTS.md') { $agentsNote } else { $null }) })
         if (-not $same -and $PSCmdlet.ShouldProcess($b.Key, 'set managed block')) { Write-SwFile $t $b.Value }
     }
     if ($PSCmdlet.ShouldProcess('.sw/manifest.json', 'write')) { Write-SwFile $manifestPath (ConvertTo-SwJson $manifest) }
     $plan
 }
 
-function Format-SwPlan($Plan) {
+function Get-SwManifestKit([string]$Root) {
+    # The kitVersion a project was last synced with, or $null before the first sync.
+    $path = Join-Path $Root '.sw/manifest.json'
+    if (Test-Path -LiteralPath $path) { (Read-SwJson $path)['kitVersion'] } else { $null }
+}
+
+function Format-SwPlan($Plan, [string]$From, [string]$To = (Get-SwKitVersion)) {
+    Write-Output "kit $(if ($From) { $From } else { 'none' }) -> $To"
     $groups = $Plan | Where-Object Action -ne 'same' | Group-Object Action
     foreach ($g in $groups) { Write-Output ("{0,-14} {1}" -f $g.Name, (($g.Group.Path) -join ', ')) }
     Write-Output ("{0} unchanged, {1} changed." -f @($Plan | Where-Object Action -eq 'same').Count, @($Plan | Where-Object Action -ne 'same').Count)
-    $skipped = @($Plan | Where-Object Action -in 'skip-modified', 'orphan-kept')
-    if ($skipped.Count) { Write-Output "Locally modified kit files were left alone; diff them against the kit and merge by hand: $(($skipped.Path) -join ', ')" }
+    $orphans = @($Plan | Where-Object Action -eq 'orphan-kept')
+    if ($orphans.Count) { Write-Output "Dropped from the kit but locally modified, so left in place: $(($orphans.Path) -join ', ')" }
+    if (@($Plan | Where-Object Action -eq 'skip-modified').Count) { Write-Output 'Locally modified files the kit changed were left alone. Compare with the kit version from the project root:' }
+    foreach ($p in $Plan | Where-Object Note) { Write-Output "  $($p.Note)" }
 }
 
 function Initialize-SwProject {
@@ -169,7 +245,7 @@ function Initialize-SwProject {
     param(
         [Parameter(Position = 0)][string]$Path = '.',
         [string]$Name, [string]$Profile, [ValidateSet(0, 1)][int]$GitHubTier = -1,
-        [switch]$Adopt, [switch]$Claude, [switch]$NoGitHub
+        [switch]$Adopt, [switch]$Claude, [switch]$NoGitHub, [switch]$Force
     )
     if (-not (Test-Path -LiteralPath $Path)) { if ($PSCmdlet.ShouldProcess($Path, 'create directory')) { New-Item -ItemType Directory -Path $Path | Out-Null } else { return } }
     $Root = (Resolve-Path -LiteralPath $Path).Path
@@ -184,22 +260,24 @@ function Initialize-SwProject {
     if (-not (Test-Path -LiteralPath (Join-Path $Root '.git'))) {
         if ($PSCmdlet.ShouldProcess($Root, 'git init -b main')) { & git -C $Root init -b main | Out-Null }
     }
-    $plan = Sync-SwProject -Root $Root -Config $config -Adopt:$Adopt
+    $from = Get-SwManifestKit $Root
+    $plan = Sync-SwProject -Root $Root -Config $config -Adopt:$Adopt -Force:$Force
     if ($PSCmdlet.ShouldProcess('.sw/config.json', 'write')) {
         Write-SwFile $configPath (ConvertTo-SwJson $config)
         foreach ($d in 'tasks', 'inbox', 'archive') { Write-SwFile (Join-Path $Root ".sw/comms/$d/.gitkeep") '' }
     }
-    Format-SwPlan $plan
+    Format-SwPlan $plan $from
     if ($Claude -and -not $WhatIfPreference) { Invoke-SwClaude enable -Path $Root }
     Write-Output "Next: fill the project sections of AGENTS.md, then run 'pwsh .sw/sw.ps1 validate'. Map models with 'pwsh .sw/sw.ps1 tiers'."
 }
 
 function Update-SwProject {
     [CmdletBinding(SupportsShouldProcess)]
-    param([Parameter(Position = 0)][string]$Path)
+    param([Parameter(Position = 0)][string]$Path, [switch]$Adopt, [switch]$Force)
     $Root = Resolve-SwRoot $Path
-    $plan = Sync-SwProject -Root $Root -Config (Get-SwConfig $Root)
-    Format-SwPlan $plan
+    $from = Get-SwManifestKit $Root
+    $plan = Sync-SwProject -Root $Root -Config (Get-SwConfig $Root) -Adopt:$Adopt -Force:$Force
+    Format-SwPlan $plan $from
     if (Test-Path -LiteralPath (Join-Path $Root '.claude/.sw-generated')) {
         if (-not $WhatIfPreference) { Invoke-SwClaude enable -Path $Root } else { Write-Output 'Would regenerate the Claude adapter.' }
     }
@@ -409,5 +487,5 @@ function Invoke-SwRemote {
     }
 }
 
-Export-ModuleMember -Function Set-SwBlock, Get-SwRender, Sync-SwProject, Initialize-SwProject, Update-SwProject,
-    Backup-SwGlobal, Install-SwGlobal, Test-SwGlobal, Invoke-SwGlobal, Invoke-SwRemote, Get-SwKitVersion, Get-SwNarrowedGhAllow
+Export-ModuleMember -Function Set-SwBlock, Get-SwRender, Sync-SwProject, Format-SwPlan, Initialize-SwProject, Update-SwProject,
+    Backup-SwGlobal, Install-SwGlobal, Test-SwGlobal, Invoke-SwGlobal, Invoke-SwRemote, Get-SwKitVersion, Get-SwKitCommit, Compare-SwVersion, Get-SwNarrowedGhAllow

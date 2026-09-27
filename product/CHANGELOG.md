@@ -2,6 +2,15 @@
 
 ## 0.3.0-dev
 
+- **Changed (update, Phase 1 package 5): lifecycle.**
+  - `.sw/manifest.json` gains `kitCommit`, the kit clone's `git rev-parse HEAD` (`null` outside a git clone).
+  - `update` and `init` refuse to run when the manifest's `kitVersion` is newer than the running kit (a `-dev` build is older than its release), and write nothing. Update the kit clone, or pass `-Force` to downgrade on purpose. `update` also accepts `-Adopt`.
+  - The plan starts with `kit A -> B`.
+  - A locally edited file the kit did not change is reported `kept-local`, with no merge hint.
+  - A locally edited file the kit did change stays `skip-modified`. The kit's new version is written to `.sw/backup/<stamp>/incoming/<path>` (git-ignored; credential-like names are never copied), and one `git diff --no-index <path> <incoming>` line is printed per file.
+  - `orphan-kept` files are listed as dropped from the kit and left in place.
+  - An `AGENTS.md` without a `## Project identity` heading gets the template's project sections inserted above the kit blocks, and the plan says "fill Project identity". Existing text is untouched. This fixes package 4's new `validate` error.
+  - A kit-side rename map (empty today) moves files the kit renames. An edited old file moves with its edit and is reported like any edited file.
 - **Changed (validate, Phase 1 package 4): three new errors.** Fix these before or right after `update`:
   - `AGENTS.md` must keep a `## Project identity` heading. A project that adopted an existing `AGENTS.md` may lack it; add the heading above the kit blocks.
   - Every skill `name` must be 1-64 lowercase letters, digits and single inner hyphens, and its `description` at most 1024 characters (Agent Skills spec). Rename or shorten your own skills that break this.

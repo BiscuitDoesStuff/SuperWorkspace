@@ -37,6 +37,13 @@ pwsh $sw init <path>/MyGame -Profile unreal -Name MyGame          # new project
 pwsh $sw init <path>/ExistingRepo -Profile generic -Adopt         # existing project
 ```
 
+To pin the kit, check out a release tag in the kit clone:
+`git -C <kit-path> checkout v<version>` (releases are tagged from
+`product/VERSION`). `git -C <kit-path> checkout main` returns to the latest.
+Each `init` or `update` records the kit's version and commit (`kitVersion`,
+`kitCommit`) in the project's `.sw/manifest.json`, and `update` refuses to run
+an older kit over a project a newer one updated unless you pass `-Force`.
+
 Then, inside the project:
 
 ```powershell

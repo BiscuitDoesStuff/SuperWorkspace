@@ -1,5 +1,6 @@
 {
   "kitVersion": "0.3.0-dev",
+  "kitCommit": "3f903c97295e0fae78c56939752cbc3dbc99594c",
   "files": {
     ".opencode/agents/project-architect.md": "cdbe6e6fa038bc876ce80b338c870670343b3166058dd8544f4c6038048d435b",
     ".opencode/agents/project-build.md": "21eae122e96ec3558bc0156211583684ca29f8c4882b61d40553cb0897e997f4",
@@ -41,7 +42,7 @@
     ".github/workflows/sw-validate.yml": "436eafeb3ebeda355268b91eeb8289a5aabf57f972bd2477359506d9a35eb776",
     ".sw/roles.json": "7899406b14bf940d174575efbecf146c85f73789ab6e3487bf5ff3792665686c",
     ".sw/profile.json": "40409c166bf36cce15c3f5b2700d0c44cc40b4a0b342fbc79c9ee581f0396210",
-    ".sw/sw.ps1": "fea95499b0d56059ba69dc9a4c828beeb679e5a0c24a81cac7d14c422338316b",
+    ".sw/sw.ps1": "730214b94c759e4f8698f279d5924cdef008c9f2dd07aabbc382ee7819f39683",
     ".sw/lib/Sw.Project.psm1": "fbb40231e688c5906c544b69d22763146f984240f3e4c87230f43896dbaa4b19",
     "opencode.jsonc": "7619c26f7658a91c5850a308e541ddeb2364a14cec2b2db4e1ce39fb6bcea6fa"
   }
