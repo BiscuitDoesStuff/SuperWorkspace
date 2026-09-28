@@ -149,8 +149,9 @@ Two lanes: Planning (plan, architect, research, review, the Leader's own
 planning) and Execution (developer, worker, build, documentation). Execution
 follows a strict written plan; no plan, Planning first. Execution defaults to
 light; escalate to standard only after one failed light attempt, or when the
-plan flags a step needing judgment (concurrency, shared state); never high,
-oversized work goes back to the planner to be chunked. Executor tier stays
+plan flags a step needing judgment (concurrency, shared state). Not high:
+oversized work goes back to the planner to be chunked, unless the Leader
+suggests high and the user approves, or the user runs it themselves. Executor tier stays
 at or below the planner's, usually one lower (high -> standard, standard ->
 light, light -> light). On failure: Planning escalates one tier; Execution
 escalates once, then returns to the planner; the three-failed-attempts rule

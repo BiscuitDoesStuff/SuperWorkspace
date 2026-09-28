@@ -2,6 +2,8 @@
 
 ## 0.3.0-dev
 
+- **Fixed (docs):** `.sw/collaboration.md` said `sw user add <name>`; the command is `sw user <name>`.
+- **Changed (routing):** executors do not run at high unless the Leader suggests it and the user approves, or the user runs the work themselves.
 - **Changed (model routing, Phase 1 package 8, breaking):** tiers renamed
   `reasoning/standard/fast` -> `high/standard/light` everywhere, no aliases
   or old names. Default role tiers: `project-plan`, `project-architect`,

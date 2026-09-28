@@ -1,6 +1,6 @@
 {
   "kitVersion": "0.3.0-dev",
-  "kitCommit": "41bdd5ca69d5f49c60c76a6ac78e3960012002da",
+  "kitCommit": "a016301571bdc19d0cfc49360820af90e26ec873",
   "files": {
     ".agents/skills/agent-documentation/SKILL.md": "1855622a3d1eddc9f427aad4ef6378a23d3758853e875d9a67bd321cb99176c7",
     ".agents/skills/focused-review/SKILL.md": "4ddbcc7733f930a328c5cdb41cf02f1709d5586c4a056ad77681c8d944c4a417",
@@ -29,10 +29,10 @@
     ".opencode/commands/work.md": "e3d701eee53b7715fdc0052861ddfc46a08915be9a999706b5d5872538f3b8ac",
     ".opencode/commands/workspace-check.md": "bc42093350428271eba72beff608a7258294e5da4a34c38123969e7500f9defe",
     ".opencode/plugins/rtk.ts": "4341ea5357fe324bf5f8b82d2f06f89f9074f76812d812fa1db44f9d8cbbbc1f",
-    ".sw/collaboration.md": "85c0722bbd9899299f8cfd5c70fb0310a8f16c8656e1fe0698700c3c6658d462",
+    ".sw/collaboration.md": "0a4df7af6c183ee5d4b77ad61325b3c62a366519b74ed2fb681e43ca34588b14",
     ".sw/comms/README.md": "ce988973da2e1fb9ecd2182afd05a64b8df0e5957cfdd173ad26aed9fe68da73",
     ".sw/onboarding.md": "962b52c2ec9e7957441259c5ef84b2c14cb0a7a6ed0ac7a8734212b25e9a7cd6",
-    ".sw/workspace.md": "d79c09c11b58460c90e964b032d48329c0e2ef33fd83432d941f3c64eb5bdff2",
+    ".sw/workspace.md": "923d7d1818bb9b8783ec5a574780c28308bc2b3c9cefb3272b89166266aa64eb",
     ".github/ISSUE_TEMPLATE/bug.yml": "18c069bfada2a6dce08e0556aa208e15fca5deb482b05a36b1e0ec08cfaf0b23",
     ".github/ISSUE_TEMPLATE/config.yml": "1f103c6a9dd07cd13a9a6f17ace6b813f47747eb9cb7e00488cb2073caaf91bb",
     ".github/ISSUE_TEMPLATE/decision.yml": "8196b2852dcd751860543d375804ba9046bfd8b1112a0339f3a071ed969e78e0",

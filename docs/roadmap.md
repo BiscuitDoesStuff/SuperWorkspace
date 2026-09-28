@@ -42,7 +42,7 @@ after each. Records: `.sw/comms/tasks/p1-NN-*/`.
 
 Status (realigned 2026-09-27 after the desktop checkpoint,
 `archive/p1-checkpoint-runtime/`): packages 1-5 and 10 are done (records in
-`.sw/comms/archive/p1-NN-*/`); 5a and 6 are done (2026-09-27); 7 and 9 wait on their runtime tests; 8 was split, and 8a is in progress (`p1-08-model-routing`).
+`.sw/comms/archive/p1-NN-*/`); 5a and 6 are done (2026-09-27); 7 and 9 wait on their runtime tests; 8 was split: 8a is implemented (2026-09-28, `p1-08-model-routing`), its OpenCode smoke run waits on the OpenAI usage limit; 8 stays paused.
 Each package that installed projects receive bumps `product/VERSION` and adds
 a `product/CHANGELOG.md` entry, and adds Pester coverage for new code (09 R2).
 

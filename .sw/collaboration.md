@@ -85,7 +85,7 @@ directly from the human owner. Fields: `from`, `to`, `task` (optional),
 ## Branches
 
 Only `main` and owner-designated `<user>/<user>-worktree` branches exist
-(`sw user add <name>` records a contributor; the owner runs it on `main`). With
+(`sw user <name>` records a contributor; the owner runs it on `main`). With
 no recorded contributors (`users` is empty in `.sw/config.json`) the owner
 works on `main` directly and the integrate flow is not needed. Once anyone is
 recorded, everyone, the owner included, works on their own branch. Each
