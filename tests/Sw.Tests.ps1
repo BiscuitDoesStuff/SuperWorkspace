@@ -665,10 +665,11 @@ Describe 'Claude adapter' {
 
         $roles = Read-SwJson (Join-Path $dir '.sw/roles.json')
         $workers = @($roles.Keys | Where-Object { $_ -notin 'project-leader', 'explore' })
-        $models = @{ reasoning = 'opus'; standard = 'sonnet'; fast = 'haiku' }
+        $efforts = @{ light = 'low'; standard = 'medium'; high = 'xhigh' }
         foreach ($r in $workers) {
             $text = Read-SwText (Join-Path $dir ".claude/agents/$r.md")
-            $text | Should -Match "(?m)^model: $($models[$roles[$r]['tier']])$"
+            $text | Should -Match '(?m)^model: opus$'
+            $text | Should -Match "(?m)^effort: $($efforts[$roles[$r]['tier']])$"
             if ($roles[$r]['claudeTools']) { $text | Should -Match "(?m)^tools: $([regex]::Escape($roles[$r]['claudeTools']))$" }
             else { $text | Should -Not -Match '(?m)^tools:' }
             $text | Should -Match '(?m)^disallowedTools: Agent$'
@@ -757,20 +758,20 @@ Describe 'Get-SwNarrowedGhAllow' {
 }
 
 Describe 'Set-SwTiers' {
-    It 'writes .opencode/opencode.jsonc mapping reasoning roles to the given model, and refuses to overwrite without -Force' {
+    It 'writes .opencode/opencode.jsonc mapping standard/light roles to the given model, and refuses to overwrite without -Force' {
         $dir = New-SwProject "tiers$(New-Id)" generic
-        Set-SwTiers -Reasoning opus -Standard sonnet -Fast haiku -Path $dir | Out-Null
+        Set-SwTiers -Light haiku -Standard sonnet -High opus -Path $dir | Out-Null
         $target = Join-Path $dir '.opencode/opencode.jsonc'
         $map = (Read-SwJson $target)['agents']
-        $map['project-plan']['model'] | Should -Be 'opus'
-        $map['project-architect']['model'] | Should -Be 'opus'
-        $map['project-review']['model'] | Should -Be 'opus'
-        $map['project-developer']['model'] | Should -Be 'sonnet'
+        $map['project-plan']['model'] | Should -Be 'sonnet'
+        $map['project-architect']['model'] | Should -Be 'sonnet'
+        $map['project-review']['model'] | Should -Be 'sonnet'
+        $map['project-developer']['model'] | Should -Be 'haiku'
         $map['explore']['model'] | Should -Be 'haiku'
         $map.Contains('project-leader') | Should -BeFalse
 
-        { Set-SwTiers -Reasoning grok -Standard grok -Fast grok -Path $dir } | Should -Throw '*-Force*'
-        Set-SwTiers -Reasoning grok -Standard grok -Fast grok -Path $dir -Force | Out-Null
+        { Set-SwTiers -Light grok -Standard grok -High grok -Path $dir } | Should -Throw '*-Force*'
+        Set-SwTiers -Light grok -Standard grok -High grok -Path $dir -Force | Out-Null
         (Read-SwJson $target)['agents']['project-plan']['model'] | Should -Be 'grok'
     }
 }

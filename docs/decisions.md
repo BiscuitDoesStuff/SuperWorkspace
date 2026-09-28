@@ -4,6 +4,20 @@ Format: `YYYY-MM-DD: Title (status)`. Newest first. Record no secret values.
 The earlier decision logs (ai-environment-foundation, MyMMO) are summarized
 here. Their repositories keep the full history.
 
+## 2026-09-27: Tiers are light/standard/high, routed per task (accepted)
+
+- **Why:** the owner's model-tier analysis (ModelAnalysis side session,
+  kept local, not committed) routes work per task in two lanes, Planning and
+  Execution, by a written rubric; calibrated 15/15 on owner-labelled tasks.
+- **Decision:** tiers become `light`, `standard`, `high` (no aliases). Planning
+  roles default to standard, execution roles and explore to light. The routing
+  rules and rubric ship in `.sw/workspace.md`; model IDs and benchmark data
+  stay local (03 R7 holds). The Claude adapter emits `model: opus` plus
+  `effort` (low/medium/xhigh), taking up 03 R5.
+- **Reverses:** 03 R6 ("`roles.json` tiers: no change").
+- **Trade-off:** Opus at every Claude tier costs more quota than the old
+  opus/sonnet/haiku aliases; the owner accepted it.
+
 ## 2026-09-27: Canonical skills live in `.agents/skills` (accepted)
 
 - **Why:** `.agents/skills` is read by OpenCode, Codex, Gemini, Cursor and

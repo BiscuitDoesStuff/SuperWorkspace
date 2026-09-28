@@ -31,15 +31,15 @@ Keep required startup reading small: this map is read on demand.
 | ID | Mode | Tier | Responsibility |
 | --- | --- | --- | --- |
 | project-leader | primary | session | Approved outcome, direct dispatch, queue, completion |
-| project-plan | all | reasoning | Read-only requirements, alternatives, acceptance criteria |
-| project-architect | all | reasoning | Read-only architecture and work breakdown |
-| project-developer | all | standard | Authorized implementation; may work solo |
-| project-worker | subagent | standard | Leader-dispatched parallel work in an assigned worktree |
-| project-build | all | standard | Tooling and coordinated validation |
-| project-documentation | all | standard | Markdown, factual docs, skills, task records |
-| project-research | all | reasoning | Primary-source research, cited Markdown findings |
-| project-review | all | reasoning | Read-only correctness, scope, simplicity findings |
-| explore (built-in) | subagent | fast | Focused discovery |
+| project-plan | all | standard | Read-only requirements, alternatives, acceptance criteria |
+| project-architect | all | standard | Read-only architecture and work breakdown |
+| project-developer | all | light | Authorized implementation; may work solo |
+| project-worker | subagent | light | Leader-dispatched parallel work in an assigned worktree |
+| project-build | all | light | Tooling and coordinated validation |
+| project-documentation | all | light | Markdown, factual docs, skills, task records |
+| project-research | all | standard | Primary-source research, cited Markdown findings |
+| project-review | all | standard | Read-only correctness, scope, simplicity findings |
+| explore (built-in) | subagent | light | Focused discovery |
 
 The Leader dispatches directly; workers never launch teams. Built-in `build`
 may dispatch the specialists plus `general` and `explore` when a user selects
@@ -61,8 +61,9 @@ current state to the task record, and report. Do not retry into the limit.
 ### Assignment and result contract
 
 Every assignment names task ID, approval, exact branch/checkout, owners and
-allowed paths/assets, dependencies, acceptance, preservation rules, and the
-validation owner. A correction includes the failing command and evidence. Every
+allowed paths/assets, dependencies, acceptance, preservation rules, the
+validation owner, and the tier it runs at plus the reason (for later
+calibration). A correction includes the failing command and evidence. Every
 result names changed paths, checked SHA plus dirty scope, actual commands and
 results, remaining criteria, and next action.
 
@@ -139,14 +140,38 @@ A Claude subscription is not OpenCode API access.
 
 ## Model tiers
 
-Single source for role-to-tier membership (the table above): reasoning =
-project-plan, project-architect, project-research, project-review; standard =
-project-developer, project-worker, project-build, project-documentation; fast =
-explore; the Leader inherits the session model. Default cost policy is
-free-first: free OpenCode/OpenRouter models and local LM Studio, no metered API
-spend unless a contributor opts in locally. To pick free models per tier, follow
-the `free-models` skill's procedure; the kit ships no model IDs or tier fits.
-Local models with small context windows must override `compaction` locally.
+Single source for role-to-tier membership is the Roles table above (light,
+standard, high); the Leader inherits the session model.
+
+### Routing
+
+Two lanes: Planning (plan, architect, research, review, the Leader's own
+planning) and Execution (developer, worker, build, documentation). Execution
+follows a strict written plan; no plan, Planning first. Execution defaults to
+light; escalate to standard only after one failed light attempt, or when the
+plan flags a step needing judgment (concurrency, shared state); never high,
+oversized work goes back to the planner to be chunked. Executor tier stays
+at or below the planner's, usually one lower (high -> standard, standard ->
+light, light -> light). On failure: Planning escalates one tier; Execution
+escalates once, then returns to the planner; the three-failed-attempts rule
+still applies. Rubric (the agent classifies the task; the local tier map
+picks the model): light = verify, reconcile records with Git, record
+decisions, hand over commands, review one change; standard = a multi-step
+plan or procedure against a clear spec (even across systems), full-context
+continuation briefs; high = architecture trade-offs, unclear requirements,
+large multi-system review. A costly-mistake risk (security, data loss,
+publishing) makes it high only when the agent itself performs the
+irreversible step, not when it hands commands to a human. Applying a tier:
+role defaults come from the tier map (OpenCode) or the generated effort
+(Claude); neither harness takes a per-dispatch effort, so work above a
+role's default runs in a session at that tier (the Leader inline, or a
+fresh session the human opens). Never switch a running session's model.
+
+Default cost policy is free-first: free OpenCode/OpenRouter models and local
+LM Studio, no metered API spend unless a contributor opts in locally. To pick
+free models per tier, follow the `free-models` skill's procedure; the kit
+ships no model IDs or tier fits. Local models with small context windows must
+override `compaction` locally.
 
 ## Usage optimization
 

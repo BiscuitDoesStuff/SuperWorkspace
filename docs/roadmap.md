@@ -42,7 +42,7 @@ after each. Records: `.sw/comms/tasks/p1-NN-*/`.
 
 Status (realigned 2026-09-27 after the desktop checkpoint,
 `archive/p1-checkpoint-runtime/`): packages 1-5 and 10 are done (records in
-`.sw/comms/archive/p1-NN-*/`); 5a and 6 are done (2026-09-27); 7 and 9 wait on their runtime tests; 8 has none.
+`.sw/comms/archive/p1-NN-*/`); 5a and 6 are done (2026-09-27); 7 and 9 wait on their runtime tests; 8 was split, and 8a is in progress (`p1-08-model-routing`).
 Each package that installed projects receive bumps `product/VERSION` and adds
 a `product/CHANGELOG.md` entry, and adds Pester coverage for new code (09 R2).
 
@@ -153,6 +153,10 @@ a `product/CHANGELOG.md` entry, and adds Pester coverage for new code (09 R2).
    The other harnesses are documented as not supported. Runtime test 5
    first. Until this ships, do not run `global install` on a machine with
    personal lines in that block.
+8a. **Tier routing** (owner, 2026-09-27; reverses 03 R6, adopts 03 R5).
+    Tiers become light/standard/high; the Planning/Execution rules and rubric
+    ship in `.sw/workspace.md`; the Claude adapter emits Opus plus `effort`.
+    Model IDs and benchmark data stay local.
 8. **Model advisor skill** (03 R1, R2, R7). It lists what the user has
    (the OpenCode model picker or plain `opencode models`, local Ollama or
    LM Studio; `opencode models --verbose` no longer exists in 2.0.18, and
@@ -196,7 +200,6 @@ a `product/CHANGELOG.md` entry, and adds Pester coverage for new code (09 R2).
 
 - Gemini adapter (02 R4): Antigravity CLI replaced Gemini CLI for unpaid
   users on 2026-06-18 (03-F6); revisit on demand.
-- `effort` in generated Claude agents (03 R5).
 - Per-role Claude hooks (08 R5); update the `decisions.md` hook lesson with
   its documented cause when touched.
 - Doctor warning for a small local context window, such as Ollama's 4K

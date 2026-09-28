@@ -44,17 +44,18 @@ or an old note.
 
 Role-to-tier membership lives only in `.sw/workspace.md` (Model tiers). A
 blank tier inherits the session model unless a local override selects one.
-Map tiers with `sw tiers -Reasoning <id> -Standard <id> -Fast <id>`, or by
+Map tiers with `sw tiers -Light <id> -Standard <id> -High <id>`, or by
 hand in the git-ignored `.opencode/opencode.jsonc`. An ID may carry an effort
-variant (`-Reasoning opencode/<id>#high`); `sw tiers` writes it as given.
+variant (`-High opencode/<id>#high`); `sw tiers` writes it as given.
 
 Fit by behavior verified above, never by name alone:
 
-- Reasoning: a thinking model at a high effort level; slower and more
-  thorough, suited to architecture and review work.
+- Light: a model with thinking or effort off, the low-effort/fast fit used
+  for execution and exploration.
 - Standard: a thinking model that finishes multi-turn agent tasks reliably,
   for implementation work.
-- Fast: a model with thinking or effort off, for low-latency exploration.
+- High: a thinking model at a high effort level; slower and more thorough,
+  suited to architecture and review work.
 
 A paid model is the upgrade path for any tier once usage is available; match
 its exact ID against `/models` the same way.

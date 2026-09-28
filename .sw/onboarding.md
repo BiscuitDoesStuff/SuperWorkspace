@@ -23,7 +23,7 @@ what is missing and the exact command to fix it.
 ## Model tiers
 
 ```powershell
-pwsh .sw/sw.ps1 tiers -Reasoning <id> -Standard <id> -Fast <id>
+pwsh .sw/sw.ps1 tiers -Light <id> -Standard <id> -High <id>
 ```
 
 Default cost policy is free-first: free OpenCode/OpenRouter models and local

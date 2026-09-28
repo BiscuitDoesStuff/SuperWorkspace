@@ -6,9 +6,9 @@ Project policy lives in the project's `AGENTS.md`; SuperWorkspace projects add
 work runs on this machine.
 
 ## Model routing
-- Planning, architecture, review: reasoning tier, in a fresh session. Never
-  switch a running session's model.
-- Implementation, docs, mechanical edits: standard tier.
+- Planning, architecture, review: the tier the rubric picks, in a fresh
+  session. Never switch a running session's model.
+- Implementation, docs, mechanical edits: light tier by default.
 - Review after implementation passes its checks: the project's `/review`.
 - Smallest working change, shortest diff (`minimal-change`).
 - Minimize tokens: batch tool calls, never re-read files already in context,

@@ -2,6 +2,19 @@
 
 ## 0.3.0-dev
 
+- **Changed (model routing, Phase 1 package 8, breaking):** tiers renamed
+  `reasoning/standard/fast` -> `high/standard/light` everywhere, no aliases
+  or old names. Default role tiers: `project-plan`, `project-architect`,
+  `project-research`, `project-review` = standard; `project-developer`,
+  `project-worker`, `project-build`, `project-documentation`, `explore` =
+  light; `project-leader` stays session. `sw tiers` flags are renamed to
+  `-Light -Standard -High`; re-run it with the new flags (an existing
+  `.opencode/opencode.jsonc` tier map keeps working, since it maps roles to
+  models directly). The Claude adapter now gives every generated agent
+  `model: opus` plus `effort: low|medium|xhigh` (light/standard/high)
+  instead of picking a model per tier; `validate` checks both lines.
+  `.sw/workspace.md` gains a Planning/Execution routing section and rubric
+  (no model IDs); `free-models`' tier-mapping names are renamed to match.
 - **Changed (skills, Phase 1 package 6):** canonical skills moved from `.opencode/skills` to `.agents/skills` (base and the `unreal` profile), because OpenCode, Codex, Gemini, Cursor and Copilot all read `.agents/skills`, while `.opencode/skills` is OpenCode-only.
   - The rename map (`$script:Moved`, `Sw.Kit.psm1`) gained prefix support: one `.opencode/skills/` -> `.agents/skills/` rule, expanded per file against the project's manifest. `update` moves an edited kit skill to `.agents/skills/<name>` with its edit, the same as any other renamed file.
   - A user's own skill under `.opencode/skills/<name>` (not a kit skill name) is left alone; OpenCode still reads it there, but `claude enable` and `validate` now read only `.agents/skills`. Move your own skills to `.agents/skills/<name>` and delete their stale `.claude/skills/<name>` copies.

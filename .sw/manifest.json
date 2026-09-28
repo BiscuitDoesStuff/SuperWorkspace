@@ -1,10 +1,10 @@
 {
   "kitVersion": "0.3.0-dev",
-  "kitCommit": "c5c4ef3d0d9ed607c71b35a6f2ebfb60e0d91e3d",
+  "kitCommit": "41bdd5ca69d5f49c60c76a6ac78e3960012002da",
   "files": {
     ".agents/skills/agent-documentation/SKILL.md": "1855622a3d1eddc9f427aad4ef6378a23d3758853e875d9a67bd321cb99176c7",
     ".agents/skills/focused-review/SKILL.md": "4ddbcc7733f930a328c5cdb41cf02f1709d5586c4a056ad77681c8d944c4a417",
-    ".agents/skills/free-models/SKILL.md": "bf9b27e3f08c64342f31e2dcceccd9539549d3395a545e7a59ea007e7b368ab2",
+    ".agents/skills/free-models/SKILL.md": "fa834a6b2d044d7fd68086efcb6193a76ac9f903853495b6d3fb169bea9e26df",
     ".agents/skills/minimal-change/SKILL.md": "6cf30971322cc3c9ca3dcba98001d4e2c766abd289478218f861a7c0840f7222",
     ".agents/skills/project-planning/SKILL.md": "52b7baf618bd7d77a72ef231fd8497bbfeae50d1bde43f9c991b9da380e0c226",
     ".agents/skills/research/SKILL.md": "f94d06cbb2bbc306a9f6938283bb0959d82e30dc8d151695369dca7baf436240",
@@ -31,8 +31,8 @@
     ".opencode/plugins/rtk.ts": "4341ea5357fe324bf5f8b82d2f06f89f9074f76812d812fa1db44f9d8cbbbc1f",
     ".sw/collaboration.md": "85c0722bbd9899299f8cfd5c70fb0310a8f16c8656e1fe0698700c3c6658d462",
     ".sw/comms/README.md": "ce988973da2e1fb9ecd2182afd05a64b8df0e5957cfdd173ad26aed9fe68da73",
-    ".sw/onboarding.md": "0bd03b75abe8af8913e43af8916fb64ed984c30e1f204c56b6fae17cf1d666b6",
-    ".sw/workspace.md": "330c6cf8d7989257dd516ffb356a1c33d04741e93db24884e5e7a26e20dcc0af",
+    ".sw/onboarding.md": "962b52c2ec9e7957441259c5ef84b2c14cb0a7a6ed0ac7a8734212b25e9a7cd6",
+    ".sw/workspace.md": "d79c09c11b58460c90e964b032d48329c0e2ef33fd83432d941f3c64eb5bdff2",
     ".github/ISSUE_TEMPLATE/bug.yml": "18c069bfada2a6dce08e0556aa208e15fca5deb482b05a36b1e0ec08cfaf0b23",
     ".github/ISSUE_TEMPLATE/config.yml": "1f103c6a9dd07cd13a9a6f17ace6b813f47747eb9cb7e00488cb2073caaf91bb",
     ".github/ISSUE_TEMPLATE/decision.yml": "8196b2852dcd751860543d375804ba9046bfd8b1112a0339f3a071ed969e78e0",
@@ -40,10 +40,10 @@
     ".github/labels.json": "f9724e7aebd543ba366844deb3c01e96a66f77af75dedd691df8926008050a81",
     ".github/PULL_REQUEST_TEMPLATE.md": "3a9da87f7a6a524d96282026bd140611c0898b1e09834c319861a93669508050",
     ".github/workflows/sw-validate.yml": "2e22e07b8677bb35694d484b062aef0c9cbd94000bf93ba29f0e63938945857b",
-    ".sw/roles.json": "7899406b14bf940d174575efbecf146c85f73789ab6e3487bf5ff3792665686c",
+    ".sw/roles.json": "69718041c669ac6d25b2bba4c49da7758f6b8bcfc15d58c566cb6c4cb322585a",
     ".sw/profile.json": "40409c166bf36cce15c3f5b2700d0c44cc40b4a0b342fbc79c9ee581f0396210",
-    ".sw/sw.ps1": "730214b94c759e4f8698f279d5924cdef008c9f2dd07aabbc382ee7819f39683",
-    ".sw/lib/Sw.Project.psm1": "70c408850ee35e70345ee64cfd7ba712cf9ea5403a9d8781146c5427a5cb2b94",
+    ".sw/sw.ps1": "a50689bed6da11cdb91f9847f0f83af4d5b0cf751b64fe912bbb9af79c948b11",
+    ".sw/lib/Sw.Project.psm1": "2019a440d129af7361483a89e911004b5ec38f0757c0a6c5ee21179af6a8b146",
     "opencode.jsonc": "af3ffe7ff3db6db4dc5ce2438a8033695b9859333f02fe3611d1039aa93a9d35"
   }
 }
