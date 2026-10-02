@@ -2,6 +2,18 @@
 
 ## 0.3.0-dev
 
+- **Changed (permissions):** git and `gh` shell rules are hardened against prefix bypasses.
+  - Each git deny or ask verb (push, reset --hard, clean, stash; commit) also matches:
+    - the global-flag form `git -* V *`;
+    - compound and runner forms `* git V *` and `* git -* V *` (`x && git push`, `rtk proxy git push`).
+  - `* gh *` deny, plus `gh *&*`, `gh *;*` and `gh *|*` denies after the gh read allows.
+  - Wrapper asks: `bash|sh *-c *git*`, `pwsh|powershell *git*`, `cmd */c *git*`, `*rtk run *git*`, and the pwsh/powershell encoded-command flags.
+  - `project-review` denies the compound and redirect operators (`& ; | > < $( `` ` ``) after its read allowlist.
+  - Rules starting with `*` or `rtk ` get no `rtk ` twin.
+  - New static matrix cases cover each form.
+  - Known false positives: text containing ` git push ` (for example a commit message) is denied, any `pwsh` call that mentions git asks, and `project-review` cannot pipe.
+  - Limits: wrappers behind a compound, `$(...)` and backticks in writer roles, and scripts written to a file are not caught; a shell rule stops the call, not its effect. Re-run `sw update`.
+- **Changed (model routing, breaking):** tiers are model-only. The Claude adapter no longer emits `effort:` (agents keep `model: opus`) and `validate` no longer checks it; `validate` now rejects `effort`, `reasoningEffort`, `reasoning_effort`, `variant` and `#variant` in agent and command files, `opencode.jsonc` and the local tier map `.opencode/opencode.jsonc`. `.sw/workspace.md` Model tiers gains three rules: pass `-m <tier model>` on `opencode run --agent` (OpenCode 2.0.20 `run` ignores agent models), parents do not pass `model` to the `subagent` tool, and a shell deny needs matching `write`/`edit` rules for file effects. `sw tiers` rejects a `#variant` suffix and the `free-models` skill no longer maps effort levels to tiers. Re-run `sw update`; `sw claude enable` regenerates the Claude agents.
 - **Changed (roster, breaking):** reduced to `project-leader`, `explore`, `project-review`, `project-research` and `project-developer` as the single executor.
   Removed `project-plan`, `project-architect`, `project-build`, `project-documentation` and `project-worker`; the Leader plans inline with `project-planning`, and `project-developer` also covers coordinated validation, Markdown docs and task records, and parallel work in an assigned worktree. `/validate` routes to `project-developer`. The removed worker's Git denies are kept as `ask` rules on `project-developer` (switch, checkout, merge, rebase, cherry-pick, branch, worktree), with a matching contract check.
 - **Fixed (docs):** `.sw/collaboration.md` said `sw user add <name>`; the command is `sw user <name>`.

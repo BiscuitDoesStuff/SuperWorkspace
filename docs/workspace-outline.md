@@ -168,19 +168,19 @@ publication, and to data handling.
 
 | Component | Decision | Evidence and limits |
 | --- | --- | --- |
-| Harness | **Open.** Owner criterion: Claude models usable in the same harness as every other model and role, not one harness for Claude and another for the rest. The owner wants more research before choosing. | E8 selects no harness. Claude Code and Codex declare per-agent model and effort (C222, C227); OpenCode passes effort to the provider (C225); Copilot has no effort field (C229). Each of Claude Code, OpenCode and Codex has a report of per-agent routing being ignored (C223, C226, C228). Native Windows isolation: see S4. E8 did not examine which harnesses run Claude models alongside other providers, or the provider terms for doing so. |
+| Harness | **Revised (owner, 2026-10-02; [decision](../.sw/comms/tasks/workspace-harness-decision/2026-10-02T213000Z-leader-decision-control-surface.md)): one control surface and one set of task records replace the one-harness criterion. Claude roles run in Claude Code on a subscription login (owner requirement; third-party subscription use barred, C093, C283); other roles run in OpenCode. Effort is not a requirement. Launcher not yet approved.** Earlier: chosen: OpenCode (owner, 2026-10-02, after the U3 hands-on check; [decision](../.sw/comms/tasks/workspace-harness-decision/2026-10-02T181644Z-leader-decision-u1-opencode.md)).** On the CLI path, only `-m` selects the primary model; the launcher must pass it. Kilo honours agent models but drops Workspace's V2 config without warning. Earlier: shortlisted (owner, 2026-10-02; E9, E10). Option 2: shortlist **OpenCode** and **Kilo**, then a hands-on check (U3) before choosing. Constraint: the harness must be free / open source, so Cursor, Factory Droid and GitHub Copilot CLI are out; Goose is excluded (models per recipe only, C270; thin evidence). OpenCode: per-agent Claude and non-Claude models (C225, C316); caveats: subagent model-override reports (C226, C319), plugins can defeat rules (C317), no OS isolation on Windows (C256). Kilo: sticky model per agent (C303); caveat: a parent can override the subagent model, fix closed not_planned (C304); Windows not inspected. Licences are not in the corpus: confirm from each repo's LICENSE. Claude still needs a subscription or API key; third-party subscription OAuth is unresolved (C283, C329), recheck at decision time. Owner criterion unchanged: Claude models usable in the same harness as every other model and role. | E8 selects no harness. Claude Code and Codex declare per-agent model and effort (C222, C227); OpenCode passes effort to the provider (C225); Copilot has no effort field (C229). Each of Claude Code, OpenCode and Codex has a report of per-agent routing being ignored (C223, C226, C228). Native Windows isolation: see S4. E8 did not examine which harnesses run Claude models alongside other providers, or the provider terms for doing so. |
 | Role roster | **Small.** The Leader works inline by default; core optional roles are a read-only explorer, an independent repository-exploring reviewer (S3) and one executor (merging developer, build, documentation and worker). Research is a profile role, enabled by a research profile (S1). Planning and architecture fold into the Leader. Implemented 2026-10-02 except the research profile role (generator refit). Delegate for context isolation or separable work, not by default. Worktrees are file isolation only: serialize writers or check intended changes before parallel writes. | C234 (declared); C235, C236, C243 (qualified, task-dependent, not compute-matched); C121 (replicated direction); C241, C242 (qualified; C242 a feasibility check). No roster-size study exists. |
-| Generator and layout | **Refit.** One source generates the core, profile and per-harness adapter files (S1 layers). The current SuperWorkspace layout gets no preference. | See S1 open points (C233). Skill and instruction locations differ per harness (E8 note on C067; C068, C146, C150). |
-| Tier rubric | Held with the harness; O9 stays the current control. Whatever routing is configured, verify model and effort per launch path from runtime logs (S4, U3). | C222 alias caveat (E8 review): a family alias can resolve to the main model. |
+| Generator and layout | **Refit.** Model-field part implemented and committed 2026-10-02 ([approval](../.sw/comms/tasks/workspace-harness-decision/2026-10-02T183500Z-leader-approval-generator-refit.md)): no effort output, `validate` rejects effort and `#variant`, launch rules in `.sw/workspace.md`. One source generates the core, profile and per-harness adapter files (S1 layers). The current SuperWorkspace layout gets no preference. | See S1 open points (C233). Skill and instruction locations differ per harness (E8 note on C067; C068, C146, C150). |
+| Tier rubric | **Model-only (owner, 2026-10-02; E9 Rec 2).** Tiers name a model, not a per-agent effort setting; Implemented by the generator refit (2026-10-02; committed). On OpenCode `run` only `-m` routes the primary model, so launches pass it. Whatever routing is configured, verify the model per launch path from runtime logs (S4, U3). | C222 alias caveat (E8 review): a family alias can resolve to the main model. Effort is dropped because neither shortlisted harness declares a usable per-agent effort field (OpenCode `#variant` mapping unstated, C316; Kilo not stated). |
 | Branching | Retained (O13). No inspected evidence bears on it, and global/session rules also impose it. | None in E4-E8. |
 
-**Open:** the harness choice (U1). Its research question was approved
-2026-10-02 as corpus Pass 9 (`harnesses-09`): harnesses that run Claude and
-non-Claude models side by side with per-agent model and effort routing, their
-Windows isolation, and the provider terms. The roster reduction was approved and
-implemented the same day ([task](../.sw/comms/tasks/workspace-roster-refit/));
-`project-research` becomes a profile role in the generator refit, which is
-approved and sequenced after the reviewed Pass 9 report.
+**Decided:** the harness (U1) is OpenCode for non-Claude roles and Claude Code for Claude roles under one control surface (revised 2026-10-02); OpenCode was chosen the hands-on check under U3
+([task](../.sw/comms/tasks/workspace-harness-decision/)). Corpus
+Passes 9 and 10 (E9, E10) closed the research; no harness was run hands-on. The
+roster reduction was approved and implemented the same day
+([task](../.sw/comms/tasks/workspace-roster-refit/)); `project-research`
+becomes a profile role in the generator refit, which emits model fields per
+harness and no effort fields; its scope awaits owner approval.
 
 ### S3 Review and acceptance tests
 
@@ -226,6 +226,14 @@ default (C256, qualified); Claude Code's sandbox needs WSL2 (C231). Of Claude
 Code, OpenCode and Codex, only Codex declares a native Windows sandbox (C231,
 C254); its unelevated fallback limits network only advisorily (C255). A source
 survey of 11 harnesses also finds Gemini CLI (C256, qualified).
+
+**Implemented (2026-10-02, committed; owner-approved "harden git rules"; runtime test deferred to workspace completion).**
+The generated shell rules now also catch the git/gh prefix bypasses found in the
+generator refit review: global flags (`git -C`), compounds, rtk runners, wrappers
+(as asks), and `project-review` operator chaining. Checked statically only (618
+matrix cases), not at runtime; see the [closure](../.sw/comms/tasks/workspace-harness-decision/2026-10-02T200000Z-leader-closure-git-hardening.md).
+The guardrail limit stands: `$(...)`, wrappers behind a compound and scripts
+written to a file still get through.
 
 **Limits.** No shared-attacker comparison of isolation and access control (C102
 gap). The hook test and the routing checks (S2 tier row) are runtime work under U3, each needing
@@ -276,9 +284,9 @@ model. No study of non-code profile skills.
 
 | ID | Unresolved assumption / decision | Source / limit | Resolution trigger |
 | --- | --- | --- | --- |
-| U1 | Whether to retain, refit or replace SuperWorkspace, OpenCode, the role roster, file layout, tier rubric or branching model. | Existing implementation plus D1/D2; no inspected comparative evidence establishes these as the best architecture. | Evidence-led design proposal and owner decision, not inheritance. **Partly resolved 2026-10-02 from E8 (S2):** small roster and generator refit decided (owner); tier rubric held with the harness and branching retained (owner-confirmed). **Still open:** the harness. Owner criterion: Claude models in the same harness as everything else; resolves after further research and an owner decision. |
+| U1 | Whether to retain, refit or replace SuperWorkspace, OpenCode, the role roster, file layout, tier rubric or branching model. | Existing implementation plus D1/D2; no inspected comparative evidence establishes these as the best architecture. | Evidence-led design proposal and owner decision, not inheritance. **Partly resolved 2026-10-02 from E8 (S2):** small roster and generator refit decided (owner); tier rubric held with the harness and branching retained (owner-confirmed). **Further resolved 2026-10-02 from E9 and E10 (S2):** option 2 chosen (owner): shortlist OpenCode and Kilo under a free / open-source constraint, then a hands-on check; tier rubric is model-only, no effort. **Harness resolved 2026-10-02:** OpenCode (owner), after the U3 hands-on check of OpenCode and Kilo ([decision](../.sw/comms/tasks/workspace-harness-decision/2026-10-02T181644Z-leader-decision-u1-opencode.md)). |
 | U2 | Intended workloads, data sensitivity, acceptance outcomes, cost/effort limits and target harnesses. | O1 is broad; no application workload was selected by this task. | Owner clarification when it materially affects a design choice; not a prerequisite to documenting research. |
-| U3 | Actual runtime loading, routing, enforcement and resume behavior. | Workspace setup was statically checked; doctor has a recorded launcher failure; local tiers are unconfigured. | Separately approved diagnosis/runtime checks. CLI repair is not a mandatory precursor to design work. |
+| U3 | Actual runtime loading, routing, enforcement and resume behavior. | Workspace setup was statically checked; doctor has a recorded launcher failure; local tiers are unconfigured. Routing and enforcement of OpenCode 2.0.20 and Kilo 7.8.3 were checked in scratch projects on 2026-10-02 ([task](../.sw/comms/tasks/workspace-harness-decision/)); loading and resume in Workspace itself remain unchecked. | Separately approved diagnosis/runtime checks. CLI repair is not a mandatory precursor to design work. |
 | U4 | Independent recovery baseline and migration/removal requirements. | Workspace has no commits; corpus same-disk backup is not independent recovery. Full lifecycle preservation has not been demonstrated. | Owner chooses recovery/migration scope; no automatic commit, backup, cleanup or removal. |
 | U5 | Complete updated design synthesis across the research corpus. | Earlier outline used an incomplete Pass 7 snapshot. This phase inventories rules and selected implications; it does not compare every design alternative or audit all originals. | A separately scoped synthesis/design task using current report/register/review evidence. In progress since 2026-10-02: S1-S6 recorded and owner-confirmed in section 5 (S2-S6 and the revised S1 open points from E8). |
 
@@ -294,7 +302,9 @@ relative to that corpus, not Workspace paths or redistributed evidence.
 | E6 | `docs/research/workspaces-06.md`, sections 2.1-2.6; later corrections are in `docs/research-claims.md` and the Pass 7 review. |
 | E7 | `docs/research/frontier-breadth-07.md`, sections 2.1-2.6; `.sw/comms/tasks/frontier-breadth-07/2026-10-01T185724Z-leader-review.md` and `2026-10-01T191500Z-leader-closure.md`. |
 | E8 | `docs/research/workspaces-08.md` at tag `archive/2026-10-02-workspaces-08` (commit `1fcbc0d`), sections 2.1-2.5 and 4 (analyst recommendations, not rules); review and closure in `.sw/comms/tasks/workspaces-08/2026-10-02T013000Z-leader-review.md` and `2026-10-02T014500Z-leader-closure.md`. |
-| Register | `docs/research-claims.md`; reviewed Pass 7 adds C163-C221 and reviewed Pass 8 adds C222-C262, each with dated notes on earlier claims. |
+| E9 | `docs/research/harnesses-09.md` at tag `archive/2026-10-02-harnesses-09` (commit `8aeae56`), section 3 options table and section 4 Recs 1-8; claims C263-C291. |
+| E10 | `docs/research/harnesses-10.md` at tag `archive/2026-10-02-harnesses-10` (commit `2ddc692`), section 3 options table and section 4 Recs 1-9; claims C292-C330. Summarized for the owner in `.sw/comms/tasks/workspace-harness-decision/2026-10-02T045723Z-leader-handoff.md`. |
+| Register | `docs/research-claims.md`; reviewed Pass 7 adds C163-C221, reviewed Pass 8 adds C222-C262, and Passes 9-10 add C263-C330, each with dated notes on earlier claims. |
 | Broader context | `docs/research/initial-pass-overview.md`, `cross-dossier-synthesis.md`, `ai-research-foundation.md`, `frontier-depth-03.md` and cumulative `ai-engineering-landscape.md`; earlier outline source map is historical navigation, not a refreshed synthesis of these files. |
 
 The [v0.2 reference](workspace-outline-v0.2.md) remains the historical outline
