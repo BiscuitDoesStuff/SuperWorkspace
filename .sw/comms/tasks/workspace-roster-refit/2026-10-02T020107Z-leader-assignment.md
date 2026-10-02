@@ -1,0 +1,34 @@
+# workspace-roster-refit - assignment - small roster (S2) - 2026-10-02T020107Z - leader
+
+- **Author / audience:** Project Leader (Claude Opus 5.5, Claude Code desktop); owner, executor and future sessions.
+- **Approval:** owner in session (2026-10-01 local).
+  - Asked to "separately scope the roster reduction and the generator refit", the owner answered "Approved for both".
+  - Follow-up answers:
+    - "Commit a baseline first": one local commit of the current tree on `main` before the refit.
+    - "Roster now, generator after Pass 9".
+    - Mapping: "4 core + research as profile role".
+  - The owner also confirmed S2-S6 in `docs/workspace-outline.md`.
+- **Scope / acceptance:**
+  - Target roster: `project-leader`, `explore` (built-in, read-only), `project-review` (read-only, repository-exploring reviewer per S3) and `project-developer` as the single executor.
+    - The executor takes over the build/validation duties of `project-build`, the Markdown/records duties of `project-documentation` and the parallel-worktree duties of `project-worker`.
+    - `project-plan` and `project-architect` fold into the Leader, which plans inline; the `project-planning` skill stays.
+  - Remove `project-plan`, `project-architect`, `project-build`, `project-documentation` and `project-worker` from:
+    - the generator sources (`project/roles.json`, `project/base/**`)
+    - the generator and contracts (`lib/Sw.Project.psm1`)
+    - the installed, generated files (`.opencode/**`, `.sw/**`, `opencode.jsonc`, `.sw/manifest.json`), produced through the generator's own update path rather than hand edits where it has one
+    - `CHANGELOG.md` (one entry)
+  - `/validate` routes to `project-developer`.
+  - `project-research` stays installed for now. Making it a research-profile role needs per-profile roles, which is generator-refit scope (after Pass 9). Record this in the register.
+  - Update the S2 roster row, O7 and O9 in `docs/workspace-outline.md`, and the state Startup, to match the implemented state.
+  - Acceptance:
+    - `pwsh -NoProfile -File .sw/sw.ps1 validate -CheckLinks` passes.
+    - The kit's own contract/test entry points, if any, pass, or the report names any pre-existing failure.
+    - No reference to a removed role remains outside history (`CHANGELOG.md` history, task records, v0.2 reference).
+    - `git diff --check` is clean against the baseline commit.
+- **Branch / base:** `main`. Baseline commit to be made first (owner-approved), staged by path. No push.
+- **Owners / dependencies:**
+  - Leader: baseline commit, register and state updates, validation owner.
+  - `project-developer` (dispatched): generator, sources, generated files and changelog.
+  - `project-review` (read-only): advisory review.
+  - Not in scope: the generator layering refit, harness or adapter changes, global settings, the external corpus, and further commits unless the owner asks.
+- **Next action:** baseline commit, then dispatch the executor.

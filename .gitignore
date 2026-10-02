@@ -1,0 +1,9 @@
+# sw:begin superworkspace
+.opencode/opencode.json
+.opencode/opencode.jsonc
+.claude/
+.sw/backup/
+.env
+.env.*
+!.env.example
+# sw:end superworkspace

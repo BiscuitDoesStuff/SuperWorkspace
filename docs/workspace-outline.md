@@ -1,0 +1,326 @@
+# Workspace design rules, assumptions and outline
+
+**Canonical project design register.** Owner requirements below are approved;
+architecture recommendations are provisional. Updated 2026-10-02 (UTC).
+
+## 1. Approved direction
+
+The owner clarified these requirements directly in the current session;
+[execution record](../.sw/comms/tasks/workspace-state-review/2026-10-01T222130Z-leader-assignment.md).
+
+| ID | Requirement | Authority and revision |
+| --- | --- | --- |
+| D1 | **Workspace must be based on the research in sibling `AI-Research [2]`.** Use its findings, current claims register, qualifications and corrections to inform design; do not retrofit findings around an assumed kit architecture. | Owner requirement. New evidence can revise recommendations; changing this requirement is an owner decision. |
+| D2 | **Everything in this project can be modified, overhauled or replaced based on new research/data.** This includes instructions, rules, assumptions, kit sources, generated files, roles, harness choices, architecture, layouts and tooling. Nothing is privileged merely because it already exists or is kit-managed. | Owner requirement. An approved change can retain, revise or replace any project component. This is changeability, not authorization to make every change now. |
+| D3 | **Document every identified rule or assumption that materially shapes Workspace, preferably here in one document.** Identify its source, status, limits and revision trigger; do not silently treat an inherited preference or uncertain inference as a requirement. | Owner requirement. Add newly identified shaping constraints here; the owner can revise the register or its organization. |
+
+These supersede the earlier outline's preserve-base design premise. Preservation
+within a bounded task protects unrelated work; it does not make any component
+permanent. The external research corpus is a source, not part of this project's
+changeable assets, and this task does not authorize editing or redistributing it.
+
+## 2. How to use this register
+
+- **Approved requirement (D):** directly specified by the owner above.
+- **Current control (O):** an operative project/harness rule or installed choice,
+  not necessarily a research-supported target design. Follow it until changed.
+- **Provisional proposal (P):** an evidence-informed interpretation, not adoption.
+- **Unresolved assumption (U):** missing evidence or a decision still required.
+- **Synthesis decision (S):** an owner-directed or owner-confirmed design decision from the U5
+  synthesis, with its evidence and open sub-points. It sets design direction;
+  it does not by itself authorize implementation.
+
+This is the single design-review view, not a second implementation of permission
+patterns or a task/status ledger. [AGENTS](../AGENTS.md) applies project policy;
+[state](workspace-state.md) owns implementation and authorization;
+[workspace guidance](../.sw/workspace.md), [collaboration](../.sw/collaboration.md)
+and the configuration linked below contain current operational detail.
+For each change, revise the relevant register entry and its actual controlling
+source together. No proposal, research update or recorded gap starts work by itself.
+
+Project-owned controls can be replaced through an approved scope. Global/session
+instructions and tool restrictions can also shape execution, but are outside this
+repository: changing a project document cannot override or bypass them. Where a
+control is enforced, a guardrail or merely stated, retain that distinction; static
+documentation does not prove runtime behavior.
+
+## 3. Current controls and inherited choices
+
+The inventory below covers the identified material shaping constraints. Exact
+permission cases and role procedures remain in the linked implementation; their
+presence is not evidence that this design is optimal.
+
+| ID / area | Current rule or assumption | Provenance, applicability and limits | Revision trigger / authority |
+| --- | --- | --- | --- |
+| O1 Purpose | Reusable, generic AI workspace for bounded project work. No particular application workload is selected. | Existing project brief and generic profile; a working scope, not a research-proven taxonomy or architecture. | Owner clarifies intended workloads; compare design against those needs. |
+| O2 Installed base | SuperWorkspace 0.3.0-dev; generic profile, solo `users: []`, GitHub tier 0; OpenCode default Leader. | [Config](../.sw/config.json), [manifest](../.sw/manifest.json), [OpenCode configuration](../opencode.jsonc). These describe installation, not target requirements. | Any separately approved refit can change or replace the base/profile/harness. |
+| O3 Generation | Kit sources currently live in `project/`, `lib/`, `global/` and `sw.ps1`; installed definitions are manifest-managed. Avoid silent competing copies while this generator is used. | [AGENTS](../AGENTS.md), manifest, workspace guidance. Source-generation consistency is conditional on retaining that mechanism. | Change upstream sources or explicitly migrate/replace the generator; no permanent kit-preservation rule. S2 sets the target (refit around S1 layers); this stays the current control until a scoped refit. |
+| O4 Context ownership | Read Startup, inspect Git and relevant files, reconcile authorization before meaningful work; load detail/skills on demand. State and task records have distinct owners. | AGENTS; [skills](../.agents/skills/); [commands](../.opencode/commands/). No demonstrated universal task-success gain from this file scheme. | Approved context/continuity changes, measured loading failures or representative-task evidence. |
+| O5 Scope and effects | Only approved work executes; a plan covers routine execution/checks/corrections, not new scope. No automatic installs, dependencies, external access or global configuration changes. | AGENTS and workspace guidance; this task authorizes documentation only. Research is advice, not permission. | Owner approves a bounded change and any consequential effects; global/session limits still apply. |
+| O6 Change method | Preserve unrelated/uncommitted work and working behavior; reuse first, smallest independently testable change; avoid speculative refactors. | AGENTS and `minimal-change` skill; an execution method, not a veto on an approved overhaul. | An approved replacement/refit defines broader scope, preservation/migration and acceptance. |
+| O7 Roles/access | Leader coordinates; nine installed project roles have assigned responsibilities, tool access and read-only/Markdown boundaries. Workers do not spawn teams; research dispatch is request-scoped. | [Agent definitions](../.opencode/agents/), [roles source](../project/roles.json), workspace guidance. Role count and names are inherited, not experimentally selected. | Owner-approved orchestration/access redesign; do not bypass current role restrictions meanwhile. S2 sets the target (small roster); the nine roles stay until a scoped change. |
+| O8 Coordination | Explicit task/checkout/path ownership, dependencies and acceptance; independent reads may overlap; writers serialize unless disjoint; parallel project-workers use assigned separate worktrees. One validation owner per checkout. | Agent definitions and workspace guidance. Child sessions do not isolate files. No fixed delegation requirement for every task. | Measured coordination need or failure; approved change must address shared-state/ownership risks. |
+| O9 Tiers/budgets | Project planning/execution lanes, escalation rubric, three-failure/new-evidence rule, quota stop, no mid-session model switch. Startup budget is 12,100 bytes. | Workspace guidance, config and global/session instructions. Local tiers are unconfigured; documented tiers do not prove actual child routing. Global harness guidance may add routing constraints. | Approved routing/budget change after task-level evidence; session-imposed limits require changes outside this repo. |
+| O10 Cost/data setup | Free-first; no metered spend without opt-in. Model mappings and credentials stay local; shared files avoid machine paths/provider pins. | Workspace guidance, validation contracts and global/session rules. These are current policy/portability choices, not evidence that cheapest-token models are best. | Owner-approved cost/data/portability policy; check actual terms and task-level effort first. |
+| O11 Runtime configuration | Current configuration enables compaction (50k recent-token preservation, 32k reserve), watcher exclusions, RTK rewriting and context7 MCP. No optional Claude adapter is configured. | OpenCode configuration and [plugin](../.opencode/plugins/rtk.ts). Settings/plugin presence does not establish savings, compatibility, effective loading or trust. | Evidence of task/context/tool failure or an approved harness/tool change; verify versions and destinations. |
+| O12 Safety | No credential probing or denied-action bypass. `.env` access prompts, per-role permissions and shell-pattern guardrails are distinct from isolation. Execution roles have host-user shell authority. | Agent frontmatter, workspace guidance and global/session controls. OpenCode has no configured sandbox; permission modes are not certified injection defences. | Approved threat-model/access/isolation change; project edits cannot disable external tool restrictions. |
+| O13 Git/publication | Current solo work is on `main`; team branches are owner-designated contributor branches. No task/automatic branches, force-push, hard reset, clean, stash or discarding work. Commit only on request; agents never push; human publication/integration. | AGENTS, collaboration, global/session rules; tier 0 GitHub access is read-only. No research selects this branch/publication model. | Owner-approved project workflow revision, while session publication/data-loss constraints still apply. |
+| O14 Records/review | Existing task events carry approval, progress, ownership and exact evidence; current append-only/author rules protect history. Resume reconciles records with Git. Planned review runs automatically and stays advisory. | Collaboration, agent definitions, task-handoff/review skills. Complete, committed and published are separate states. | Approved record/review migration can revise this mechanism; no silent history rewrite or duplicate memory ledger in the meantime. |
+| O15 Checks | Docs: `sw validate` and `git diff --check`; code: discover build/type check, targeted tests then suite, actual manual checks only when available. Static/discovery/permission evaluation/workflow/review evidence stays separate. | AGENTS generic profile and workspace verification ladder. Untracked Git diffs and known ordinary-project-doc coverage gaps need explicit checks. | Approved validation change or demonstrated coverage gap; report unavailable checks rather than claim them. |
+| O16 Optional capabilities | Other profiles, harness adapters, persistent memory, network exposure/connectors and remote setup are not enabled or authorized by their availability. | State, workspace guidance and inherited [remote-access procedure](remote-access.md). That procedure's target state is an optional kit example, not this project's adopted network design. | Concrete owner-selected need, permitted data and separately approved acceptance/security scope. |
+
+## 4. Evidence-informed proposals, not a selected architecture
+
+References E4-E8 name local corpus reports below; claim IDs resolve in its current
+`docs/research-claims.md`, including later corrections. These are bounded design
+interpretations. Neither research nor kit packaging selects an optimal Workspace.
+
+| ID / area | Provisional direction | Evidence and limitation | Reconsider when |
+| --- | --- | --- | --- |
+| P1 Context/prompting | Keep necessary authority/constraints discoverable; test task/model-specific guidance rather than presume longer files, personas or prompt rituals improve outcomes. | E5 C112-C115: Python-task context-file success nulls, conflicting cost effects, model-specific tuning. E6 C152/C160-C161 are qualified. E7 C186-C193 do not establish prompting effects on models released in 2026; C111 remains a gap. | Representative-task or newer controlled evidence changes the trade-off. |
+| P2 Orchestration | Choose inline/single-agent work or bounded delegation according to task decomposition and observed effort, not an obligatory roster or team framework. | E5 C089/C121: no general matched-compute multi-agent gain; task-dependent benefits remain. Spec-detail/workflow results C091/C153 are qualified, not a universal spec-first requirement. | A demonstrated coordination/decomposition need or matched-condition comparison. |
+| P3 Models/cost | Compare model, harness, effort and tools as a configuration; measure successful-task cost and human correction effort, not token price alone. | E7 C164/C167-C168: leakage, run variance and harness effects; C197-C198: effort/token use affect cost per task. C202: measured agent total cost beyond tokens remains a gap. Benchmark cost is not the owner's workload cost. | Actual workload, versions, pricing/terms or accepted budget changes. No provider/model chosen here. |
+| P4 Verification | Prefer executable outcome/constraint checks; record configuration and uncertainty. Validate any model judge against task-specific human labels and allow unknown results. | E7 C173-C185: criterion/dataset dependence and judge-specific biases; workspace/coding-trajectory judge efficacy C108 remains a gap. Small score gaps are not reliable single-run proof. | A chosen acceptance case or demonstrated need for a calibrated judge. No evaluation platform is adopted. |
+| P5 Memory | Keep authoritative state distinguishable from retrieval; compare simple files/retrieval/full context before adding a memory service. Define provenance, write authority and correction/expiry for any persistence. | E5/E6 C076-C079/C117-C119: poisoning, staleness, mixed superiority and write-cost trade-offs; coding-file-memory efficacy remains a gap. Some adaptive defences retain bypass; no general safety guarantee. | Demonstrated retrieval/update failure and a bounded comparison with simpler baselines. |
+| P6 Extensions/safety | Treat skills/plugins/MCP and supplied instructions as trust surfaces. Evaluate provenance, privileges, destinations, cost and recovery; don't mistake prompt rules for isolation. | E5/E6 C082/C088/C101-C102/C141-C156: differing risk measures and attacker positions; no approval-enabled skill exploit study or certified repository/tool-injection defence. Protocol portability is not compatibility certification. | Concrete missing capability or threat model, with approved harmless tests and controls. |
+| P7 Value | Evaluate accepted outcomes, quality, rework and sustained utility—not agent count, survey popularity or generated output alone. | E7 C205-C212: self-selected/vendor-recruited survey trends, not population estimates. C213-C221: short-run field output gains, unresolved persistence and mixed controlled findings; no universal productivity promise. | Owner selects intended outcomes and appropriate observation horizon. |
+| P8 Lifecycle/portability | Compare keeping, refitting and replacing components on evidence. Make preservation/recovery/loading tests proportionate to the chosen change. | E5/E6: differing harness loading/truncation semantics; C104 Windows reproducibility/removal remains a gap. Workspace manifest integrity does not establish whole-project recovery. | Approved lifecycle/harness change; source/adapter preservation is not an automatic preference. |
+
+## 5. Design synthesis (U5, in progress)
+
+Started 2026-10-02 (UTC) from the reviewed corpus: Passes 4-7 (E4-E7) and the
+current claims register, read at corpus commit `5780567`. The reviewed Pass 8
+report (E8; corpus tag `archive/2026-10-02-workspaces-08`, commit `1fcbc0d`) was
+taken in later the same day: it revises S1's open points and informs S2-S6.
+Its s4 maps findings to this register as recommendations. S1 and S2's harness,
+roster and generator rows record owner answers; S2's tier and branching rows and
+the S3-S6 contents were drafted by the Leader from E8 s4 and confirmed by the
+owner on 2026-10-02. Grades are as in the corpus register at that tag. Each entry is
+design direction; changing current controls (section 3) needs its own approved
+scope; [task record](../.sw/comms/tasks/workspace-design-synthesis/).
+
+### S1 Shared core plus per-project-type profiles
+
+**Decision.** Workspace is one shared core plus a profile per project type
+(coding and research are examples, not a fixed set). Source: the owner's stated
+use, "an all-purpose workspace, that can be heavily adapted to fit the specific
+project type" (corpus `.sw/comms/tasks/workspaces-08/2026-10-02T000100Z-leader-submission.md`),
+and the owner's direction to start U5 with this decision. This is a design
+direction, not research-proven superiority over alternatives.
+
+**Layering rule.** A profile adds or narrows; it never loosens core controls.
+Where layers conflict, the stricter rule applies to safety, approval, Git and
+publication, and to data handling.
+
+| Layer | Contents | Register links |
+| --- | --- | --- |
+| Core | Authority and approval; change method; Git and publication; task records and handoff; the shape of the validation contract (report exact checks, keep result kinds separate); safety and trust boundaries; cost/data portability policy. | O4-O6, O10, O12-O15; P6 |
+| Profile | Validation commands and acceptance outcomes; which skills, context and instructions load; which roles are used; data sensitivity; project-type checks and evaluation cases. | O1, O7, O15; P1, P4, P7; U2 |
+| Harness adapter (separate axis) | Per-harness loading files and settings. Not a profile: it varies by harness, not project type. | U1, O16, P8 |
+
+**Evidence and how it shapes S1** (grades as in the current register):
+
+- *Keep the core small; add profile guidance only for observed need.* Ordinary
+  context files gave no task-success gain on Python tasks (C112, replicated
+  direction, no non-Python study) and grow over a repository's life (C116,
+  qualified). Tuned guidance helped one model and hurt another (C114, qualified),
+  so profile guidance is per task and model and should be tested, not assumed.
+- *Expect compliance to fall over a session.* C115 and C160 (both qualified)
+  report declining instruction compliance as sessions lengthen. Hard core rules
+  should be enforced by hooks, permissions or validation where available, not
+  prose alone (E4 recommendation 3; the vendor advice in E4 s2.2 that
+  instruction files are context, not enforcement, is declared only; see S4).
+- *Layering semantics differ by harness.* Loading order, concatenation and
+  instruction and settings precedence vary (C068, C146, C150, all declared).
+  Truncation and silent drops exist (C147, C151, qualified), so each layer needs
+  a size budget and loading must be verified from logs, not model answers (C069
+  observed; C070 shows loading only; E4 recommendation 2). Cross-harness reading beyond AGENTS.md is declared, not
+  demonstrated (C067).
+- *Profiles do not imply more agents.* Role choice per profile follows P2: no
+  general matched-compute multi-agent gain (C121, replicated direction; C089
+  contradicted).
+- *Non-code profiles lack outcome evidence.* Skills and shared spaces are
+  spreading beyond code (E4 s2.7, declared), but whether knowledge workspaces
+  improve non-code outcomes is a gap.
+- *The workspace must supply the layering (E8).* No inspected harness documents
+  a project-template feature (C233, declared; no template feature found); only Codex has named profiles, as file
+  overlays; OpenCode and Claude Code layer by scope only (C233, declared). No
+  empirical study of layering was found.
+
+**Open points (revised 2026-10-02 with E8):**
+
+- *Layering mechanism: decided.* A refitted generator produces the layers (S2).
+  Inspected harnesses offer no templates, and only Codex has named profiles
+  (C233), so the workspace supplies the layering (E8 s4 rec. 7); plain files
+  would need hand-syncing per harness. Each layer's
+  output must still be mapped to each harness's precedence (C068, C146, C150).
+- *Size budgets and loading checks: partly settled.* Profile skills: one to
+  three short ones (S6). Core constraints that must survive compaction live in
+  files the harness re-injects (S5; C253). Numeric byte budgets per layer and
+  harness remain open until the harness is chosen (U1); loading is verified from
+  runtime logs, not model answers (S1 evidence above; C069), as a runtime check under U3.
+- *Which profiles first, and their acceptance outcomes:* still open (U2). Each
+  profile's acceptance cases follow S3.
+- *Generic profile and `.sw/profile.json`:* their mapping to S1 is part of the
+  S2 generator refit; that migration needs its own approved scope.
+
+### S2 U1 partial resolution: roster, generator, harness criterion
+
+| Component | Decision | Evidence and limits |
+| --- | --- | --- |
+| Harness | **Open.** Owner criterion: Claude models usable in the same harness as every other model and role, not one harness for Claude and another for the rest. The owner wants more research before choosing. | E8 selects no harness. Claude Code and Codex declare per-agent model and effort (C222, C227); OpenCode passes effort to the provider (C225); Copilot has no effort field (C229). Each of Claude Code, OpenCode and Codex has a report of per-agent routing being ignored (C223, C226, C228). Native Windows isolation: see S4. E8 did not examine which harnesses run Claude models alongside other providers, or the provider terms for doing so. |
+| Role roster | **Small.** The Leader works inline by default; core optional roles are a read-only explorer, an independent repository-exploring reviewer (S3) and one executor (merging developer, build, documentation and worker). Research is a profile role, enabled by a research profile (S1). Planning and architecture fold into the Leader. Delegate for context isolation or separable work, not by default. Worktrees are file isolation only: serialize writers or check intended changes before parallel writes. | C234 (declared); C235, C236, C243 (qualified, task-dependent, not compute-matched); C121 (replicated direction); C241, C242 (qualified; C242 a feasibility check). No roster-size study exists. |
+| Generator and layout | **Refit.** One source generates the core, profile and per-harness adapter files (S1 layers). The current SuperWorkspace layout gets no preference. | See S1 open points (C233). Skill and instruction locations differ per harness (E8 note on C067; C068, C146, C150). |
+| Tier rubric | Held with the harness; O9 stays the current control. Whatever routing is configured, verify model and effort per launch path from runtime logs (S4, U3). | C222 alias caveat (E8 review): a family alias can resolve to the main model. |
+| Branching | Retained (O13). No inspected evidence bears on it, and global/session rules also impose it. | None in E4-E8. |
+
+**Open:** the harness choice (U1). Its research question was approved
+2026-10-02 as corpus Pass 9 (`harnesses-09`): harnesses that run Claude and
+non-Claude models side by side with per-agent model and effort routing, their
+Windows isolation, and the provider terms. The roster reduction was approved the
+same day ([task](../.sw/comms/tasks/workspace-roster-refit/)); the generator
+refit is approved and sequenced after the reviewed Pass 9 report.
+
+### S3 Review and acceptance tests
+
+**Decision.** Use an independent review step for weaker executors and hard,
+non-local tasks, with a reviewer that explores the repository rather than
+reading only the diff. Budget its token cost and judge it by accepted outcomes,
+not review activity (P7). Test configuration changes (instructions, skills,
+roles, routing) like small evals: 10-50 cases from real failures (report s4 wording); deterministic
+outcome or trace checks first and LLM rubrics only for qualitative checks, with
+the judge calibrated (P4); negative controls for skill triggering; several
+isolated trials; graduated cases kept as a regression suite.
+
+**Evidence.** Review loops raised SWE-bench Verified resolve rates over
+no-review baselines, with gains shrinking as the generator strengthens and a
+reviewer stronger than every generator; about 4.5x zero-shot tokens in one
+study (C237, qualified, one benchmark lineage). Repository-exploring review beat
+diff-only review (C238, qualified). Agent PRs reviewed only by review agents
+merged less often than human-reviewed ones (C240, qualified, observational).
+The eval practice is vendor and practitioner guidance (C259-C262, declared);
+run variance is measured (C167).
+
+**Limits.** No equal-compute baseline for review loops. Whether such suites
+catch configuration regressions is unmeasured (C108 gap). This revises O14's
+"planned review runs automatically" only once an approved change says so.
+
+### S4 Enforcement and isolation
+
+**Decision.** Hard core rules go in enforced controls (settings, deny rules,
+permissions, sandboxes) where the harness has them, not in prose. On Windows,
+a hook is not a path boundary until a local acceptance test shows a denied write
+is blocked. Shell-pattern denylists are guardrails, not isolation. Plugin-carried
+agents do not carry enforcement. Native Windows OS isolation is a comparison
+factor for the harness research question (S2 Open), not an owner criterion.
+
+**Evidence.** Vendors declare instruction files advisory and settings, deny
+rules, hooks or sandboxes enforced (C230, declared). One Windows desktop report
+measured a PreToolUse hook exiting 2 while a subagent write still happened
+(C258, qualified, one report, not vendor-confirmed). Denylists were bypassable
+in 69.0-98.6% of cases by bypass class (C257, qualified, secondary relay).
+Claude Code plugin subagents ignore hooks, mcpServers and permissionMode (C224,
+declared). OpenCode ships no OS isolation and allows all in-project actions by
+default (C256, qualified); Claude Code's sandbox needs WSL2 (C231). Of Claude
+Code, OpenCode and Codex, only Codex declares a native Windows sandbox (C231,
+C254); its unelevated fallback limits network only advisorily (C255). A source
+survey of 11 harnesses also finds Gemini CLI (C256, qualified).
+
+**Limits.** No shared-attacker comparison of isolation and access control (C102
+gap). The hook test and the routing checks (S2 tier row) are runtime work under U3, each needing
+its own approval.
+
+### S5 Continuity and compaction
+
+**Decision.** Constraints that must survive compaction live in files the
+harness re-injects (its root instruction file) or in task records, not only in
+conversation. Keep the task-record, progress and Git pattern. Measure
+continuity changes by interaction cost as well as completion. No memory service
+is added (P5 stands).
+
+**Evidence.** Compactors kept 17% of conversation-only constraints on average
+(C251, qualified; not a shipped harness). Claude Code re-reads project-root
+CLAUDE.md after compaction while conversation-only instructions can be lost
+(C253, declared). Anthropic's long-running pattern of progress file, JSON
+feature list and Git matches the existing records (C250, declared, one demo).
+Compression raised interaction cost while completion stayed unchanged (C252,
+qualified). No memory substrate dominates (C078 stays contradicted).
+
+**Limits.** No controlled evidence that task records or handoffs improve
+continuity (C079 gap). Re-injection is documented here for Claude Code only;
+Codex and OpenCode compaction docs were not inspected, and retention in a
+shipped harness is untested.
+
+### S6 Skills curation
+
+**Decision.** Each profile gets one to three short, human-curated skills. No
+auto-generated skills and no exhaustive procedure. Each skill is tested with
+paired with/without runs on the profile's acceptance cases, including negative
+trigger controls (S3). The generator emits skills to each harness's location
+(S2).
+
+**Evidence.** Curated skills raised mean pass rates across 18 model-harness
+configurations (C244, qualified). One to three compact skills did better than
+four or more or comprehensive docs; self-generated skills fell below the
+no-skills baseline (C247, qualified). Excess procedure caused most efficiency
+regressions (C248, qualified). Some skills lower success (C246, replicated
+direction); the software-engineering gain is contested in magnitude (C245,
+contradicted); token overhead ranged up to +451% (C249, qualified). Skill
+directories differ per harness (E8 note on C067).
+
+**Limits.** Mostly one benchmark family; the contrary SWE result used one small
+model. No study of non-code profile skills.
+
+## 6. Assumptions and decisions still open
+
+| ID | Unresolved assumption / decision | Source / limit | Resolution trigger |
+| --- | --- | --- | --- |
+| U1 | Whether to retain, refit or replace SuperWorkspace, OpenCode, the role roster, file layout, tier rubric or branching model. | Existing implementation plus D1/D2; no inspected comparative evidence establishes these as the best architecture. | Evidence-led design proposal and owner decision, not inheritance. **Partly resolved 2026-10-02 from E8 (S2):** small roster and generator refit decided (owner); tier rubric held with the harness and branching retained (owner-confirmed). **Still open:** the harness. Owner criterion: Claude models in the same harness as everything else; resolves after further research and an owner decision. |
+| U2 | Intended workloads, data sensitivity, acceptance outcomes, cost/effort limits and target harnesses. | O1 is broad; no application workload was selected by this task. | Owner clarification when it materially affects a design choice; not a prerequisite to documenting research. |
+| U3 | Actual runtime loading, routing, enforcement and resume behavior. | Workspace setup was statically checked; doctor has a recorded launcher failure; local tiers are unconfigured. | Separately approved diagnosis/runtime checks. CLI repair is not a mandatory precursor to design work. |
+| U4 | Independent recovery baseline and migration/removal requirements. | Workspace has no commits; corpus same-disk backup is not independent recovery. Full lifecycle preservation has not been demonstrated. | Owner chooses recovery/migration scope; no automatic commit, backup, cleanup or removal. |
+| U5 | Complete updated design synthesis across the research corpus. | Earlier outline used an incomplete Pass 7 snapshot. This phase inventories rules and selected implications; it does not compare every design alternative or audit all originals. | A separately scoped synthesis/design task using current report/register/review evidence. In progress since 2026-10-02: S1-S6 recorded and owner-confirmed in section 5 (S2-S6 and the revised S1 open points from E8). |
+
+## 7. Research provenance and freshness
+
+**Source:** sibling `AI-Research [2]`, read-only in this task. Locators below are
+relative to that corpus, not Workspace paths or redistributed evidence.
+
+| Ref | Corpus-relative source |
+| --- | --- |
+| E4 | `docs/research/workspaces-04.md`, sections 2.1-2.11 and 4 (analyst recommendations, not rules); reviewed and closed in `.sw/comms/tasks/workspaces-04/`. |
+| E5 | `docs/research/workspaces-05.md`, especially sections 2.1-2.7; use current claims-register notes rather than frozen grades alone. |
+| E6 | `docs/research/workspaces-06.md`, sections 2.1-2.6; later corrections are in `docs/research-claims.md` and the Pass 7 review. |
+| E7 | `docs/research/frontier-breadth-07.md`, sections 2.1-2.6; `.sw/comms/tasks/frontier-breadth-07/2026-10-01T185724Z-leader-review.md` and `2026-10-01T191500Z-leader-closure.md`. |
+| E8 | `docs/research/workspaces-08.md` at tag `archive/2026-10-02-workspaces-08` (commit `1fcbc0d`), sections 2.1-2.5 and 4 (analyst recommendations, not rules); review and closure in `.sw/comms/tasks/workspaces-08/2026-10-02T013000Z-leader-review.md` and `2026-10-02T014500Z-leader-closure.md`. |
+| Register | `docs/research-claims.md`; reviewed Pass 7 adds C163-C221 and reviewed Pass 8 adds C222-C262, each with dated notes on earlier claims. |
+| Broader context | `docs/research/initial-pass-overview.md`, `cross-dossier-synthesis.md`, `ai-research-foundation.md`, `frontier-depth-03.md` and cumulative `ai-engineering-landscape.md`; earlier outline source map is historical navigation, not a refreshed synthesis of these files. |
+
+The [v0.2 reference](workspace-outline-v0.2.md) remains the historical outline
+authored from the 08:50:45 UTC snapshot and 09:03 UTC recheck on 2026-10-01.
+Its preliminary Pass 7 status and preserve-base premise are not current design
+authority. The corpus now records reviewed closure at **19:15 UTC**, including
+corrections narrowing C173 and qualifying C190. The frozen report's pending-review
+header is stale; the review/closure and current register govern that status.
+
+This documentation phase read local reports and review/closure records, not all
+original studies or private ModelAnalysis inputs. It ran no new research, source
+audit, corpus integrity checks or Workspace runtime tests. Corpus reported checks
+are not checks performed here. Independent review did not read every source;
+prices C194-C195 remain unchecked by that review, and several dates/published
+versions and manifest locators remain unresolved. Older archive/review limits
+are retained in the historical reference and current corpus records, not certified
+away by this document. Evidence remains local-only/no-redistribution.
+
+## 8. Next action and change discipline
+
+The three owner requirements are now the design direction. Current controls are
+visible and revisable; provisional implications and unresolved choices are not
+implementation approval. No compulsory keep-kit/readiness/expansion sequence is
+adopted. Any next task needs its own outcome, scope, ownership and acceptance.
+
+When evidence or owner direction changes a shaping rule/assumption, update its
+entry, explain what it supersedes, and align the actual controlling files within
+the approved scope. Keep historical evidence distinguishable from current policy.
+For the design synthesis (section 5), assess retain/refit/replace on equal footing rather
+than requiring changes to preserve the inherited kit.
