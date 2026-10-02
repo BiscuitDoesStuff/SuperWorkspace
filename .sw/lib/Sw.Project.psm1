@@ -208,7 +208,7 @@ function Get-SwClaudeGhDeny([int]$Tier) {
 $script:Skills = @('agent-documentation', 'focused-review', 'free-models', 'minimal-change', 'project-planning',
     'research', 'structured-debugging', 'task-handoff')
 $script:Routes = [ordered]@{ work = 'project-leader'; resume = 'project-leader'; 'workspace-check' = 'project-leader';
-    handoff = 'project-leader'; inbox = 'project-leader'; validate = 'project-build'; review = 'project-review';
+    handoff = 'project-leader'; inbox = 'project-leader'; validate = 'project-developer'; review = 'project-review';
     status = 'project-review'; research = 'project-research' }
 $script:ClaudeEffort = @{ light = 'low'; standard = 'medium'; high = 'xhigh' }
 $script:MojibakePattern = ([char]0x00E2 + [char]0x20AC) + '|' + ([char]0x00C3 + [char]0x00E9) + '|' + ([char]0x00C2 + [char]0x00A0)
@@ -376,7 +376,6 @@ function Test-SwProject {
             Require (-not (Test-Path -LiteralPath (Join-Path $Root ".opencode/skills/$name/SKILL.md"))) "Kit skill '$name' also exists under .opencode/skills/$name, which shadows the kit copy in OpenCode; move the edit into .agents/skills/$name or delete it"
         }
         Require ($agents['project-leader']['mode'] -ceq 'primary') 'project-leader must be primary'
-        Require ($agents['project-worker']['mode'] -ceq 'subagent') 'project-worker must be subagent (Leader-dispatched only)'
         foreach ($name in $commands.Keys) { Require ($agents.ContainsKey([string]$commands[$name]['agent'])) "Command $name references missing agent: $($commands[$name]['agent'])" }
         foreach ($name in $script:Routes.Keys) {
             Require ($commands.ContainsKey($name) -and $commands[$name]['agent'] -ceq $script:Routes[$name]) "Command $name must route to $($script:Routes[$name])"
@@ -483,7 +482,7 @@ function Test-SwProject {
                 Expect $policy $name shell 'gh pr create --title probe' deny
             }
             if ($access -eq 'markdown') { Expect $policy $name edit 'docs/probe.md' allow; Expect $policy $name edit 'src/probe.c' deny }
-            if ($access -eq 'worker') { foreach ($c in 'git switch main', 'git checkout main', 'git merge main', 'git rebase main', 'git cherry-pick HEAD', 'git branch probe', 'git worktree add probe') { Expect $policy $name shell $c deny } }
+            if ($name -eq 'project-developer') { foreach ($c in 'git switch main', 'git checkout main', 'git merge main', 'git rebase main', 'git cherry-pick HEAD', 'git branch probe', 'git worktree add probe') { Expect $policy $name shell $c ask } }
         }
 
         # Claude adapter drift (only when the local adapter has been generated).
@@ -605,7 +604,7 @@ and follow its body; ``.sw/workspace.md`` owns orchestration. Claude adaptation:
 - Only this session spawns agents. Subagents cannot delegate or ask the user.
 - Skills: the Skill tool, or Read ``.claude/skills/<name>/SKILL.md``.
 - Commands pinned ``subagent: false`` run here; ``/validate`` applies the
-  ``project-build`` contract inline. $dispatchLine
+  ``project-developer`` contract inline. $dispatchLine
 - GitHub tier $tier (see ``.sw/workspace.md``). Never push, merge, or release.
 "@ + "`n").Replace("`r`n", "`n")
     $deny = @('Bash(git push:*)', 'Bash(git reset --hard:*)', 'Bash(git clean:*)', 'Bash(git stash:*)') + @(Get-SwClaudeGhDeny $tier) +

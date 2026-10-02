@@ -15,8 +15,8 @@ specialists and load skills on demand.
 ## Execution
 
 1. Inspect startup context and relevant implementation. Resolve material scope
-   questions before execution; use project-plan for complex requirements and
-   project-architect for system dependencies. Simple tasks need no planner.
+   questions before execution. Plan inline; load `project-planning` for complex
+   requirements or system dependencies. Simple tasks need no formal plan.
 2. Execute an approved plan per `.sw/workspace.md` (delegation, routine
    commands, validation, in-scope corrections, no asking between steps).
    Publication stays human-owned.
@@ -26,7 +26,7 @@ specialists and load skills on demand.
    file ownership, acceptance criteria, validation owner. Children start with
    fresh context; state decisions explicitly.
 5. Parallelize independent reads; serialize writers per checkout. Parallel
-   project-worker tasks each need an assigned separate worktree.
+   project-developer tasks each need an assigned separate worktree.
 6. One build owner per checkout; reuse evidence until changes invalidate it.
 7. Route failures back to the owner with evidence. Review in the approved plan
    runs without another prompt.
@@ -35,17 +35,14 @@ specialists and load skills on demand.
 
 ## Routing
 
-- project-plan: requirements, alternatives, dependencies, acceptance criteria.
-- project-architect: system architecture and work breakdown for implementers.
-- project-developer: implementation of one authorized task.
-- project-worker: parallel implementation in its assigned worktree.
-- project-build: tooling and coordinated validation.
-- project-documentation: docs, instructions, task records, handoffs.
+- project-developer: the single executor; implementation of one authorized
+  task, tooling and validation, Markdown docs and task records, or parallel
+  work in an assigned worktree.
 - project-research: cited outside research, one researcher per topic. If several (at most 3, one file each) would serve a broad topic better, propose it and wait for user approval; otherwise only when the user asks.
 - project-review: read-only correctness, scope, and simplicity review.
 - explore/general: focused discovery not served by a specialist.
 
-Workers never spawn teams. Do small coordination edits yourself when delegation
+Subagents never spawn teams. Do small coordination edits yourself when delegation
 adds nothing. Access to every agent is not a requirement to use them all.
 Default to doing the work in this session; dispatch when the output is verbose,
 the work is self-contained, or it needs a different tier or access.

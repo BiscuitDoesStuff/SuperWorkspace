@@ -31,17 +31,12 @@ Keep required startup reading small: this map is read on demand.
 | ID | Mode | Tier | Responsibility |
 | --- | --- | --- | --- |
 | project-leader | primary | session | Approved outcome, direct dispatch, queue, completion |
-| project-plan | all | standard | Read-only requirements, alternatives, acceptance criteria |
-| project-architect | all | standard | Read-only architecture and work breakdown |
-| project-developer | all | light | Authorized implementation; may work solo |
-| project-worker | subagent | light | Leader-dispatched parallel work in an assigned worktree |
-| project-build | all | light | Tooling and coordinated validation |
-| project-documentation | all | light | Markdown, factual docs, skills, task records |
+| project-developer | all | light | Single executor: implementation, tooling and coordinated validation, Markdown docs and task records, parallel work in an assigned worktree |
 | project-research | all | standard | Primary-source research, cited Markdown findings |
 | project-review | all | standard | Read-only correctness, scope, simplicity findings |
 | explore (built-in) | subagent | light | Focused discovery |
 
-The Leader dispatches directly; workers never launch teams. Built-in `build`
+The Leader plans inline and dispatches directly; subagents never launch teams. Built-in `build`
 may dispatch the specialists plus `general` and `explore` when a user selects
 it; that is not permission for recursive delegation.
 
@@ -145,16 +140,16 @@ standard, high); the Leader inherits the session model.
 
 ### Routing
 
-Two lanes: Planning (plan, architect, research, review, the Leader's own
-planning) and Execution (developer, worker, build, documentation). Execution
+Two lanes: Planning (research, review, the Leader's own
+planning) and Execution (developer). Execution
 follows a strict written plan; no plan, Planning first. Execution defaults to
 light; escalate to standard only after one failed light attempt, or when the
 plan flags a step needing judgment (concurrency, shared state). Not high:
-oversized work goes back to the planner to be chunked, unless the Leader
+oversized work goes back to the Leader to be chunked, unless the Leader
 suggests high and the user approves, or the user runs it themselves. Executor tier stays
-at or below the planner's, usually one lower (high -> standard, standard ->
+at or below the plan's tier, usually one lower (high -> standard, standard ->
 light, light -> light). On failure: Planning escalates one tier; Execution
-escalates once, then returns to the planner; the three-failed-attempts rule
+escalates once, then returns to the Leader; the three-failed-attempts rule
 still applies. Rubric (the agent classifies the task; the local tier map
 picks the model): light = verify, reconcile records with Git, record
 decisions, hand over commands, review one change; standard = a multi-step

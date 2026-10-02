@@ -2,6 +2,8 @@
 
 ## 0.3.0-dev
 
+- **Changed (roster, breaking):** reduced to `project-leader`, `explore`, `project-review`, `project-research` and `project-developer` as the single executor.
+  Removed `project-plan`, `project-architect`, `project-build`, `project-documentation` and `project-worker`; the Leader plans inline with `project-planning`, and `project-developer` also covers coordinated validation, Markdown docs and task records, and parallel work in an assigned worktree. `/validate` routes to `project-developer`. The removed worker's Git denies are kept as `ask` rules on `project-developer` (switch, checkout, merge, rebase, cherry-pick, branch, worktree), with a matching contract check.
 - **Fixed (docs):** `.sw/collaboration.md` said `sw user add <name>`; the command is `sw user <name>`.
 - **Changed (routing):** executors do not run at high unless the Leader suggests it and the user approves, or the user runs the work themselves.
 - **Changed (model routing, Phase 1 package 8, breaking):** tiers renamed

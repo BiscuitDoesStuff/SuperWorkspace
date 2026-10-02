@@ -575,32 +575,7 @@
         },
         {
           "action": "subagent",
-          "resource": "project-plan",
-          "effect": "allow"
-        },
-        {
-          "action": "subagent",
-          "resource": "project-architect",
-          "effect": "allow"
-        },
-        {
-          "action": "subagent",
           "resource": "project-developer",
-          "effect": "allow"
-        },
-        {
-          "action": "subagent",
-          "resource": "project-worker",
-          "effect": "allow"
-        },
-        {
-          "action": "subagent",
-          "resource": "project-build",
-          "effect": "allow"
-        },
-        {
-          "action": "subagent",
-          "resource": "project-documentation",
           "effect": "allow"
         },
         {

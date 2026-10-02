@@ -6,13 +6,13 @@
   SuperWorkspace is the inherited installation, not a required target design.
   Every project component, including rules and tooling, is reconsiderable.
 - **Implemented:** base initialized with the generic profile, GitHub tier 0,
-  solo configuration (`users: []`), and local Git on `main` with no commits.
+  solo configuration (`users: []`), and local Git on `main` (baseline commit 05df1c0, 2026-10-02).
   Agent, command, skill, lifecycle, and GitHub template files are installed.
 - **Authorized task:** [workspace-design-synthesis](../.sw/comms/tasks/workspace-design-synthesis/)
   (docs-only U5 synthesis; S1-S6 recorded from the reviewed corpus Pass 8 report
   and owner-confirmed; U1 partly resolved: small roster and generator refit decided,
   harness open pending corpus Pass 9 `harnesses-09`). Approved 2026-10-02:
-  [workspace-roster-refit](../.sw/comms/tasks/workspace-roster-refit/) (in progress);
+  [workspace-roster-refit](../.sw/comms/tasks/workspace-roster-refit/) (implemented, uncommitted; baseline commit 05df1c0);
   the generator refit follows the reviewed Pass 9 report.
 - **Completed tasks:** documentation-only clarification of research authority,
   full project changeability and one rules/assumptions register; [record](../.sw/comms/tasks/workspace-state-review/2026-10-01T223454Z-leader-submission.md).
@@ -27,11 +27,12 @@
   requirements, current operational constraints, proposals and unknowns.
   [v0.2](workspace-outline-v0.2.md) remains a dated reference; its preliminary
   Pass 7 cutoff is stale. The updated design synthesis (U5) is in progress
-  from reviewed Passes 4-8; S1-S6 are recorded as design direction, not implemented.
+  from reviewed Passes 4-8; S1-S6 are recorded; S2's roster is implemented except the research profile role.
 - **Execution boundaries:** current controls still apply until an approved change
-  revises them; they are not permanent design requirements. This docs-only phase
-  leaves operational files and the external corpus unchanged. No installs,
-  global settings changes, commits, pushes, remotes or adapters are authorized.
+  revises them; they are not permanent design requirements. The roster refit
+  changed kit sources and generated files only; the external corpus is unchanged.
+  The owner-approved baseline commit is the only commit. No installs, global
+  settings changes, further commits, pushes, remotes or adapters are authorized.
   Local model tiers are not configured; runtime behavior remains unverified.
 
 ## Reading map

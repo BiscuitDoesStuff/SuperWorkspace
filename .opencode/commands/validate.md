@@ -1,6 +1,6 @@
 ---
 description: Run the profile builds, tests, and diff checks for the current change
-agent: project-build
+agent: project-developer
 subagent: false
 ---
 
