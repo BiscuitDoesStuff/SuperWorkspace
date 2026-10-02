@@ -4,16 +4,16 @@
   "files": {
     ".agents/skills/agent-documentation/SKILL.md": "1855622a3d1eddc9f427aad4ef6378a23d3758853e875d9a67bd321cb99176c7",
     ".agents/skills/focused-review/SKILL.md": "4ddbcc7733f930a328c5cdb41cf02f1709d5586c4a056ad77681c8d944c4a417",
-    ".agents/skills/free-models/SKILL.md": "fa834a6b2d044d7fd68086efcb6193a76ac9f903853495b6d3fb169bea9e26df",
+    ".agents/skills/free-models/SKILL.md": "eaf0dd386f4a40852aab70e64844d8ec8f6b994ca08a36c966bc8b5c449c4cd7",
     ".agents/skills/minimal-change/SKILL.md": "6cf30971322cc3c9ca3dcba98001d4e2c766abd289478218f861a7c0840f7222",
     ".agents/skills/project-planning/SKILL.md": "52b7baf618bd7d77a72ef231fd8497bbfeae50d1bde43f9c991b9da380e0c226",
     ".agents/skills/research/SKILL.md": "f94d06cbb2bbc306a9f6938283bb0959d82e30dc8d151695369dca7baf436240",
     ".agents/skills/structured-debugging/SKILL.md": "db45f01c6416b6039c1da5c6e34ba4a69c3a34c3e2c3cde302fa3555f2d37dca",
     ".agents/skills/task-handoff/SKILL.md": "8cdb4832d33ec602e28846f68e8cd11caebbb46b4516b7237af05b74f3837f8c",
-    ".opencode/agents/project-developer.md": "b77bd600307902e6c51f54ea2a144f9175594391870c26007b7f64ae340d3489",
-    ".opencode/agents/project-leader.md": "542a5ad8f9d663d9b6ba382fbc976ff5eea3b386e55ac7b94cb380d7d6d100eb",
-    ".opencode/agents/project-research.md": "012bdf499813e8ecaed2bcb2659696a6fed30be7c49d7208d5cfb2176e7eec4f",
-    ".opencode/agents/project-review.md": "a4af2c470d6c76dfe9ba2c3b33dd19b9d06c44a46d72ea9024b2e8830b68b7b3",
+    ".opencode/agents/project-developer.md": "740aa89037198a994e35d73efad30c586218ae829cecb443c7a94260765c6a0f",
+    ".opencode/agents/project-leader.md": "65b5406964cfd1da7aa995b319761d22a8bc4e78c380e484c2a557fd96f9cea1",
+    ".opencode/agents/project-research.md": "c3e8ec2dae72b80793b9caf47e122a62bd7540cbe185a6e51751ee2b397431b5",
+    ".opencode/agents/project-review.md": "dba002da2d54236f5769d57e13459660d45b2385df5cdb79e286e480d692b001",
     ".opencode/commands/handoff.md": "81b8806335104c6f348f132b448609e8003205c2a948e4b199b531fb0745934c",
     ".opencode/commands/inbox.md": "25e1f822aa63212f4ce5a2498374c7d050b5011453fc20e960794463b107a0da",
     ".opencode/commands/research.md": "a3e61784cd8fd72fb6fc214448c1189ca9d64144642788e5ff62e2bedae9dbbd",
@@ -27,7 +27,7 @@
     ".sw/collaboration.md": "0a4df7af6c183ee5d4b77ad61325b3c62a366519b74ed2fb681e43ca34588b14",
     ".sw/comms/README.md": "ce988973da2e1fb9ecd2182afd05a64b8df0e5957cfdd173ad26aed9fe68da73",
     ".sw/onboarding.md": "962b52c2ec9e7957441259c5ef84b2c14cb0a7a6ed0ac7a8734212b25e9a7cd6",
-    ".sw/workspace.md": "87d3d01c85b5f5d4f8a1c41203444058a8072c6b22375bd398dd27630b1d8878",
+    ".sw/workspace.md": "318d51d0204648fb0d243b807526685ea18fbe96f2433f2d5b53fcbfc3d9154c",
     ".github/ISSUE_TEMPLATE/bug.yml": "18c069bfada2a6dce08e0556aa208e15fca5deb482b05a36b1e0ec08cfaf0b23",
     ".github/ISSUE_TEMPLATE/config.yml": "1f103c6a9dd07cd13a9a6f17ace6b813f47747eb9cb7e00488cb2073caaf91bb",
     ".github/ISSUE_TEMPLATE/decision.yml": "8196b2852dcd751860543d375804ba9046bfd8b1112a0339f3a071ed969e78e0",
@@ -38,7 +38,7 @@
     ".sw/roles.json": "11c91e776b9526e7c02084bfac15956d0ea3d19e6d456954de9612d958bb6bf2",
     ".sw/profile.json": "40409c166bf36cce15c3f5b2700d0c44cc40b4a0b342fbc79c9ee581f0396210",
     ".sw/sw.ps1": "a50689bed6da11cdb91f9847f0f83af4d5b0cf751b64fe912bbb9af79c948b11",
-    ".sw/lib/Sw.Project.psm1": "bf7e1cda6cb105baf200fcb2bf7cd57cfeb634c73f70f21cfe668854a89e3863",
-    "opencode.jsonc": "e49d6e782e516a5025353f10e78f063d4212605308de1b4afca91b2673be153a"
+    ".sw/lib/Sw.Project.psm1": "f4fca0c3b25844072793a8c1ce346085a40a81ae4ff30bf7196100a7b42c3348",
+    "opencode.jsonc": "546e38f7a98fe20942dc6c1e26aeb3e2f4062eae7c0fc9d5d4c932d83f5daa21"
   }
 }

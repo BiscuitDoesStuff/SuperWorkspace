@@ -21,9 +21,8 @@ or an old note.
 3. Read each candidate's data-use terms on the provider page. Some free
    endpoints log prompts or train on them; get explicit user consent before
    routing real work to one.
-4. Read the effort levels (variants) the client exposes for that exact ID.
-   Configure only levels observed there; a level named in vendor docs may be
-   rejected on a free tier.
+4. Tiers are model-only: pick a model ID, never an effort level or variant
+   (`sw validate` rejects `effort`, `variant` and `#variant` in tier config).
 5. Match IDs character-for-character, including `-free` suffixes.
 
 ## Hard constraints
@@ -45,27 +44,28 @@ or an old note.
 Role-to-tier membership lives only in `.sw/workspace.md` (Model tiers). A
 blank tier inherits the session model unless a local override selects one.
 Map tiers with `sw tiers -Light <id> -Standard <id> -High <id>`, or by
-hand in the git-ignored `.opencode/opencode.jsonc`. An ID may carry an effort
-variant (`-High opencode/<id>#high`); `sw tiers` writes it as given.
+hand in the git-ignored `.opencode/opencode.jsonc`. IDs are plain
+`provider/model`; `sw tiers` rejects a `#variant` suffix. On `opencode run`,
+pass the tier model with `-m` (`.sw/workspace.md` Model tiers).
 
 Fit by behavior verified above, never by name alone:
 
-- Light: a model with thinking or effort off, the low-effort/fast fit used
-  for execution and exploration.
-- Standard: a thinking model that finishes multi-turn agent tasks reliably,
-  for implementation work.
-- High: a thinking model at a high effort level; slower and more thorough,
-  suited to architecture and review work.
+- Light: a fast model, used for execution and exploration.
+- Standard: a model that finishes multi-turn agent tasks reliably, for
+  implementation work.
+- High: the most thorough model available; slower, suited to architecture
+  and review work.
 
 A paid model is the upgrade path for any tier once usage is available; match
 its exact ID against `/models` the same way.
 
 ## Variants
 
-- Select effort interactively with the composer effort dropdown (desktop
+- Variants are an interactive, per-session choice only; tier config never
+  carries them. Select effort interactively with the composer effort dropdown (desktop
   shows it only for models that have variants). Programmatically, use the
-  `#variant` suffix: `provider/model#variant` (in `run --model`, or a
-  session/agent/command model field). There is no `/variants` command in V2.
+  `#variant` suffix: `provider/model#variant` (in `run --model` for a
+  one-off session; not in agent, command or tier config). There is no `/variants` command in V2.
 - Variant keybinds depend on the installed client and version: the CLI
   keybind reference (fetched 2026-09-25) defines `variant.cycle`
   (default `ctrl+t`) and an unbound `variant.list`. Desktop bindings may

@@ -161,17 +161,31 @@ function Get-SwGhRules([int]$Tier) {
 # --- session rules: one list, rendered into opencode.jsonc and every agent -----------
 
 # OpenCode desktop 2.0.17/2.0.18 ignores the project-level list; agent frontmatter works.
+# Shell wrappers that can hide a git command are asked first, so the git/gh denies below win when both match.
+# Each git verb is denied (or asked) in its plain, global-flag (`git -C . push`), and compound/runner
+# (`x && git push`, `rtk proxy git push`) forms; `*`-leading rules cover the `rtk ` rewrite on their own.
+# pwsh asks whenever it mentions git; encoded-command flags are listed in both cases so CI (case-sensitive) agrees.
+$script:SessionWrappers = @('bash *-c *git*', 'sh *-c *git*', 'pwsh *git*', 'powershell *git*', 'cmd */c *git*', '*rtk run *git*') +
+    @(foreach ($shell in 'pwsh', 'powershell') { foreach ($flag in '-e *', '-ec *', '-enc*', '-E *', '-EC *', '-Enc*') { "$shell *$flag" } })
+$script:SessionGitVerbs = @(@('commit', 'ask'), @('push', 'deny'), @('reset --hard', 'deny'), @('clean', 'deny'), @('stash', 'deny'))
 $script:SessionBase = @(
-    @('shell', '*', 'allow'), @('external_directory', '*', 'ask'), @('skill', '*', 'allow'),
-    @('subagent', '*', 'deny'), @('shell', 'git commit *', 'ask'), @('shell', 'git push *', 'deny'),
-    @('shell', 'git reset --hard *', 'deny'), @('shell', 'git clean *', 'deny'),
-    @('shell', 'git stash *', 'deny'), @('shell', 'gh *', 'deny'))
+    @('shell', '*', 'allow'), @('external_directory', '*', 'ask'), @('skill', '*', 'allow'), @('subagent', '*', 'deny')) +
+    @($script:SessionWrappers | ForEach-Object { , @('shell', $_, 'ask') }) +
+    @($script:SessionGitVerbs | ForEach-Object { $v = $_; foreach ($p in "git $($v[0]) *", "git -* $($v[0]) *", "* git $($v[0]) *", "* git -* $($v[0]) *") { , @('shell', $p, $v[1]) } }) +
+    @(@('shell', 'gh *', 'deny'), @('shell', '* gh *', 'deny'))
+
+function Test-SwRtkTwinned($Rule) {
+    # `*`-leading rules (wildcard, compound forms) and `rtk `-leading rules already cover the rewrite.
+    $Rule['action'] -ceq 'shell' -and -not ($Rule['resource'].StartsWith('*') -or $Rule['resource'].StartsWith('rtk '))
+}
 
 function Get-SwSessionRules($EditDeny, [int]$Tier) {
     # Base, profile edit denies, GitHub tier allows, then the .env read asks. Agent rules follow; last match wins.
     foreach ($r in $script:SessionBase) { [ordered]@{ action = $r[0]; resource = $r[1]; effect = $r[2] } }
     foreach ($g in @($EditDeny)) { if ($g) { [ordered]@{ action = 'edit'; resource = $g; effect = 'deny' } } }
     Get-SwGhRules $Tier
+    # A read/write allow must not carry a compound tail: `gh issue view 1 && gh pr merge 1`.
+    foreach ($op in '&', ';', '|') { [ordered]@{ action = 'shell'; resource = "gh *$op*"; effect = 'deny' } }
     [ordered]@{ action = 'read'; resource = '*.env'; effect = 'ask' }
     [ordered]@{ action = 'read'; resource = '*.env.*'; effect = 'ask' }
     [ordered]@{ action = 'read'; resource = '*.env.example'; effect = 'allow' }
@@ -179,11 +193,11 @@ function Get-SwSessionRules($EditDeny, [int]$Tier) {
 
 function Add-SwRtkTwins($Rules) {
     # OpenCode 2.0.18 runs plugin shell hooks before its permission check, and the RTK plugin
-    # rewrites `git push ...` to `rtk git push ...`. Each shell rule (except `*`) gets an
+    # rewrites `git push ...` to `rtk git push ...`. Each shell rule (except `*`-leading) gets an
     # `rtk ` twin with the same effect, directly after it, so last-match order is unchanged.
     foreach ($r in $Rules) {
         $r
-        if ($r['action'] -ceq 'shell' -and $r['resource'] -cne '*') { [ordered]@{ action = 'shell'; resource = "rtk $($r['resource'])"; effect = $r['effect'] } }
+        if (Test-SwRtkTwinned $r) { [ordered]@{ action = 'shell'; resource = "rtk $($r['resource'])"; effect = $r['effect'] } }
     }
 }
 
@@ -210,7 +224,6 @@ $script:Skills = @('agent-documentation', 'focused-review', 'free-models', 'mini
 $script:Routes = [ordered]@{ work = 'project-leader'; resume = 'project-leader'; 'workspace-check' = 'project-leader';
     handoff = 'project-leader'; inbox = 'project-leader'; validate = 'project-developer'; review = 'project-review';
     status = 'project-review'; research = 'project-research' }
-$script:ClaudeEffort = @{ light = 'low'; standard = 'medium'; high = 'xhigh' }
 $script:MojibakePattern = ([char]0x00E2 + [char]0x20AC) + '|' + ([char]0x00C3 + [char]0x00E9) + '|' + ([char]0x00C2 + [char]0x00A0)
 
 function Test-SwLocalOnly([string]$Root, [string]$Relative) {
@@ -290,6 +303,11 @@ function Test-SwProject {
             }
         } elseif ($Node -is [Collections.IEnumerable]) { foreach ($entry in $Node) { Portable $entry $Label } }
     }
+    function NoEffort([string]$Text, [string]$Label) {
+        # Tiers are model-only: no effort/variant field and no model#variant suffix.
+        Require ($Text -notmatch '(?im)(^\s*|")(effort|reasoningEffort|reasoning_effort|variant)"?\s*:') "$Label must be model-only: effort/reasoningEffort/variant field"
+        Require ($Text -notmatch '(?i)"?model"?\s*:\s*"?[^\s",]*#') "$Label must be model-only: #variant model suffix"
+    }
     function Expect($Policy, $Agent, $Action, $Resource, $Expected) {
         # A shell case also holds for its RTK rewrite (see Add-SwRtkTwins).
         foreach ($res in @($Resource) + $(if ($Action -ceq 'shell') { "rtk $Resource" } else { @() })) {
@@ -320,6 +338,9 @@ function Test-SwProject {
         foreach ($legacy in 'agent', 'command', 'skill') {
             Require (-not (Test-Path -LiteralPath (Join-Path $Root ".opencode/$legacy"))) "Unsupported legacy directory: .opencode/$legacy"
         }
+        NoEffort $configText 'opencode.jsonc'
+        $localMap = Join-Path $Root '.opencode/opencode.jsonc'
+        if (Test-Path -LiteralPath $localMap -PathType Leaf) { NoEffort (Read-SwText $localMap) '.opencode/opencode.jsonc (local tier map)' }
         Rules $oc['permissions'] 'opencode.jsonc permissions'
         Require ($oc['default_agent'] -ceq 'project-leader') 'default_agent must be project-leader'
 
@@ -342,6 +363,7 @@ function Test-SwProject {
                 try {
                     $allowed = switch ($kind) { agents { 'description', 'mode', 'color', 'permissions' } commands { 'description', 'agent', 'subagent' } skills { 'name', 'description' } }
                     $data = Read-SwFrontmatter $file.FullName $allowed
+                    if ($kind -ne 'skills') { NoEffort (((Read-SwText $file.FullName) -split "`n---`n", 2)[0]) $file.Name }
                     Portable $data $file.Name
                     Require ($data.Contains('description') -and $data['description']) "$($file.Name): description required"
                     switch ($kind) {
@@ -408,7 +430,7 @@ function Test-SwProject {
             $items = @($Items)
             for ($i = 0; $i -lt $items.Count; $i++) {
                 $r = $items[$i]
-                if ($r['action'] -cne 'shell' -or $r['resource'] -ceq '*' -or $r['resource'].StartsWith('rtk ')) { continue }
+                if (-not (Test-SwRtkTwinned $r)) { continue }
                 $t = if ($i + 1 -lt $items.Count) { $items[$i + 1] } else { @{} }
                 if ($t['action'] -cne 'shell' -or $t['resource'] -cne "rtk $($r['resource'])" -or $t['effect'] -cne $r['effect']) { $r['resource'] }
             }
@@ -463,6 +485,13 @@ function Test-SwProject {
             foreach ($p in '.env', '.env.local', 'nested/.env', 'nested\.env.local') { Expect $policy $name read $p ask }
             foreach ($p in '.env.example', 'nested/.env.example') { Expect $policy $name read $p allow }
             Expect $policy $name shell 'git commit -m probe' $(if ($access -eq 'readonly') { 'deny' } else { 'ask' })
+            # Prefix bypasses: global flags, compound commands, runners, and shell wrappers.
+            foreach ($c in 'git -C . push', 'git -C . push origin main', 'git --no-pager push', 'git -c k=v reset --hard', 'git -C . reset --hard HEAD', 'git -C . clean -fd', 'git -C . stash',
+                'git status && git push', 'git status; git push origin main', 'git log | git stash', 'rtk proxy git push', 'rtk err git -C . push', 'rtk summary git reset --hard HEAD',
+                'git status && gh pr merge 1', 'rtk proxy gh pr merge 1', 'gh issue view 1 && gh pr merge 1', 'gh pr view 1; gh pr merge 1') { Expect $policy $name shell $c deny }
+            $askUnlessReadonly = $(if ($access -eq 'readonly') { 'deny' } else { 'ask' })
+            foreach ($c in 'git -C . commit -m probe', 'git status && git commit -m probe', "bash -c 'git push'", 'sh -c "git reset --hard"', 'pwsh -NoProfile -Command "git push"',
+                'rtk run "git push"', 'pwsh -EncodedCommand AAAA', 'pwsh -e AAAA') { Expect $policy $name shell $c $askUnlessReadonly }
             foreach ($g in @($profileData['editDeny'])) { Expect $policy $name edit ("Content/Probe" + $g.TrimStart('*')) deny }
             if ($access -eq 'readonly') {
                 foreach ($c in 'git log --oneline -10', 'git rev-parse HEAD', 'git diff --check', 'git show --no-ext-diff --no-textconv HEAD -- src/probe.c',
@@ -472,10 +501,12 @@ function Test-SwProject {
                 foreach ($c in 'git diff --output=probe.txt', 'git diff --ext-diff', 'git show --textconv HEAD', 'git tag probe', 'git branch probe', 'git switch main', 'Write-Output probe',
                     'git status --output=probe.txt', 'git log --output=probe.txt', 'git log --oneline -20 --output=probe.txt', 'git log --oneline --output=probe.txt', 'git show --output=probe.txt HEAD',
                     'git diff HEAD --ext-diff', 'git log -p --ext-diff', 'git show --ext-diff HEAD', 'git diff --textconv HEAD', 'git log -p --textconv', 'git status --textconv') { Expect $policy $name shell $c deny }
+                foreach ($c in 'git status && git log --oneline -5', 'git log > out.txt', 'git log $(whoami)') { Expect $policy $name shell $c deny }
                 foreach ($p in 'src/probe.c', 'AGENTS.md') { Expect $policy $name edit $p deny }
                 Expect $policy $name unknown_tool '*' deny
             } else {
                 Expect $policy $name shell 'Write-Output probe' allow
+                foreach ($c in 'git status && git log --oneline -5', 'pwsh -NoProfile -File .sw/sw.ps1 validate -CheckLinks', 'git diff --check', 'git log --grep=push', 'rg -n "git push" docs', 'pwsh -ExecutionPolicy Bypass -File x.ps1') { Expect $policy $name shell $c allow }
                 Expect $policy $name shell 'gh issue view 1' allow
                 Expect $policy $name shell 'gh issue create --title probe' $(if ($tier -ge 1) { 'allow' } else { 'deny' })
                 Expect $policy $name shell 'gh pr create --draft --title probe' $(if ($tier -ge 1) { 'allow' } else { 'deny' })
@@ -497,8 +528,7 @@ function Test-SwProject {
                 if (-not (Test-Path -LiteralPath $target)) { Require $false "Missing Claude agent: .claude/agents/$role.md"; continue }
                 $fm = ((Read-SwText $target) -split "`n---`n", 2)[0]
                 Require ($fm -cmatch '(?m)^model: opus$') "Claude agent ${role}: model must be opus"
-                $effort = $script:ClaudeEffort[[string]$roles[$role]['tier']]
-                Require ($fm -cmatch "(?m)^effort: $([regex]::Escape($effort))$") "Claude agent ${role}: effort must be $effort (tier $($roles[$role]['tier']))"
+                NoEffort $fm "Claude agent $role"
                 $tools = [string]$roles[$role]['claudeTools']
                 if ($tools) { Require ($fm -cmatch "(?m)^tools: $([regex]::Escape($tools))$") "Claude agent ${role}: tools must be $tools (roles.json claudeTools)" }
                 else { Require ($fm -cnotmatch '(?m)^tools:') "Claude agent ${role}: no tools line expected (roles.json claudeTools is empty)" }
@@ -563,7 +593,7 @@ function Get-SwClaudeFiles([string]$Root) {
     $workers = @($roles.Keys | Where-Object { $_ -notin 'project-leader', 'explore' })
     foreach ($role in $workers) {
         $src = Read-SwFrontmatter (Join-Path $Root ".opencode/agents/$role.md") @('description', 'mode', 'color', 'permissions')
-        $fm = "---`nname: $role`ndescription: $($src['description'])`nmodel: opus`neffort: $($script:ClaudeEffort[[string]$roles[$role]['tier']])`n"
+        $fm = "---`nname: $role`ndescription: $($src['description'])`nmodel: opus`n"
         if ($roles[$role]['claudeTools']) { $fm += "tools: $($roles[$role]['claudeTools'])`n" }
         $fm += "disallowedTools: Agent`n"
         $out[".claude/agents/$role.md"] = $fm + "---`n`n$note`nYou are ``$role``. Your role contract is ``.opencode/agents/$role.md``: read it first and follow its body. Treat its OpenCode ``permissions`` as binding intent; Claude enforces only this file's ``tools`` and ``.claude/settings.json``, so honor the rest yourself. Project rules are in ``AGENTS.md``, already loaded.`n`nLoad a skill it names with the Skill tool, or Read ``.claude/skills/<name>/SKILL.md``. You cannot spawn agents or ask the user; return questions and blockers to the main session (Project Leader).`n"
@@ -669,6 +699,7 @@ function Set-SwTiers {
     if ((Test-Path -LiteralPath $target) -and -not $Force) { throw ".opencode/opencode.jsonc exists; edit it by hand or pass -Force (overwrites your local tier map)." }
     if (-not (Test-SwLocalOnly $Root '.opencode/opencode.jsonc')) { throw '.opencode/opencode.jsonc must be git-ignored first (run sw update).' }
     $models = @{ light = $Light; standard = $Standard; high = $High }
+    foreach ($m in $models.Values) { if ($m -and $m.Contains('#')) { throw "Tiers are model-only: drop the #variant suffix from '$m'." } }
     $map = [ordered]@{}
     foreach ($role in $roles.Keys) {
         $m = $models[$roles[$role]['tier']]

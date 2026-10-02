@@ -72,6 +72,27 @@ permissions:
   - action: shell
     resource: "git ls-files --others --exclude-standard"
     effect: allow
+  - action: shell
+    resource: "*&*"
+    effect: deny
+  - action: shell
+    resource: "*;*"
+    effect: deny
+  - action: shell
+    resource: "*|*"
+    effect: deny
+  - action: shell
+    resource: "*>*"
+    effect: deny
+  - action: shell
+    resource: "*<*"
+    effect: deny
+  - action: shell
+    resource: "*$(*"
+    effect: deny
+  - action: shell
+    resource: "*`*"
+    effect: deny
 ---
 
 Follow `AGENTS.md` and `.sw/workspace.md`. Load `focused-review`. Review the

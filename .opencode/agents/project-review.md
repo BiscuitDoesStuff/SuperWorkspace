@@ -16,10 +16,127 @@ permissions:
     resource: "*"
     effect: deny
   - action: shell
+    resource: "bash *-c *git*"
+    effect: ask
+  - action: shell
+    resource: "rtk bash *-c *git*"
+    effect: ask
+  - action: shell
+    resource: "sh *-c *git*"
+    effect: ask
+  - action: shell
+    resource: "rtk sh *-c *git*"
+    effect: ask
+  - action: shell
+    resource: "pwsh *git*"
+    effect: ask
+  - action: shell
+    resource: "rtk pwsh *git*"
+    effect: ask
+  - action: shell
+    resource: "powershell *git*"
+    effect: ask
+  - action: shell
+    resource: "rtk powershell *git*"
+    effect: ask
+  - action: shell
+    resource: "cmd */c *git*"
+    effect: ask
+  - action: shell
+    resource: "rtk cmd */c *git*"
+    effect: ask
+  - action: shell
+    resource: "*rtk run *git*"
+    effect: ask
+  - action: shell
+    resource: "pwsh *-e *"
+    effect: ask
+  - action: shell
+    resource: "rtk pwsh *-e *"
+    effect: ask
+  - action: shell
+    resource: "pwsh *-ec *"
+    effect: ask
+  - action: shell
+    resource: "rtk pwsh *-ec *"
+    effect: ask
+  - action: shell
+    resource: "pwsh *-enc*"
+    effect: ask
+  - action: shell
+    resource: "rtk pwsh *-enc*"
+    effect: ask
+  - action: shell
+    resource: "pwsh *-E *"
+    effect: ask
+  - action: shell
+    resource: "rtk pwsh *-E *"
+    effect: ask
+  - action: shell
+    resource: "pwsh *-EC *"
+    effect: ask
+  - action: shell
+    resource: "rtk pwsh *-EC *"
+    effect: ask
+  - action: shell
+    resource: "pwsh *-Enc*"
+    effect: ask
+  - action: shell
+    resource: "rtk pwsh *-Enc*"
+    effect: ask
+  - action: shell
+    resource: "powershell *-e *"
+    effect: ask
+  - action: shell
+    resource: "rtk powershell *-e *"
+    effect: ask
+  - action: shell
+    resource: "powershell *-ec *"
+    effect: ask
+  - action: shell
+    resource: "rtk powershell *-ec *"
+    effect: ask
+  - action: shell
+    resource: "powershell *-enc*"
+    effect: ask
+  - action: shell
+    resource: "rtk powershell *-enc*"
+    effect: ask
+  - action: shell
+    resource: "powershell *-E *"
+    effect: ask
+  - action: shell
+    resource: "rtk powershell *-E *"
+    effect: ask
+  - action: shell
+    resource: "powershell *-EC *"
+    effect: ask
+  - action: shell
+    resource: "rtk powershell *-EC *"
+    effect: ask
+  - action: shell
+    resource: "powershell *-Enc*"
+    effect: ask
+  - action: shell
+    resource: "rtk powershell *-Enc*"
+    effect: ask
+  - action: shell
     resource: "git commit *"
     effect: ask
   - action: shell
     resource: "rtk git commit *"
+    effect: ask
+  - action: shell
+    resource: "git -* commit *"
+    effect: ask
+  - action: shell
+    resource: "rtk git -* commit *"
+    effect: ask
+  - action: shell
+    resource: "* git commit *"
+    effect: ask
+  - action: shell
+    resource: "* git -* commit *"
     effect: ask
   - action: shell
     resource: "git push *"
@@ -28,10 +145,34 @@ permissions:
     resource: "rtk git push *"
     effect: deny
   - action: shell
+    resource: "git -* push *"
+    effect: deny
+  - action: shell
+    resource: "rtk git -* push *"
+    effect: deny
+  - action: shell
+    resource: "* git push *"
+    effect: deny
+  - action: shell
+    resource: "* git -* push *"
+    effect: deny
+  - action: shell
     resource: "git reset --hard *"
     effect: deny
   - action: shell
     resource: "rtk git reset --hard *"
+    effect: deny
+  - action: shell
+    resource: "git -* reset --hard *"
+    effect: deny
+  - action: shell
+    resource: "rtk git -* reset --hard *"
+    effect: deny
+  - action: shell
+    resource: "* git reset --hard *"
+    effect: deny
+  - action: shell
+    resource: "* git -* reset --hard *"
     effect: deny
   - action: shell
     resource: "git clean *"
@@ -40,16 +181,43 @@ permissions:
     resource: "rtk git clean *"
     effect: deny
   - action: shell
+    resource: "git -* clean *"
+    effect: deny
+  - action: shell
+    resource: "rtk git -* clean *"
+    effect: deny
+  - action: shell
+    resource: "* git clean *"
+    effect: deny
+  - action: shell
+    resource: "* git -* clean *"
+    effect: deny
+  - action: shell
     resource: "git stash *"
     effect: deny
   - action: shell
     resource: "rtk git stash *"
     effect: deny
   - action: shell
+    resource: "git -* stash *"
+    effect: deny
+  - action: shell
+    resource: "rtk git -* stash *"
+    effect: deny
+  - action: shell
+    resource: "* git stash *"
+    effect: deny
+  - action: shell
+    resource: "* git -* stash *"
+    effect: deny
+  - action: shell
     resource: "gh *"
     effect: deny
   - action: shell
     resource: "rtk gh *"
+    effect: deny
+  - action: shell
+    resource: "* gh *"
     effect: deny
   - action: shell
     resource: "gh issue list *"
@@ -159,6 +327,24 @@ permissions:
   - action: shell
     resource: "rtk gh browse --no-browser *"
     effect: allow
+  - action: shell
+    resource: "gh *&*"
+    effect: deny
+  - action: shell
+    resource: "rtk gh *&*"
+    effect: deny
+  - action: shell
+    resource: "gh *;*"
+    effect: deny
+  - action: shell
+    resource: "rtk gh *;*"
+    effect: deny
+  - action: shell
+    resource: "gh *|*"
+    effect: deny
+  - action: shell
+    resource: "rtk gh *|*"
+    effect: deny
   - action: read
     resource: "*.env"
     effect: ask
@@ -276,6 +462,27 @@ permissions:
   - action: shell
     resource: "rtk git ls-files --others --exclude-standard"
     effect: allow
+  - action: shell
+    resource: "*&*"
+    effect: deny
+  - action: shell
+    resource: "*;*"
+    effect: deny
+  - action: shell
+    resource: "*|*"
+    effect: deny
+  - action: shell
+    resource: "*>*"
+    effect: deny
+  - action: shell
+    resource: "*<*"
+    effect: deny
+  - action: shell
+    resource: "*$(*"
+    effect: deny
+  - action: shell
+    resource: "*`*"
+    effect: deny
 ---
 
 Follow `AGENTS.md` and `.sw/workspace.md`. Load `focused-review`. Review the

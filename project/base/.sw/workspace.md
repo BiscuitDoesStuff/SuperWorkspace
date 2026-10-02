@@ -158,10 +158,25 @@ continuation briefs; high = architecture trade-offs, unclear requirements,
 large multi-system review. A costly-mistake risk (security, data loss,
 publishing) makes it high only when the agent itself performs the
 irreversible step, not when it hands commands to a human. Applying a tier:
-role defaults come from the tier map (OpenCode) or the generated effort
-(Claude); neither harness takes a per-dispatch effort, so work above a
-role's default runs in a session at that tier (the Leader inline, or a
-fresh session the human opens). Never switch a running session's model.
+tiers are model-only (no effort, `reasoningEffort` or `#variant`; `sw
+validate` rejects them). Role defaults come from the local tier map
+(OpenCode); Claude agents use `opus`. Work above a role's default runs in
+a session at that tier (the Leader inline, or a fresh session the human
+opens). Never switch a running session's model.
+
+- Launch: on OpenCode 2.0.20 the `run` path ignores agent models
+  (frontmatter and the local `agents` map; only `-m` selects the primary
+  model; top-level `model` does not fix it), so any CLI launch
+  `opencode run --agent X` passes `-m <X's tier model>`. The tier map still
+  routes subagents launched through the `subagent` tool. Re-verify after
+  OpenCode upgrades. Evidence: Workspace hands-on check, 2026-10-02 (U1
+  harness decision). A session continued with `-s` keeps its `-m` model.
+- Parents do not pass `model` to the `subagent` tool: it overrides the pin
+  and no permission rule can block it. Advisory; spot-check session exports.
+- A shell deny stops the shell call, not the effect. A hard rule against a
+  file effect also needs matching `write`/`edit` rules at project level;
+  plugins that rewrite commands (`rtk.ts`) are part of the enforcement
+  boundary.
 
 Default cost policy is free-first: free OpenCode/OpenRouter models and local
 LM Studio, no metered API spend unless a contributor opts in locally. To pick
