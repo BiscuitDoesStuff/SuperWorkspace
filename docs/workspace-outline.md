@@ -60,7 +60,7 @@ presence is not evidence that this design is optimal.
 | O6 Change method | Preserve unrelated/uncommitted work and working behavior; reuse first, smallest independently testable change; avoid speculative refactors. | AGENTS and `minimal-change` skill; an execution method, not a veto on an approved overhaul. | An approved replacement/refit defines broader scope, preservation/migration and acceptance. |
 | O7 Roles/access | Leader coordinates and plans inline; installed roles since 2026-10-02 (S2): `explore`, `project-review`, `project-developer` (single executor, also validation, docs and assigned-worktree work) and `project-research` (pending a profile role). Roles have assigned responsibilities, tool access and read-only/Markdown boundaries. Workers do not spawn teams; research dispatch is request-scoped. | [Agent definitions](../.opencode/agents/), [roles source](../project/roles.json), workspace guidance. Role count follows S2 (evidence-informed, not experimentally selected); five inherited roles were removed in [workspace-roster-refit](../.sw/comms/tasks/workspace-roster-refit/). | Owner-approved orchestration/access redesign; do not bypass current role restrictions meanwhile. Implemented 2026-10-02 except moving `project-research` to a research-profile role, which needs per-profile roles in the generator refit. |
 | O8 Coordination | Explicit task/checkout/path ownership, dependencies and acceptance; independent reads may overlap; writers serialize unless disjoint; parallel executor work uses Leader-assigned separate worktrees; the executor's branch and worktree Git commands require approval (`ask`, contract-checked). One validation owner per checkout. | Agent definitions and workspace guidance. Child sessions do not isolate files. No fixed delegation requirement for every task. | Measured coordination need or failure; approved change must address shared-state/ownership risks. |
-| O9 Tiers/budgets | Project planning/execution lanes, escalation rubric, three-failure/new-evidence rule, quota stop, no mid-session model switch. Startup budget is 12,100 bytes. | Workspace guidance, config and global/session instructions. Local tiers are unconfigured; documented tiers do not prove actual child routing. Global harness guidance may add routing constraints. | Approved routing/budget change after task-level evidence; session-imposed limits require changes outside this repo. |
+| O9 Tiers/budgets | Project planning/execution lanes, escalation rubric, three-failure/new-evidence rule, quota stop, no mid-session model switch. Startup budget is 12,100 bytes. | Workspace guidance, config and global/session instructions. Owner-selected temporary developer/reviewer local models were checked in bounded workspace-v1 acceptance (2026-10-03); other roles/routes remain unconfigured or unverified. This is not a tier-fit benchmark. Global harness guidance may add routing constraints. | Approved routing/budget change after task-level evidence; session-imposed limits require changes outside this repo. |
 | O10 Cost/data setup | Free-first; no metered spend without opt-in. Model mappings and credentials stay local; shared files avoid machine paths/provider pins. | Workspace guidance, validation contracts and global/session rules. These are current policy/portability choices, not evidence that cheapest-token models are best. | Owner-approved cost/data/portability policy; check actual terms and task-level effort first. |
 | O11 Runtime configuration | Current configuration enables compaction (50k recent-token preservation, 32k reserve), watcher exclusions, RTK rewriting and context7 MCP. No optional Claude adapter is configured. | OpenCode configuration and [plugin](../.opencode/plugins/rtk.ts). Settings/plugin presence does not establish savings, compatibility, effective loading or trust. | Evidence of task/context/tool failure or an approved harness/tool change; verify versions and destinations. |
 | O12 Safety | No credential probing or denied-action bypass. `.env` access prompts, per-role permissions and shell-pattern guardrails are distinct from isolation. Execution roles have host-user shell authority. | Agent frontmatter, workspace guidance and global/session controls. OpenCode has no configured sandbox; permission modes are not certified injection defences. | Approved threat-model/access/isolation change; project edits cannot disable external tool restrictions. |
@@ -165,6 +165,32 @@ publication, and to data handling.
   S2 generator refit; that migration needs its own approved scope.
 
 ### S2 U1 partial resolution: roster, generator, harness criterion
+
+**Current implementation update (2026-10-03, workspace-v1):** the
+[bounded owner approval](../.sw/comms/tasks/workspace-v1/2026-10-03T063903Z-leader-approval.md)
+now authorizes the launcher, superseding the older "not yet approved" table
+wording below without erasing its history or the older uncommitted proposals.
+P1 maps actual local worker models, imports canonical root rules with
+`@../AGENTS.md` relative to `.claude/CLAUDE.md` (the historical `@AGENTS.md`
+draft is not the implemented import), shares Git guardrails, and removes Bash
+from the Claude reviewer. P2 provides one manual `sw session start` control
+entry: explicit primary model, actual worker map, safe argv, OpenCode `mini`/`run`
+or interactive Claude, current-adapter prechecks and immutable metadata events.
+Mixed maps do not create cross-harness dispatch; non-Claude Claude commands STOP.
+Parser/module and 226 offline assertions pass; native stubs are not runtime
+loading, served-model, access, isolation or permission proof. P2 stopped at its
+worker usage limit; the Leader reconciled and reran its offline checks. The owner
+then selected an existing free OpenCode route and a temporary ignored two-role
+map. P3 independent review ran; its variable-assignment finding was rebutted.
+Owner accepted the conservative read-only shell-denial/API discrepancy as a known
+limitation; no bypass or permission relaxation. P4 engineering artifact/checkpoint,
+distinct fresh-session/hash reconciliation, six value/six Int64 tests and final
+read-only artifact review passed on the selected headless OpenCode route. Claude
+adapter absent; all four live starts used. This does not validate other routes,
+interactive use, compaction, security isolation or empirical benefits. Exact evidence
+belongs to [workspace-v1 records](../.sw/comms/tasks/workspace-v1/), not this
+design register. Local work is not published. No broader research-led overhaul
+is authorized by this implementation.
 
 | Component | Decision | Evidence and limits |
 | --- | --- | --- |

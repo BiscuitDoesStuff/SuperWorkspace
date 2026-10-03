@@ -2,6 +2,31 @@
 
 ## Startup
 
+- **Current workspace-v1 outcome (2026-10-03):**
+  [bounded build approval](../.sw/comms/tasks/workspace-v1/2026-10-03T063903Z-leader-approval.md)
+  supersedes older launcher-not-approved notes below for this task only.
+  P1/P2 source/generated launcher/adapter contracts are implemented locally;
+  parser/module and 226 offline assertions pass. P2's quota-stopped work was
+  reconciled without retrying that worker. [Live acceptance evidence](../.sw/comms/tasks/workspace-v1/2026-10-03T081908Z-leader-submission.md):
+  independent source review, engineering artifact/checkpoint, distinct fresh
+  session/hash reconciliation, six value/six Int64 tests (also rerun by Leader),
+  and final read-only artifact review passed on the owner-selected free headless
+  OpenCode route. All four permitted live starts used; no extra starts authorized.
+  Ignored local map selects developer/reviewer only; Claude adapter absent.
+  Owner accepted one unresolved conservative read-only Git denial versus an
+  allowed API evaluation; do not retry/bypass it or relax permissions. Claude,
+  interactive/mixed routes, compaction, other users and comprehensive security
+  checks remain unverified. [Bounded v1 completed and validated](../.sw/comms/tasks/workspace-v1/2026-10-03T082329Z-leader-closure.md),
+  local-only, not published. Owner requested the scoped local commit
+  ([commit authorization](../.sw/comms/tasks/workspace-v1/2026-10-03T083516Z-leader-approval-commit.md));
+  its containing revision is recorded by Git, not a guessed future SHA.
+  Preserve unrelated dirty work and historical events; no installs, global
+  changes, new add-on task or publication authorized.
+  Earlier startup facts below remain dated historical context, not a second
+  current authorization. The native launcher neither approves work nor accepts
+  artifacts from process exits; fresh kickoff/resume reconciles actual files,
+  latest approval/assignment and unknown effects.
+
 - **Identity:** research-led AI workspace based on sibling `AI-Research [2]`.
   SuperWorkspace is the inherited installation, not a required target design.
   Every project component, including rules and tooling, is reconsiderable.

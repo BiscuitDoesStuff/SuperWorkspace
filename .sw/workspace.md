@@ -82,7 +82,7 @@ Execution roles have host-user shell authority, **not a sandbox**; pattern rules
 cannot recognize every shell spelling. Three words describe every rule:
 *enforced* (tool lists and file-tool rules the harness applies), *guardrail*
 (shell pattern rules, which stop the command as written and nothing else;
-`git -C . push`, `bash -c`, aliases and absolute paths get past them), and
+covered global-flag/wrapper spellings are still patterns; aliases and absolute paths can get past them), and
 *stated* (role text the model is asked to follow). Never bypass a denied action with another
 tool, shell form, or child. Read-only roles inspect only. Documentation edits
 Markdown only. `*.env` read prompts cover direct reads; never grep or print
@@ -91,7 +91,7 @@ secret files to get around them.
 | Rule | OpenCode (agent frontmatter) | Claude adapter |
 | --- | --- | --- |
 | Read-only roles: no edits | enforced | enforced (no Edit or Write tool) |
-| Read-only roles: shell limited to listed git reads | enforced (read forms of `status`, `diff`, `log`, `show`; `--output`, `--ext-diff`, `--textconv` denied) | stated (Bash is available; only session-wide denies apply) |
+| Read-only roles: shell limited to listed git reads | enforced (read forms of `status`, `diff`, `log`, `show`; `--output`, `--ext-diff`, `--textconv` denied) | Bash unavailable (no deny-all/allow-read exception); main session supplies Git evidence |
 | Documentation: edit `*.md` only | enforced | stated |
 | `git push`, `reset --hard`, `clean`, `stash` denied | guardrail | guardrail |
 | `.env` reads prompt | enforced (ask) | guardrail (Read tool only; shell reads are not covered) |
@@ -106,8 +106,9 @@ than Build carry no kit rules; Build gets them only from `opencode.jsonc`
 (`agents.build`). The RTK plugin rewrites shell commands before OpenCode's
 permission check, so the kit renders an `rtk ` twin after every shell rule;
 another plugin that rewrites commands would bypass the rules the same way.
-Claude settings rules are session-wide, so per-role limits
-there are stated only. The solo ruleset on `main` (`.sw/collaboration.md`)
+Claude settings patterns derive from the same Git verb/wrapper lists, but remain
+guardrails, not security parity. Role tool lists remove tools; other per-role
+limits (such as Markdown-only writes) are stated. The solo ruleset on `main` (`.sw/collaboration.md`)
 stops force pushes and branch deletion, not ordinary pushes.
 
 Sandboxes are documented, never configured: Claude users on macOS, Linux or
@@ -132,6 +133,49 @@ No shared model/provider pins, credentials, shell paths, or absolute paths are
 committed; `sw validate` enforces this. Each contributor's tier map lives in the
 git-ignored `.opencode/opencode.jsonc` (`sw tiers`). Users supply provider access.
 A Claude subscription is not OpenCode API access.
+
+## Native session entry
+
+`sw session start <role> <task-id> [-Model <id>] [-DryRun] [-Headless]`
+is one manual control entry, not a cross-harness broker. Use an existing task
+record with current approval/assignment. The main session must reconcile actual
+artifacts and unknown effects before work or fresh-session resume; launch records
+do not authorize work. No native resume, retry, rollback, teams or model switching
+is automated.
+
+- Owner-selected models live in ignored `.opencode/opencode.jsonc`, under
+  `agents[role].model`. `sw tiers` maps worker tiers only. A session-tier Leader
+  requires `-Model`; workers use their actual local role model. A conflicting
+  override fails, never silently replaces the worker model. Built-in `explore`
+  is not a standalone launch role. Unknown/missing/malformed models/configuration
+  or role definitions fail before native launch.
+- Claude spellings use the classifier below and route to native Claude Code;
+  other provider/model IDs route to OpenCode. No provider/access fallback is
+  supplied. Classification does not check model inventory or subscription access.
+  OpenCode interactive launches use `mini --model <id> --agent <role>`: installed
+  V2's default full-screen entry lacks these flags. `-Headless` uses supported
+  `run --model <id> --agent <role>`; Claude headless is refused.
+- Claude requires an already generated, current local adapter. For a Claude
+  Leader, add a matching explicit `agents.project-leader.model` entry before
+  `sw claude enable`; no entry is invented by the launcher. Mixed maps are valid:
+  Claude commands STOP for non-Claude/unmapped workers; start those roles through
+  this manual entry instead of dispatching them inside Claude. Leader startup
+  appends its generated material only; worker main sessions select `--agent`,
+  disable `Agent`, and apply the local tool list. There is no unconditional
+  Leader hook. Adapter drift or stale workers stop launch.
+- `-DryRun` (and `-WhatIf`) prechecks and returns separated argv without native
+  launch, config writes or task-event writes. Native discovery uses PATH, not
+  shared machine pins. Precheck failures produce no launch event or model request.
+- Actual launches append immutable collision-safe task progress events before
+  and after invocation. They name requested role/tool/model, local launch ID,
+  unknown native session/observed model, exit/failure and unknown artifact/effects.
+  No prompt, secret or raw native output is retained by the launcher. Exit 0 is
+  **not** acceptance. Native output remains in the interactive terminal; shared
+  records contain metadata only. Numeric exits propagate; invocation failures
+  stop without retry and require inspection. A missing exit event after interruption
+  also means unknown effects, not success. Verify runtime identity/loading/access
+  and permission behavior separately; local config comparisons do not inspect
+  global/account settings or establish merged runtime identity.
 
 ## Model tiers
 
@@ -160,9 +204,29 @@ publishing) makes it high only when the agent itself performs the
 irreversible step, not when it hands commands to a human. Applying a tier:
 tiers are model-only (no effort, `reasoningEffort` or `#variant`; `sw
 validate` rejects them). Role defaults come from the local tier map
-(OpenCode); Claude agents use `opus`. Work above a role's default runs in
+(OpenCode); Claude agents use explicit local `agents[role].model` values. Work above a role's default runs in
 a session at that tier (the Leader inline, or a fresh session the human
 opens). Never switch a running session's model.
+
+Claude generation requires a local `.opencode/opencode.jsonc` map from `sw tiers`
+or an owner edit. Supported Claude spellings are explicit `opus`, `sonnet`,
+`haiku`, `fable`, `best`, `opus[1m]`, `sonnet[1m]`, full `claude-*` IDs, or
+`anthropic/claude-*` IDs (the provider prefix is stripped, never converted to a
+guessed alias). Other provider/model IDs are non-Claude; ambiguous spellings,
+`default`, `inherit` and `opusplan` are rejected. Missing maps or maps with no
+Claude roles fail generation; unmapped/non-Claude workers are omitted and their
+commands stop rather than dispatch or impersonate them. No shared user model
+pin or implicit launcher fallback is supplied. Alias/model availability and the
+actual runtime model still need live verification. Keep the map available for
+adapter disable/drift checks, which compare current generated content.
+
+The ignored adapter writes `.claude/CLAUDE.md` with `@../AGENTS.md`, relative to
+that file, importing canonical root rules without a duplicate. Official Claude
+documentation supports this location/import syntax; static path checks do not
+prove live loading or compaction. Worker definitions load their own role body;
+`.claude/project-leader.md` is only for an explicitly selected Leader main
+session, not a session-wide startup hook. Actual adapter/map enablement is
+opt-in; generation does not configure accounts or verify tool/model access.
 
 - Launch: on OpenCode 2.0.20 the `run` path ignores agent models
   (frontmatter and the local `agents` map; only `-m` selects the primary
@@ -201,7 +265,8 @@ override `compaction` locally.
 
 `sw claude enable` generates a git-ignored `.claude/` from these sources:
 pointer agents and commands, copied skills, permission rules for the GitHub
-tier, and a SessionStart hook that makes the main session the Leader.
+tier, and role-scoped startup material. No unconditional SessionStart hook
+makes worker main sessions the Leader; native entry selects the main role.
 `sw update` regenerates it when `.claude/.sw-generated` exists; otherwise run
 `sw claude enable`. `sw validate` reports drift. Never hand-edit generated
 files; edit the `.opencode/` or `.agents/skills` source instead. Claude applies instruction edits

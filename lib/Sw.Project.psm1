@@ -522,18 +522,31 @@ function Test-SwProject {
                 $target = Join-Path $Root $entry.Key
                 Require ((Test-Path -LiteralPath $target) -and (Read-SwText $target) -ceq $entry.Value) "Claude adapter drift: $($entry.Key) (run sw claude enable)"
             }
+            $importFile = Join-Path $Root '.claude/CLAUDE.md'
+            $import = (Read-SwText $importFile).Trim()
+            $importTarget = if ($import -match '^@([^\r\n]+)$') { [IO.Path]::GetFullPath((Join-Path (Split-Path $importFile) $Matches[1])) } else { '' }
+            Require ($importTarget -eq (Join-Path $Root 'AGENTS.md') -and (Test-Path -LiteralPath $importTarget -PathType Leaf)) 'Claude import must resolve to canonical root AGENTS.md'
+            $localModels = Read-SwJson (Join-Path $Root '.opencode/opencode.jsonc')
             # Structure from roles.json, independent of the generator's output.
             foreach ($role in @($roleNames | Where-Object { $_ -ne 'project-leader' })) {
                 $target = Join-Path $Root ".claude/agents/$role.md"
+                $model = if ($localModels['agents'].Contains($role)) { Get-SwClaudeModel $localModels['agents'][$role]['model'] } else { $null }
+                if (-not $model) { Require (-not (Test-Path -LiteralPath $target)) "Claude agent ${role}: unmapped/non-Claude role must not be generated"; continue }
                 if (-not (Test-Path -LiteralPath $target)) { Require $false "Missing Claude agent: .claude/agents/$role.md"; continue }
                 $fm = ((Read-SwText $target) -split "`n---`n", 2)[0]
-                Require ($fm -cmatch '(?m)^model: opus$') "Claude agent ${role}: model must be opus"
+                Require ($fm -cmatch "(?m)^model: $([regex]::Escape($model))$") "Claude agent ${role}: model must match the local role map"
                 NoEffort $fm "Claude agent $role"
                 $tools = [string]$roles[$role]['claudeTools']
                 if ($tools) { Require ($fm -cmatch "(?m)^tools: $([regex]::Escape($tools))$") "Claude agent ${role}: tools must be $tools (roles.json claudeTools)" }
                 else { Require ($fm -cnotmatch '(?m)^tools:') "Claude agent ${role}: no tools line expected (roles.json claudeTools is empty)" }
                 Require ($fm -cmatch '(?m)^disallowedTools: Agent$') "Claude agent ${role}: must set disallowedTools: Agent"
+                if ($roles[$role]['access'] -eq 'readonly') { Require ($tools -and $tools -notmatch '\b(Bash|Edit|Write|Agent)\b') "Claude agent ${role}: readonly tools cannot include Bash, Edit, Write or Agent" }
             }
+            $claudeSettings = Read-SwJson (Join-Path $Root '.claude/settings.json')
+            foreach ($rule in Get-SwClaudeGitRules) { Require ($rule.Rule -cin $claudeSettings['permissions'][$rule.Effect]) "Claude Git rule missing: $($rule.Rule) ($($rule.Effect)); presence only, not runtime enforcement" }
+            Require ('Bash(*)' -cnotin $claudeSettings['permissions']['allow']) 'Claude must not allow Bash(*)'
+            Require (-not $claudeSettings.Contains('model')) 'Claude settings must not pin a session model'
+            NoEffort (Read-SwText (Join-Path $Root '.claude/settings.json')) 'Claude settings'
             foreach ($name in $commands.Keys) {
                 Require (Test-Path -LiteralPath (Join-Path $Root ".claude/commands/$name.md")) "Missing Claude command: .claude/commands/$name.md"
             }
@@ -583,6 +596,27 @@ function Test-SwProject {
 
 # --- Claude adapter (generated, git-ignored, opt-in per user) -----------------------
 
+function Get-SwClaudeModel([string]$Model) {
+    # Explicit aliases/full IDs only; no inherit/default or guessed family conversion.
+    # Provider-qualified Anthropic IDs are translated to Claude's native model spelling.
+    if (-not $Model -or $Model -match '[\s#]' -or $Model -in 'default', 'inherit', 'opusplan') { throw 'Local role model must be explicit and model-only (no default, inherit, whitespace or #variant).' }
+    if ($Model -cmatch '^(opus|sonnet|haiku|fable|best|opus\[1m\]|sonnet\[1m\])$') { return $Model }
+    if ($Model -cmatch '^(?:anthropic/)?(claude-[a-z0-9][a-z0-9.-]*(?:\[1m\])?)$') { return $Matches[1] }
+    if ($Model -cmatch '^[a-zA-Z0-9._-]+/[a-zA-Z0-9._:/-]+$' -and $Model -cnotmatch '^anthropic/|(?i)claude') { return $null }
+    throw 'Unsupported local model spelling: use a documented Claude alias/ID, anthropic/claude-ID, or a non-Claude provider/model ID.'
+}
+
+function Get-SwClaudeGitRules {
+    # Same verb/wrapper lists as OpenCode; Claude wildcard syntax, deny before ask.
+    # These are command-text guardrails, not an offline Claude permission evaluator.
+    $rules = foreach ($r in $script:SessionBase) {
+        if ($r[0] -ne 'shell' -or $r[2] -notin 'ask', 'deny' -or $r[1] -like '*gh *') { continue }
+        [ordered]@{ action = 'shell'; resource = $r[1]; effect = $r[2] }
+        if ($r[1].EndsWith(' *')) { [ordered]@{ action = 'shell'; resource = $r[1].Substring(0, $r[1].Length - 2); effect = $r[2] } }
+    }
+    foreach ($r in Add-SwRtkTwins $rules) { [pscustomobject]@{ Effect = $r['effect']; Rule = "Bash($($r['resource']))" } }
+}
+
 function Get-SwClaudeFiles([string]$Root) {
     $config = Get-SwConfig $Root
     $roles = Read-SwJson (Join-Path $Root '.sw/roles.json')
@@ -590,20 +624,35 @@ function Get-SwClaudeFiles([string]$Root) {
     $tier = [int]$config['githubTier']
     $out = [ordered]@{}
     $note = '<!-- Generated by SuperWorkspace (sw claude enable) from .opencode/; do not edit. -->'
-    $workers = @($roles.Keys | Where-Object { $_ -notin 'project-leader', 'explore' })
+    $mapPath = Join-Path $Root '.opencode/opencode.jsonc'
+    if (-not (Test-Path -LiteralPath $mapPath -PathType Leaf)) { throw 'Claude generation needs an explicit local agents[role].model map (.opencode/opencode.jsonc); run sw tiers with owner-selected models first.' }
+    $map = Read-SwJson $mapPath
+    if ($map['agents'] -isnot [Collections.IDictionary]) { throw 'Local tier map must contain agents[role].model, not a tier dictionary.' }
+    $models = [ordered]@{}
+    foreach ($role in $roles.Keys) {
+        if (-not $map['agents'].Contains($role)) { continue }
+        if ($map['agents'][$role] -isnot [Collections.IDictionary] -or $map['agents'][$role]['model'] -isnot [string]) { throw "Local role ${role} needs an explicit model string." }
+        $model = Get-SwClaudeModel $map['agents'][$role]['model']
+        if ($model) { $models[$role] = $model }
+    }
+    if (-not $models.Count) { throw 'Local map contains no explicit Claude role models; adapter generation refused (no default fallback).' }
+    $workers = @($roles.Keys | Where-Object { $_ -notin 'project-leader', 'explore' -and $models.Contains($_) })
     foreach ($role in $workers) {
         $src = Read-SwFrontmatter (Join-Path $Root ".opencode/agents/$role.md") @('description', 'mode', 'color', 'permissions')
-        $fm = "---`nname: $role`ndescription: $($src['description'])`nmodel: opus`n"
+        $fm = "---`nname: $role`ndescription: $($src['description'])`nmodel: $($models[$role])`n"
         if ($roles[$role]['claudeTools']) { $fm += "tools: $($roles[$role]['claudeTools'])`n" }
         $fm += "disallowedTools: Agent`n"
-        $out[".claude/agents/$role.md"] = $fm + "---`n`n$note`nYou are ``$role``. Your role contract is ``.opencode/agents/$role.md``: read it first and follow its body. Treat its OpenCode ``permissions`` as binding intent; Claude enforces only this file's ``tools`` and ``.claude/settings.json``, so honor the rest yourself. Project rules are in ``AGENTS.md``, already loaded.`n`nLoad a skill it names with the Skill tool, or Read ``.claude/skills/<name>/SKILL.md``. You cannot spawn agents or ask the user; return questions and blockers to the main session (Project Leader).`n"
+        $out[".claude/agents/$role.md"] = $fm + "---`n`n$note`nYou are ``$role``, not Project Leader. Your role contract is ``.opencode/agents/$role.md``: read it first and follow its body. Treat its OpenCode ``permissions`` as binding intent; Claude tool lists restrict available tools, while settings shell patterns are guardrails and other limits remain stated. Canonical project rules are imported by ``.claude/CLAUDE.md``; if unavailable, read root ``AGENTS.md`` before work. Live loading/compaction is not established by generation.`n`nLoad a skill it names with the Skill tool, or Read ``.claude/skills/<name>/SKILL.md``. You cannot spawn agents. When dispatched as a worker, return questions and blockers to the main session; when selected as the main role, follow this role only, without Leader orchestration.`n"
     }
     $dispatch = [ordered]@{}
     foreach ($file in Get-ChildItem -LiteralPath (Join-Path $Root '.opencode/commands') -Filter *.md -File -Force | Sort-Object Name) {
         $cmd = Read-SwFrontmatter $file.FullName @('description', 'agent', 'subagent')
         $name = $file.BaseName; $agent = $cmd['agent']; $srcPath = ".opencode/commands/$name.md"
-        if ($cmd['subagent'] -eq 'true') { $dispatch[$agent] = @($dispatch[$agent] | Where-Object { $_ }) + "``/$name``" }
-        $body = if ($cmd['subagent'] -eq 'true') {
+        $available = $agent -in $workers -or ($agent -eq 'project-leader' -and $models.Contains($agent))
+        if ($available -and $cmd['subagent'] -eq 'true') { $dispatch[$agent] = @($dispatch[$agent] | Where-Object { $_ }) + "``/$name``" }
+        $body = if (-not $available) {
+            "STOP: ``$agent`` has no explicit Claude model in the local role map (unmapped or non-Claude). Do not dispatch, impersonate, or inherit a default model. Return this blocker and use the owner's configured route."
+        } elseif ($cmd['subagent'] -eq 'true') {
             "Dispatch the ``$agent`` agent with the Agent tool to carry out ``$srcPath`` (read it for the task text) with arguments: `$ARGUMENTS. Relay its report."
         } elseif ($agent -eq 'project-leader') {
             "Read ``$srcPath`` and follow its body in this session. Arguments: `$ARGUMENTS"
@@ -626,26 +675,29 @@ function Get-SwClaudeFiles([string]$Root) {
 # Project Leader (Claude main session)
 
 $note
-This main session is ``project-leader``. Read ``.opencode/agents/project-leader.md``
+Use this material only when the explicitly selected main role is ``project-leader``;
+it is not injected by a session-wide hook into worker/main executor sessions.
+Read ``.opencode/agents/project-leader.md``
 and follow its body; ``.sw/workspace.md`` owns orchestration. Claude adaptation:
 
 - Dispatch with the Agent tool, ``subagent_type`` = role ID: $list.
-  OpenCode ``explore`` is ``Explore``; ``general`` is ``general-purpose``.
+  Only locally mapped Claude workers are generated; no implicit built-in fallback.
 - Only this session spawns agents. Subagents cannot delegate or ask the user.
 - Skills: the Skill tool, or Read ``.claude/skills/<name>/SKILL.md``.
 - Commands pinned ``subagent: false`` run here; ``/validate`` applies the
   ``project-developer`` contract inline. $dispatchLine
 - GitHub tier $tier (see ``.sw/workspace.md``). Never push, merge, or release.
 "@ + "`n").Replace("`r`n", "`n")
-    $deny = @('Bash(git push:*)', 'Bash(git reset --hard:*)', 'Bash(git clean:*)', 'Bash(git stash:*)') + @(Get-SwClaudeGhDeny $tier) +
+    $gitRules = @(Get-SwClaudeGitRules)
+    $deny = @($gitRules | Where-Object Effect -eq 'deny' | ForEach-Object Rule) + @(Get-SwClaudeGhDeny $tier) +
         @($profileData['editDeny'] | ForEach-Object { "Edit(**/$_)" })
-    $ask = @('Bash(git commit:*)', 'Read(**/.env)', 'Read(**/.env.*)') + $(if ($tier -ge 1) { @('Bash(gh pr create:*)') } else { @() })
+    $ask = @($gitRules | Where-Object Effect -eq 'ask' | ForEach-Object Rule) + @('Read(**/.env)', 'Read(**/.env.*)') + $(if ($tier -ge 1) { @('Bash(gh pr create:*)') } else { @() })
     $settings = [ordered]@{
         permissions = [ordered]@{ allow = @('Skill'); ask = $ask; deny = $deny }
-        hooks       = [ordered]@{ SessionStart = @([ordered]@{ hooks = @([ordered]@{ type = 'command'; command = 'cat "$CLAUDE_PROJECT_DIR/.claude/project-leader.md"' }) }) }
     }
+    $out['.claude/CLAUDE.md'] = "@../AGENTS.md`n"
     $out['.claude/settings.json'] = ConvertTo-SwJson $settings
-    $out['.claude/.sw-generated'] = "Generated by SuperWorkspace. Regenerate with: pwsh .sw/sw.ps1 claude enable`n"
+    $out['.claude/.sw-generated'] = "Generated by SuperWorkspace. Regenerate with: pwsh .sw/sw.ps1 claude enable`nOnly explicit local Claude roles are generated. Unmapped/non-Claude roles have STOP commands, never a default model. Main-session model selection and live instruction loading require separate verification.`n"
     $out
 }
 
@@ -708,7 +760,137 @@ function Set-SwTiers {
     if ($PSCmdlet.ShouldProcess($target, "write tier map ($($map.Count) roles)")) {
         Write-SwFile $target (ConvertTo-SwJson ([ordered]@{ '$schema' = 'https://opencode.ai/config.json'; agents = $map }))
     }
-    Write-Output "Tier map: $($map.Count) role(s) mapped; unmapped roles inherit the session model."
+    Write-Output "Tier map: $($map.Count) role(s) mapped; OpenCode unmapped roles inherit the session model. Claude generation skips them; explicit launcher selection must reject missing models."
+}
+
+# --- explicit native session entry (no broker or automatic retry) -------------------------
+
+function Write-SwSessionEvent([string]$Root, [string]$Task, $Launch, [string]$State, $ExitCode) {
+    $utc = Get-SwUtc
+    $dir = Join-Path $Root ".sw/comms/tasks/$Task"
+    $branch = & git -C $Root branch --show-current 2>$null
+    $head = & git -C $Root rev-parse HEAD 2>$null
+    $text = @"
+# $Task - progress - $utc - session
+
+- **Approval:** launch metadata only; reconcile existing approval/assignment, not new authority.
+- **Status:** $(if ($State -eq 'launch') { 'in_progress' } else { 'blocked' }); $State
+- **Checked revision:** $branch / $head; uncommitted scope must be reconciled with actual Git/artifacts.
+- **Launch ID:** $($Launch.LaunchId) (local correlation, not native session identity)
+- **Requested role / tool / model:** $($Launch.Role) / $($Launch.Tool) / $($Launch.RequestedModel)
+- **Native model argument:** $($Launch.NativeModel); observed model unknown
+- **Session ID:** unknown (not reported/verified)
+- **Exit code:** $(if ($null -eq $ExitCode) { 'unknown' } else { $ExitCode })
+- **Artifact / effects:** unknown, not accepted; exit 0 is not completion evidence.
+- **Publication:** local-only, uncommitted; no prompt or native transcript retained.
+- **Next action:** inspect actual artifacts, latest approval/assignment and unknown effects before kickoff/resume; no blind retry or rollback.
+"@ + "`n"
+    # Reuse comms naming; CreateNew closes the check/write overwrite window.
+    $file = Get-SwUniquePath $dir "$utc-session-progress" '.md'
+    $stream = [IO.File]::Open($file, [IO.FileMode]::CreateNew, [IO.FileAccess]::Write, [IO.FileShare]::None)
+    try { $bytes = $script:Utf8.GetBytes($text.Replace("`r`n", "`n")); $stream.Write($bytes, 0, $bytes.Length) }
+    finally { $stream.Dispose() }
+    $file
+}
+
+function Invoke-SwSession {
+    [CmdletBinding(SupportsShouldProcess)]
+    param(
+        [Parameter(Position = 0, Mandatory)][ValidateSet('start')][string]$Action,
+        [Parameter(Position = 1, Mandatory)][string]$Role,
+        [Parameter(Position = 2, Mandatory)][string]$Task,
+        [string]$Model, [string]$Path, [switch]$DryRun, [switch]$Headless
+    )
+    Assert-SwSafeName $Role 'Role'; Assert-SwSafeName $Task 'Task'
+    if ($Task.StartsWith('-')) { throw 'Task must not start with a CLI flag prefix.' }
+    $Root = Resolve-SwRoot $Path
+    $config = Get-SwConfig $Root
+    if ($config -isnot [Collections.IDictionary] -or $config['users'] -isnot [array] -or $config['githubTier'] -notin 0, 1) { throw 'Malformed workspace configuration.' }
+    $oc = Read-SwJson (Join-Path $Root 'opencode.jsonc')
+    if ($oc -isnot [Collections.IDictionary] -or $oc['agents'] -isnot [Collections.IDictionary]) { throw 'Malformed shared OpenCode configuration.' }
+    $roles = Read-SwJson (Join-Path $Root '.sw/roles.json')
+    if (-not $roles.Contains($Role) -or $roles[$Role]['access'] -eq 'builtin') { throw 'Unknown or unsupported standalone role.' }
+    $roleFile = Join-Path $Root ".opencode/agents/$Role.md"
+    $agent = Read-SwFrontmatter $roleFile @('description', 'mode', 'color', 'permissions')
+    if ($agent['mode'] -notin 'primary', 'all') { throw 'Role cannot run as a standalone main session.' }
+    $taskDir = Join-Path $Root ".sw/comms/tasks/$Task"
+    if (-not (Test-Path -LiteralPath $taskDir -PathType Container) -or -not @(Get-ChildItem -LiteralPath $taskDir -Filter *.md -File).Count) { throw 'Existing task records required; a launch cannot create task authority.' }
+    $mapPath = Join-Path $Root '.opencode/opencode.jsonc'
+    if (-not (Test-Path -LiteralPath $mapPath -PathType Leaf)) { throw 'Explicit local agents[role].model map required.' }
+    $map = Read-SwJson $mapPath
+    if ($map -isnot [Collections.IDictionary] -or $map['agents'] -isnot [Collections.IDictionary]) { throw 'Malformed local agents[role].model map.' }
+    # Validate every roster entry, not just the selected one: no hidden fallback.
+    foreach ($id in $roles.Keys) {
+        if (-not $map['agents'].Contains($id)) { continue }
+        $entry = $map['agents'][$id]
+        if ($entry -isnot [Collections.IDictionary] -or $entry['model'] -isnot [string] -or $entry['disable'] -eq $true) { throw 'Local role needs an enabled explicit model string.' }
+        $null = Get-SwClaudeModel $entry['model']
+    }
+    $mapped = if ($map['agents'].Contains($Role)) { $map['agents'][$Role]['model'] } else { $null }
+    if ($roles[$Role]['tier'] -eq 'session') {
+        if (-not $Model) { throw 'Session-tier primary role requires explicit -Model.' }
+    } else {
+        if (-not $mapped) { throw 'Worker requires actual local agents[role].model; no inheritance.' }
+        if ($Model -and $Model -cne $mapped) { throw 'Conflicting worker -Model override; edit the local map and regenerate first.' }
+        $Model = $mapped
+    }
+    if ($mapped -and $mapped -cne $Model) { throw 'Primary model conflicts with the local role map.' }
+    foreach ($settings in $oc['agents'], $map['agents']) {
+        if (-not $settings.Contains($Role)) { continue }
+        $entry = $settings[$Role]
+        if ($entry -isnot [Collections.IDictionary] -or $entry['disable'] -eq $true -or ($entry['mode'] -and $entry['mode'] -cne $agent['mode']) -or ($entry['model'] -and $entry['model'] -cne $Model)) { throw 'Conflicting selected role configuration; reconcile agent/model/mode before launch.' }
+    }
+    $claudeModel = Get-SwClaudeModel $Model
+    $tool = if ($claudeModel) { 'claude' } else { 'opencode' }
+    $nativeModel = if ($claudeModel) { $claudeModel } else { $Model }
+    $prompt = "Selected main role: $Role. Task: $Task. Before work, read this role contract and existing .sw/comms/tasks/$Task records; reconcile actual artifacts/current approval/assignment and unknown effects. Launch metadata is not approval. Stop for missing authority or unknown effects; no automatic retry/rollback. Follow this role only; workers never delegate."
+    if ($tool -eq 'claude') {
+        if ($Headless) { throw 'Headless Claude is not supported; use the interactive subscription route.' }
+        if ($Role -eq 'project-leader' -and -not $mapped) { throw 'Claude Leader requires a matching explicit local Leader entry for its commands/adapter.' }
+        $files = Get-SwClaudeFiles $Root
+        foreach ($rel in $files.Keys) {
+            $file = Join-Path $Root $rel
+            if (-not (Test-Path -LiteralPath $file -PathType Leaf) -or (Read-SwText $file) -cne $files[$rel]) { throw 'Missing or stale Claude adapter; regenerate with sw claude enable.' }
+        }
+        # A removed role must not remain available as a stale generated worker.
+        foreach ($file in Get-ChildItem -LiteralPath (Join-Path $Root '.claude/agents') -Filter *.md -File -ErrorAction SilentlyContinue) {
+            $rel = ".claude/agents/$($file.Name)"
+            if ($roles.Contains($file.BaseName) -and -not $files.Contains($rel)) { throw 'Stale Claude worker adapter; regenerate before launch.' }
+        }
+        $argv = @('--model', $nativeModel)
+        if ($Role -eq 'project-leader') { $argv += @('--append-system-prompt-file', (Join-Path $Root '.claude/project-leader.md')) }
+        else {
+            $argv += @('--agent', $Role, '--disallowedTools', 'Agent')
+            if ($roles[$Role]['claudeTools']) { $argv += @('--tools', $roles[$Role]['claudeTools']) }
+        }
+        $argv += @('--', $prompt)
+    } else {
+        # The full-screen V2 entry lacks model/agent flags; mini supports both.
+        $argv = @($(if ($Headless) { 'run' } else { 'mini' }), '--model', $nativeModel, '--agent', $Role)
+        if ($Headless) { $argv += @('--', $prompt) } else { $argv += @('--prompt', $prompt) }
+    }
+    $native = Get-Command $tool -CommandType Application, ExternalScript -ErrorAction SilentlyContinue | Select-Object -First 1
+    if (-not $native) { throw "Native CLI '$tool' not installed/on PATH; no launch attempted." }
+    $launch = [pscustomobject]@{ Role = $Role; Task = $Task; Tool = $tool; RequestedModel = $Model; NativeModel = $nativeModel; Arguments = $argv; SessionId = $null; LaunchId = $null }
+    if ($DryRun -or -not $PSCmdlet.ShouldProcess("$Role / $tool", 'start native session (not task approval)')) { $global:LASTEXITCODE = 0; return $launch }
+    $launch.LaunchId = [guid]::NewGuid().ToString('N')
+    $null = Write-SwSessionEvent $Root $Task $launch 'launch' $null
+    $exitCode = $null
+    Push-Location -LiteralPath $Root
+    try {
+        # Preserve numeric exits even if the caller opted into native-error conversion.
+        $PSNativeCommandUseErrorActionPreference = $false
+        $global:LASTEXITCODE = 0
+        # Do not pipe/capture native stdio: interactive CLIs need the real terminal.
+        & $native.Source @argv
+        $exitCode = $LASTEXITCODE
+    } catch {
+        $null = Write-SwSessionEvent $Root $Task $launch 'invocation-failure; effects unknown' $null
+        throw 'Native invocation failed; effects/session identity unknown. Inspect task records/artifacts; do not retry blindly.'
+    } finally { Pop-Location }
+    $null = Write-SwSessionEvent $Root $Task $launch $(if ($exitCode -eq 0) { 'exited; acceptance pending' } else { 'exit-failure; effects unknown' }) $exitCode
+    $global:LASTEXITCODE = $exitCode
+    $launch
 }
 
 # --- comms ------------------------------------------------------------------------------
@@ -940,5 +1122,5 @@ function Get-SwUsage {
 
 Export-ModuleMember -Function Resolve-SwRoot, Write-SwFile, Read-SwText, Read-SwJson, ConvertTo-SwJson, Get-SwHash,
     Get-SwConfig, Read-SwFrontmatter, Get-SwDecision, Test-SwPattern, Get-SwGhRules, Get-SwSessionRules, Add-SwRtkTwins, Get-SwClaudeGhDeny, Test-SwProject,
-    Get-SwClaudeFiles, Invoke-SwClaude, Set-SwTiers, Invoke-SwComms, Add-SwUser, Invoke-SwGitHub, Get-SwUsage, Test-SwLocalOnly,
+    Get-SwClaudeModel, Get-SwClaudeGitRules, Get-SwClaudeFiles, Invoke-SwClaude, Set-SwTiers, Invoke-SwSession, Invoke-SwComms, Add-SwUser, Invoke-SwGitHub, Get-SwUsage, Test-SwLocalOnly,
     Get-SwToolVersion, Test-SwDoctor

@@ -2,6 +2,26 @@
 
 ## 0.3.0-dev
 
+- **Added (workspace-v1):** `sw session start <role> <task-id>` routes
+  explicit local role models to native Claude Code or OpenCode. Leader sessions
+  require `-Model`; conflicting worker overrides, absent config/roles and stale
+  Claude adapters fail closed. OpenCode uses `mini` (interactive) or `run`
+  (`-Headless`); no headless Claude. Dry-run writes nothing. Immutable task events
+  record requested models and unknown native identity/effects, not artifact
+  acceptance. Offline native-stub tests added; independent review ran on an
+  owner-selected free route, with a conservative runtime read-denial discrepancy
+  recorded and owner-accepted. Bounded headless OpenCode engineering artifact,
+  checkpoint/fresh-session tests and read-only acceptance passed under workspace-v1;
+  Claude/interactive/mixed routes and broader enforcement remain unverified.
+  No shared config/account activation implied.
+- **Fixed (Claude adapter, workspace-v1 P1):** worker models come from actual
+  local `agents[role].model`, not a hardcoded model. Mixed/unmapped workers get
+  STOP commands; reviewer has no Bash/write/Agent tools. Git guardrails share
+  canonical verb/wrapper lists; canonical import is `@../AGENTS.md`, relative to
+  `.claude/CLAUDE.md`. The older `@AGENTS.md` draft and model-hardpin descriptions
+  below remain historical, not current behavior. Leader startup is role-scoped,
+  without an unconditional worker-session hook. Live enforcement remains unproven.
+
 - **Changed (permissions):** git and `gh` shell rules are hardened against prefix bypasses.
   - Each git deny or ask verb (push, reset --hard, clean, stash; commit) also matches:
     - the global-flag form `git -* V *`;
