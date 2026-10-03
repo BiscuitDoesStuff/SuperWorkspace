@@ -2,6 +2,14 @@
 
 ## 0.3.0-dev
 
+- **Changed (publication integration):** preserve published SuperWorkspace and
+  local Workspace histories while making the root kit the only active source.
+  Retire duplicate `product/` and obsolete role definitions; retain historical
+  docs/task archives without granting their proposals implementation authority.
+  CI and inherited Pester fixtures now use root paths and current contracts;
+  kit provenance recognizes a root clone and remains null for nested copies.
+  Publication, hosted CI and broader runtime assurance remain separate checks.
+
 - **Added (workspace-v1):** `sw session start <role> <task-id>` routes
   explicit local role models to native Claude Code or OpenCode. Leader sessions
   require `-Model`; conflicting worker overrides, absent config/roles and stale

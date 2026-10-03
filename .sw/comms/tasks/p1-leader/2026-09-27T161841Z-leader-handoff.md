@@ -1,0 +1,52 @@
+# p1-leader - handoff - 2026-09-27T161841Z - leader
+
+- **Author / audience:** leader (local Claude desktop session). Readers: any future Leader session starting without context, then the owner. This event supersedes `2026-09-27T124227Z-leader-handoff.md`.
+- **Approval:** the owner paused Phase 1 packages 7-9 on 2026-09-27. Nothing is authorized.
+- **Scope / acceptance:** checkpoint. The next session orients itself, reports this state to the owner, and waits.
+- **Status:** blocked (waiting on the owner's research)
+- **Branch / base:**
+  - biscuit/biscuit-worktree; published main c6776e0 (main and the branch were equal when this checkpoint was written).
+  - Branch model: the owner is contributor `biscuit`, recorded in `.sw/config.json`, so solo mode is off.
+  - All work and commits happen on `biscuit/biscuit-worktree`; the owner promotes polished work to `main`.
+  - Only these two branches exist; report any other.
+- **Checked revision / changed:** c6776e0, plus this event in the commit that follows.
+- **Owners / dependencies:**
+  - The owner approves, pushes and promotes to main.
+  - The Leader coordinates, records and reviews.
+  - No worker is running and no task is open except this one.
+- **Decisions / remaining:**
+  - **Done:**
+    - Phase 0;
+    - Phase 1 packages 1-5, 5a, 6 and 10;
+    - runtime tests 1-4.
+    - Package 6 moved canonical skills to `.agents/skills`. Runtime test 4 found that OpenCode reads `.opencode`, `.agents` and `.claude` skills, with that precedence, and lists a shared name once. See `.sw/comms/archive/p1-06-skills-move/SUMMARY.md` and `docs/decisions.md`.
+  - **Paused (owner, 2026-09-27):** packages 7 (global overlay), 8 (model advisor) and 9 (Codex adapter), with runtime tests 5 and 6.
+    - The owner is researching elsewhere and will bring the findings here.
+    - Then re-plan 7-9 against that research.
+    - Leave them and their extras as they are until then.
+    - Extras the owner may revisit: the Gemini loader and "not supported" docs in 7; the Cursor/Copilot "no adapter" claim and runtime test 6 in 9.
+  - **Carried into the next package (approved):** `product/project/base/.sw/collaboration.md` line ~88 says `sw user add <name>`; the CLI takes `sw user <name>`.
+  - **Open, not authorized:**
+    - the compound-command follow-up (read-only roles deny `;`, `echo` and `git -C`);
+    - the 2 known research-lint warnings;
+    - the roadmap's Deferred list.
+  - **Housekeeping noted, not done:**
+    - the root `AGENTS.md` Project identity still says "Phase 0 checklist";
+    - the OpenCode desktop check that each kit skill is listed once in this repo was never run.
+  - **Machine notes:**
+    - `sw` is not on PATH; use `pwsh -NoProfile -File C:\DevProjects\SuperWorkspace\.sw\sw.ps1 <cmd>`;
+    - Pester 5.6.1 is installed in the owner's CurrentUser scope;
+    - Claude settings deny `git push`, so the owner pushes;
+    - the lessons in `2026-09-27T124227Z-leader-handoff.md` still apply.
+  - **Owner preferences:**
+    - short, plain replies;
+    - choices only for real decisions;
+    - PowerShell 7 commands with absolute paths;
+    - commit only when asked, staging selected paths.
+- **Validation:** `pwsh -NoProfile -File .sw/sw.ps1 validate` PASS with the 2 known research warnings, and `git diff --check` clean. Local Windows, 2026-09-27.
+- **Not validated / risks:** none new.
+- **Publication:** local-only until a human pushes
+- **Next action:** a new Leader:
+  1. Read `AGENTS.md`, `docs/roadmap.md` Phase 1 and this event.
+  2. Run `git status --short --branch`, `git log --oneline -10` and `validate`.
+  3. Tell the owner it is oriented and wait for the research or a new instruction.

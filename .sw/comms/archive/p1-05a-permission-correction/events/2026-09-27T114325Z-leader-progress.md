@@ -1,0 +1,27 @@
+# p1-05a-permission-correction - progress - 2026-09-27T114325Z - leader
+
+- **Author / audience:** leader (cloud Leader session); readers: the owner and later Leaders.
+- **Approval:** as in the assignment.
+- **Scope / acceptance:** root cause found.
+  - Evidence:
+    - `opencode debug agents` on the desktop shows project-leader and every other agent carrying the project list and the injected session rules, in order.
+    - `opencode run --standalone` logs show `loading plugin ... sw-smoke/.opencode/plugins/rtk.ts`, then `spawning process ... pwsh -Command "rtk git stash list"` and `"rtk gh repo list"`; both ran. The background service gave the same result for stash.
+    - Replaying OpenCode's scanner (web-tree-sitter 0.25.10, tree-sitter-powershell 0.25.10, in the Leader's scratchpad) and its matcher gives deny for `git stash list` and `gh repo list`, and ask for `git commit --dry-run ...`.
+  - **Cause:** in OpenCode v2.0.18, `packages/core/src/shell.ts:274` fires the `create.before` hook, and only then calls the shell tool's `prepare`, which scans and runs `permission.assert` (`tool/plugin/shell.ts` ~116-136, called at ~210). The kit's `product/project/base/.opencode/plugins/rtk.ts` rewrites the command in `create.before` (`git stash list` becomes `rtk git stash list`). So the permission check sees the rewritten command: `git stash *`, `gh *`, `git push *` and `git commit *` no longer match, and `shell * allow` wins. Commands RTK does not rewrite (`git clean -n`) are still denied.
+  - The shim's comment ("permission.assert on the parsed ORIGINAL command before shell.create", v2.0.16) is no longer true in 2.0.18.
+  - This also explains the checkpoint: `git push` and the commit ran as project-leader, and the read-only review child "could not run `git status`" (`rtk git status` does not match its allowlist).
+  - The project-level list is **not** ignored. The checkpoint conclusion and the 2026-09-27 decision entry are wrong on that point.
+- **Status:** in_progress
+- **Branch / base:** `main-ahb0v0`; published main 0ee9b5eb864b1a410e4d45da0b541f7da5c88019
+- **Checked revision / changed:** 2230e4efdad4155e794e6adafc631fd2bdde05be; this event only.
+- **Owners / dependencies:** the owner chooses the fix.
+- **Decisions / remaining:**
+  - Owner decision:
+    - (a) generate an `rtk ` twin for every shell rule (session and role rules) from the same source, so rewritten commands match the same decisions; or
+    - (b) stop shipping the RTK shim until upstream rtk-ai/rtk#3463, and remove it from installed projects through `update`.
+  - Either way, correct the decision entry, the harness table, the checkpoint-derived roadmap text, and the shim comment.
+  - Immediate mitigation for the owner's real projects: delete `.opencode/plugins/rtk.ts` locally (restores the kit's rules at the cost of RTK savings).
+- **Validation:** owner's desktop logs and `debug agents` output (2026-09-27); source reading and a scanner replay by the Leader.
+- **Not validated / risks:** until fixed, every kit project with RTK installed has no effective `git push`, commit, stash or `gh` guard in OpenCode.
+- **Publication:** pushed to origin/main-ahb0v0 by the cloud Leader.
+- **Next action:** owner; choose (a) or (b).

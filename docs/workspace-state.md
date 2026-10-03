@@ -2,6 +2,19 @@
 
 ## Startup
 
+- **Publication preparation (2026-10-03):** owner approved evolving the public
+  SuperWorkspace repository into this Workspace project, preserving both Git
+  histories, auditing public disclosure, root-layout/CI integration and a local
+  integration commit. [Approval and queue](../.sw/comms/tasks/workspace-publication/2026-10-03T090514Z-leader-approval.md)
+  and [audited history consent](../.sw/comms/tasks/workspace-publication/2026-10-03T091517Z-leader-progress-consent-fetch.md)
+  authorize preparation only; [review and checks](../.sw/comms/tasks/workspace-publication/2026-10-03T094814Z-leader-review.md)
+  and [publication handoff](../.sw/comms/tasks/workspace-publication/2026-10-03T095112Z-leader-submission.md)
+  record local readiness and remaining human publication/hosted CI checks.
+  Push/settings/releases remain human-owned. Current
+  remote is `origin` (the approved SuperWorkspace URL); Git owns live ancestry
+  and publication facts. Retained old roadmap/research/task records are historical,
+  not new assignments. No additional model starts, dependencies or global repairs.
+
 - **Current workspace-v1 outcome (2026-10-03):**
   [bounded build approval](../.sw/comms/tasks/workspace-v1/2026-10-03T063903Z-leader-approval.md)
   supersedes older launcher-not-approved notes below for this task only.

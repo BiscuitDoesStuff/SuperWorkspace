@@ -1,7 +1,8 @@
 # Workspace
 
 Research-led AI workspace based on the sibling `AI-Research [2]` corpus.
-SuperWorkspace 0.3.0-dev is the inherited installation, not the target design.
+The public `BiscuitDoesStuff/SuperWorkspace` repository is evolving into this
+project. SuperWorkspace 0.3.0-dev is the inherited installation, not the target design.
 Every project component can be modified, overhauled or replaced on evidence.
 
 ## Start here
@@ -18,6 +19,11 @@ The inherited installation lives in `.sw/`, `.opencode/`, and `.agents/`.
 Neither layout nor its policies have privileged preservation status. The design
 register distinguishes approved requirements, current controls, proposals and
 unknowns; current controls still apply until explicitly changed.
+The former `product/` kit and removed roles are retained in Git history, not as
+active duplicates. Older `docs/roadmap.md`, `docs/decisions.md`, `docs/research/`
+and task archives are historical evidence; they do not override current policy
+or approve new work. See [development and CI](docs/development.md) for root-layout
+checks. The sibling research corpus is not bundled or needed for offline tests.
 
 ## Explicit session entry (workspace-v1)
 
@@ -54,6 +60,7 @@ Run from this directory:
 ```powershell
 pwsh -NoProfile -File .sw/sw.ps1 validate
 pwsh -NoProfile -File tests/workspace-v1.ps1
+pwsh -NoProfile -Command 'Invoke-Pester -Path tests -CI'
 pwsh -NoProfile -File .sw/sw.ps1 doctor
 git diff --check
 ```

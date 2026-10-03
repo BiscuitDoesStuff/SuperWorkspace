@@ -12,8 +12,9 @@ function Get-SwKitVersion { (Get-Content -LiteralPath (Join-Path $script:Kit 'VE
 function Get-SwKitCommit {
     # The exact kit used, or $null when the kit is not a git clone. A kit copied into
     # another repository sits under a different prefix there; that HEAD is not the kit's.
+    # The active kit now lives at the repository root, not the retired product/ prefix.
     $prefix = & git -C $script:Kit rev-parse --show-prefix 2>$null
-    if ($LASTEXITCODE -ne 0 -or "$prefix".Trim() -ne 'product/') { return $null }
+    if ($LASTEXITCODE -ne 0 -or "$prefix".Trim() -ne '') { return $null }
     $sha = & git -C $script:Kit rev-parse HEAD 2>$null
     if ($LASTEXITCODE -eq 0 -and $sha) { "$sha".Trim() } else { $null }
 }

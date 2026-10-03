@@ -7,3 +7,7 @@
 .env.*
 !.env.example
 # sw:end superworkspace
+
+# Disposable local validation evidence and Pester CI output.
+.scratch/
+testResults.xml
