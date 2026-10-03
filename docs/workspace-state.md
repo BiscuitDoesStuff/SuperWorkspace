@@ -51,7 +51,12 @@
   Next: [handoff](../.sw/comms/tasks/workspace-harness-decision/2026-10-02T203000Z-leader-handoff-control-surface.md):
   then [decision](../.sw/comms/tasks/workspace-harness-decision/2026-10-02T213000Z-leader-decision-control-surface.md)
   (owner, 2026-10-02): one control surface; Claude roles in Claude Code on a
-  subscription, other roles in OpenCode; effort dropped; launcher not approved. Git-rule hardening approved and implemented
+  subscription, other roles in OpenCode; effort dropped; launcher not approved.
+  Drafts awaiting owner review (uncommitted, not approved): [launcher submission](../.sw/comms/tasks/workspace-harness-decision/2026-10-02T220000Z-leader-submission-launcher.md),
+  [S3-S6 scoping](../.sw/comms/tasks/workspace-design-scoping/),
+  [research requests R1-R6](../.sw/comms/tasks/workspace-research-requests/) for AI-Research [2].
+  Owner accepted the Leader recommendations ([decision](../.sw/comms/tasks/workspace-harness-decision/2026-10-02T225000Z-leader-decision-launcher-scoping.md));
+  next: [handoff](../.sw/comms/tasks/workspace-harness-decision/2026-10-02T224500Z-leader-handoff-launcher-scoping.md). Git-rule hardening approved and implemented
   2026-10-02 (committed; static checks only; runtime test deferred to
   workspace completion, owner 2026-10-02;
   [closure](../.sw/comms/tasks/workspace-harness-decision/2026-10-02T200000Z-leader-closure-git-hardening.md)).
