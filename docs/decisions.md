@@ -5,6 +5,8 @@
 > [workspace-state.md](workspace-state.md) and
 > [workspace-outline.md](workspace-outline.md); historical defaults are not
 > current configuration or automatic authorization.
+> The 2026-09-27 light/standard/high tier entry is superseded by the
+> model-only tiers decided 2026-10-02 (outline section 6, U1).
 
 Format: `YYYY-MM-DD: Title (status)`. Newest first. Record no secret values.
 The earlier decision logs (ai-environment-foundation, MyMMO) are summarized

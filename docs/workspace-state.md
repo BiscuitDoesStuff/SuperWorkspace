@@ -2,14 +2,18 @@
 
 ## Startup
 
-- **Publication preparation (2026-10-03):** owner approved evolving the public
+- **Publication verification (2026-10-03):** owner approved evolving the public
   SuperWorkspace repository into this Workspace project, preserving both Git
   histories, auditing public disclosure, root-layout/CI integration and a local
   integration commit. [Approval and queue](../.sw/comms/tasks/workspace-publication/2026-10-03T090514Z-leader-approval.md)
   and [audited history consent](../.sw/comms/tasks/workspace-publication/2026-10-03T091517Z-leader-progress-consent-fetch.md)
   authorize preparation only; [review and checks](../.sw/comms/tasks/workspace-publication/2026-10-03T094814Z-leader-review.md)
   and [publication handoff](../.sw/comms/tasks/workspace-publication/2026-10-03T095112Z-leader-submission.md)
-  record local readiness and remaining human publication/hosted CI checks.
+  record local readiness; [human push receipt](../.sw/comms/tasks/workspace-publication/2026-10-03T095714Z-leader-receipt.md)
+  confirms the prepared integration is published. [Publication closure](../.sw/comms/tasks/workspace-publication/2026-10-03T100114Z-leader-closure.md)
+  verifies both hosted Windows/Ubuntu CI and workspace validation workflows passed
+  on the exact published integration SHA. No new development task is authorized;
+  verification records/current-state edits remain local until explicitly committed.
   Push/settings/releases remain human-owned. Current
   remote is `origin` (the approved SuperWorkspace URL); Git owns live ancestry
   and publication facts. Retained old roadmap/research/task records are historical,
@@ -30,7 +34,7 @@
   allowed API evaluation; do not retry/bypass it or relax permissions. Claude,
   interactive/mixed routes, compaction, other users and comprehensive security
   checks remain unverified. [Bounded v1 completed and validated](../.sw/comms/tasks/workspace-v1/2026-10-03T082329Z-leader-closure.md),
-  local-only, not published. Owner requested the scoped local commit
+  published through the approved human integration (receipt above). Owner requested the scoped local commit
   ([commit authorization](../.sw/comms/tasks/workspace-v1/2026-10-03T083516Z-leader-approval-commit.md));
   its containing revision is recorded by Git, not a guessed future SHA.
   Preserve unrelated dirty work and historical events; no installs, global
@@ -44,59 +48,55 @@
   SuperWorkspace is the inherited installation, not a required target design.
   Every project component, including rules and tooling, is reconsiderable.
 - **Implemented:** base initialized with the generic profile, GitHub tier 0,
-  solo configuration (`users: []`), and local Git on `main` (baseline commit 05df1c0, 2026-10-02).
+  solo configuration (`users: []`). `main` tracks `origin`; the published
+  integration and later ancestry are in Git (`git log`), not restated here.
   Agent, command, skill, lifecycle, and GitHub template files are installed.
-- **Authorized task:** [workspace-design-synthesis](../.sw/comms/tasks/workspace-design-synthesis/)
-  (docs-only U5 synthesis; S1-S6 recorded from the reviewed corpus Pass 8 report
-  and owner-confirmed; U1 partly resolved: small roster and generator refit decided,
-  harness chosen: OpenCode after a hands-on check of OpenCode and Kilo;
-  tier rubric model-only). Approved 2026-10-02:
-  [workspace-roster-refit](../.sw/comms/tasks/workspace-roster-refit/) (implemented, committed ddd155c).
-  [workspace-harness-decision](../.sw/comms/tasks/workspace-harness-decision/):
-  hands-on check approved and run for OpenCode and Kilo 7.8.3 (scratch-local
-  npm install; both results records hold the comparison) plus OpenCode follow-ups;
-  U1 harness decided: OpenCode (owner, 2026-10-02; [decision](../.sw/comms/tasks/workspace-harness-decision/2026-10-02T181644Z-leader-decision-u1-opencode.md):
-  only `-m` selects the primary model on the CLI path). Generator refit
-  approved and implemented 2026-10-02 (model-only tiers; committed;
-  [approval](../.sw/comms/tasks/workspace-harness-decision/2026-10-02T183500Z-leader-approval-generator-refit.md));
-  reviewed (no `rtk.ts` rewrite escapes a rule; review fixes applied); owner items in its
-  [closure](../.sw/comms/tasks/workspace-harness-decision/2026-10-02T191500Z-leader-closure-generator-refit.md).
-  Next: [handoff](../.sw/comms/tasks/workspace-harness-decision/2026-10-02T203000Z-leader-handoff-control-surface.md):
-  then [decision](../.sw/comms/tasks/workspace-harness-decision/2026-10-02T213000Z-leader-decision-control-surface.md)
-  (owner, 2026-10-02): one control surface; Claude roles in Claude Code on a
-  subscription, other roles in OpenCode; effort dropped; launcher not approved.
-  Drafts awaiting owner review (uncommitted, not approved): [launcher submission](../.sw/comms/tasks/workspace-harness-decision/2026-10-02T220000Z-leader-submission-launcher.md),
-  [S3-S6 scoping](../.sw/comms/tasks/workspace-design-scoping/),
-  [research requests R1-R6](../.sw/comms/tasks/workspace-research-requests/) for AI-Research [2].
-  Owner accepted the Leader recommendations ([decision](../.sw/comms/tasks/workspace-harness-decision/2026-10-02T225000Z-leader-decision-launcher-scoping.md));
-  next: [handoff](../.sw/comms/tasks/workspace-harness-decision/2026-10-02T224500Z-leader-handoff-launcher-scoping.md). Git-rule hardening approved and implemented
-  2026-10-02 (committed; static checks only; runtime test deferred to
-  workspace completion, owner 2026-10-02;
-  [closure](../.sw/comms/tasks/workspace-harness-decision/2026-10-02T200000Z-leader-closure-git-hardening.md)).
+  The small roster, including `project-research`, is implemented.
+- **Current authorization:** only what the publication and workspace-v1 bullets
+  above state; no new development task is authorized. The 2026-10-02 items
+  below are decided or implemented history, not open assignments.
+- **Decided and implemented (2026-10-02):**
+  [roster refit](../.sw/comms/tasks/workspace-roster-refit/) (ddd155c);
+  harness U1: OpenCode after a hands-on check of OpenCode and Kilo 7.8.3
+  ([decision](../.sw/comms/tasks/workspace-harness-decision/2026-10-02T181644Z-leader-decision-u1-opencode.md):
+  only `-m` selects the primary model on the CLI path); generator refit with
+  model-only tiers ([approval](../.sw/comms/tasks/workspace-harness-decision/2026-10-02T183500Z-leader-approval-generator-refit.md),
+  [closure](../.sw/comms/tasks/workspace-harness-decision/2026-10-02T191500Z-leader-closure-generator-refit.md));
+  Git-rule hardening ([closure](../.sw/comms/tasks/workspace-harness-decision/2026-10-02T200000Z-leader-closure-git-hardening.md);
+  static checks only, runtime test deferred); control surface
+  ([decision](../.sw/comms/tasks/workspace-harness-decision/2026-10-02T213000Z-leader-decision-control-surface.md)):
+  Claude roles in Claude Code on a subscription, other roles in OpenCode,
+  effort dropped. Owner accepted the launcher/scoping recommendations
+  ([decision](../.sw/comms/tasks/workspace-harness-decision/2026-10-02T225000Z-leader-decision-launcher-scoping.md));
+  the [launcher submission](../.sw/comms/tasks/workspace-harness-decision/2026-10-02T220000Z-leader-submission-launcher.md)
+  is superseded by workspace-v1.
+- **Still proposals (committed in adfd0a8, not implementation approval):**
+  [S3-S6 scoping](../.sw/comms/tasks/workspace-design-scoping/);
+  [research requests](../.sw/comms/tasks/workspace-research-requests/): R1-R3 answered by
+  AI-Research Pass 11 (claude-11); R4-R6 unanswered; no pass for them for now (owner, 2026-10-03).
 - **Completed tasks:** documentation-only clarification of research authority,
   full project changeability and one rules/assumptions register; [record](../.sw/comms/tasks/workspace-state-review/2026-10-01T223454Z-leader-submission.md).
   No runtime overhaul or adoption of proposed architecture is authorized.
   Base initialization is complete; [setup record](../.sw/comms/tasks/workspace-base-setup/).
-- **Status:** initialization, startup documentation, static contracts, managed-file
-  integrity, and local documentation links checked successfully. `doctor` remains
-  blocked by an existing OpenCode npm launcher error; no global repair is
-  authorized by setup. Static results do not prove runtime enforcement.
+- **Status:** `validate -CheckLinks`, `tests/workspace-v1.ps1` (226 assertions)
+  and Pester (107 tests) passed on 02633c4 in a read-only audit clone
+  (2026-10-03; [state-audit](../.sw/comms/tasks/state-audit/)). `doctor` was last recorded
+  blocked by an OpenCode npm launcher error (2026-10-01) and is not rechecked;
+  no global repair is authorized. Static results do not prove runtime enforcement.
 - **Design register:** [rules, assumptions and outline](workspace-outline.md) is
   the single project design-review document. It distinguishes approved owner
   requirements, current operational constraints, proposals and unknowns.
   [v0.2](workspace-outline-v0.2.md) remains a dated reference; its preliminary
-  Pass 7 cutoff is stale. The updated design synthesis (U5) is in progress
-  from reviewed Passes 4-8; S1-S6 are recorded; S2's roster is implemented except the research profile role.
+  Pass 7 cutoff is stale. The design synthesis (U5) has no closure; S1-S6 are
+  recorded and S2's roster is implemented.
 - **Execution boundaries:** current controls still apply until an approved change
-  revises them; they are not permanent design requirements. The roster refit
-  changed kit sources and generated files only; the external corpus is unchanged.
-  Commits are the owner-approved baseline, roster refit, and (2026-10-02, owner)
-  the generator refit, git hardening and harness decision records. No installs (beyond the
-  approved scratch-local Kilo test install), global settings changes, further
-  commits, pushes, remotes or adapters are authorized. Kilo's user-scope state
-  (`~/.config|.local/share|.cache|.local/state/kilo`) was moved to the Recycle Bin
-  at the owner's request, 2026-10-02. Local model tiers are not configured; runtime routing and
-  enforcement were checked only in scratch test projects, not in Workspace itself.
+  revises them; they are not permanent design requirements. No installs, global
+  settings changes, commits, pushes or adapters beyond an explicit approval.
+  Kilo's user-scope state (`~/.config|.local/share|.cache|.local/state/kilo`)
+  was moved to the Recycle Bin at the owner's request, 2026-10-02. An ignored
+  local map selects developer and reviewer models only; the Leader model is
+  chosen per launch and the Claude adapter is absent. Only the headless
+  OpenCode route has passed live acceptance (workspace-v1).
 
 ## Reading map
 
