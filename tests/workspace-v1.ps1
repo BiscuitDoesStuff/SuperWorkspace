@@ -267,8 +267,95 @@ try {
         $argv = Read-SwJson $capture
         Assert ($argv[0] -eq 'run' -and $argv[2] -ceq 'openai/gpt-fixture') 'CLI dispatcher safe separated argv'
     } finally { $env:PATH = $oldPath }
+    # P1a: a selected role's effective policy is checked, with the validator's own rules, before discovery,
+    # event creation or any process. Both selected roles run on the OpenCode route so no adapter is involved.
+    Invoke-SwClaude disable -Path $fixture | Out-Null
+    Assert (-not (Test-Path (Join-Path $fixture '.claude/.sw-generated'))) 'Disable removed the verified adapter, with no replacement map needed'
+    Write-SwFile $mapPath '{"agents":{"project-developer":{"model":"openai/gpt-fixture"},"project-review":{"model":"openai/gpt-fixture"}}}'
+    $env:SW_TEST_THROW = '0'; $env:SW_TEST_EXIT = '0'
+    foreach ($role in 'project-developer', 'project-review') {
+        $roleFile = Join-Path $fixture ".opencode/agents/$role.md"
+        $pristine = Read-SwText $roleFile
+        $launch = Invoke-SwSession start $role $task -Path $fixture -DryRun
+        Assert ($launch.Tool -eq 'opencode') "$role valid policy still launches (dry-run)"
+        ValidateFixture 0
+        $variants = [ordered]@{
+            omitted = { param($t) [regex]::Replace($t, '(?s)\npermissions:\n.*?\n---\n', "`n---`n") }
+            empty = { param($t) [regex]::Replace($t, '(?s)\npermissions:\n.*?\n---\n', "`npermissions:`n---`n") }
+            malformed = { param($t) $t.Replace("    resource: `"*`"`n    effect: allow`n", "    resource: `"*`"`n") }
+            stale = { param($t) $t.Replace("resource: `"git push *`"`n    effect: deny", "resource: `"git push *`"`n    effect: ask") }
+        }
+        foreach ($variant in $variants.Keys) {
+            Write-SwFile $roleFile (& $variants[$variant] $pristine)
+            Assert ((Read-SwText $roleFile) -cne $pristine) "$role $variant mutation applied"
+            $eventsBefore = @(Get-ChildItem $taskDir -Filter '*session-progress*.md').Count
+            Remove-Item -LiteralPath $capture -Force -ErrorAction SilentlyContinue
+            Reject { Invoke-SwSession start $role $task -Path $fixture -Headless } 'Selected role policy rejected'
+            Reject { Invoke-SwSession start $role $task -Path $fixture -DryRun } 'Selected role policy rejected'
+            Assert (@(Get-ChildItem $taskDir -Filter '*session-progress*.md').Count -eq $eventsBefore -and -not (Test-Path $capture)) "$role $variant`: no event and no native invocation"
+            ValidateFixture 1 'Session rule drift|needs string action|STATIC'
+        }
+        Write-SwFile $roleFile $pristine
+        # Overlays: a later shared or local override must not undermine the policy just checked.
+        $localBase = Read-SwText $mapPath
+        $overlays = @(
+            @{ Path = $mapPath; Edit = { param($j) $j['agents'][$role]['permissions'] = @(@{ action = 'shell'; resource = 'git push *'; effect = 'allow' }) } }
+            @{ Path = $ocPath; Edit = { param($j) $j['agents'][$role] = @{ permissions = @(@{ action = 'shell'; resource = 'git push *'; effect = 'allow' }) } } }
+        )
+        foreach ($overlay in $overlays) {
+            $before = Read-SwText $overlay.Path
+            $json = Read-SwJson $overlay.Path
+            & $overlay.Edit $json
+            Write-SwFile $overlay.Path (ConvertTo-SwJson $json)
+            $eventsBefore = @(Get-ChildItem $taskDir -Filter '*session-progress*.md').Count
+            Remove-Item -LiteralPath $capture -Force -ErrorAction SilentlyContinue
+            Reject { Invoke-SwSession start $role $task -Path $fixture -Headless } 'Selected role policy rejected|Conflicting'
+            Assert (@(Get-ChildItem $taskDir -Filter '*session-progress*.md').Count -eq $eventsBefore -and -not (Test-Path $capture)) "$role overlay: no event and no native invocation"
+            ValidateFixture 1
+            Write-SwFile $overlay.Path $before
+        }
+        ValidateFixture 0
+    }
+    $null = Invoke-SwSession start project-review $task -Path $fixture -Headless
+    Assert ($LASTEXITCODE -eq 0 -and (Test-Path $capture)) 'Restored valid policy launches exactly the stub again'
+    # P1c: independent concurrent launches at one fixed clock keep distinct, complete launch/exit pairs per
+    # LaunchId, never overwrite earlier records, and run the native stub exactly once per launch.
+    $countDir = Join-Path $fixture 'race-count'
+    New-Item -ItemType Directory -Path $countDir | Out-Null
+    $countStub = Join-Path $fixture 'native-count-stub.ps1'
+    Write-SwFile $countStub "[IO.File]::WriteAllText((Join-Path `$env:SW_TEST_COUNT_DIR ([guid]::NewGuid().ToString('N'))), 'x')`n`$global:LASTEXITCODE = 0`n"
+    $env:SW_TEST_NATIVE = $countStub; $env:SW_TEST_COUNT_DIR = $countDir
+    $raceTask = 'race-task'
+    $raceDir = Join-Path $fixture ".sw/comms/tasks/$raceTask"
+    Write-SwFile (Join-Path $raceDir 'race-approval.md') '# Fixture approval only; no live authority.'
+    $priorHash = (Get-FileHash (Join-Path $raceDir 'race-approval.md')).Hash
+    $writers = 4
+    $barrier = [Threading.Barrier]::new($writers)
+    $results = @(1..$writers | ForEach-Object -ThrottleLimit $writers -Parallel {
+        Import-Module $using:module -Force -DisableNameChecking
+        & (Get-Module Sw.Project) {
+            function script:Get-Command { param($Name, $CommandType, $ErrorAction) [pscustomobject]@{ Source = $env:SW_TEST_NATIVE } }
+            function script:Get-SwUtc { '2000-01-01T000000Z' }
+        }
+        ($using:barrier).SignalAndWait()
+        try { $l = Invoke-SwSession start project-developer $using:raceTask -Path $using:fixture -Headless; [pscustomobject]@{ Ok = $true; LaunchId = $l.LaunchId; Exit = $l.ExitCode } }
+        catch { [pscustomobject]@{ Ok = $false; Error = $_.Exception.Message } }
+    })
+    $failures = @($results | Where-Object { -not $_.Ok } | ForEach-Object { $_.Error })
+    Assert ($failures.Count -eq 0) "Concurrent launches all recorded: $($failures -join '; ')"
+    Assert (@($results.LaunchId | Select-Object -Unique).Count -eq $writers) 'Distinct launch IDs'
+    Assert (@(Get-ChildItem $countDir).Count -eq $writers) 'Exactly one native stub run per launch'
+    $raceEvents = @(Get-ChildItem $raceDir -Filter '*session-progress-*.md')
+    Assert ($raceEvents.Count -eq 2 * $writers -and @($raceEvents.Name | Select-Object -Unique).Count -eq 2 * $writers) 'Distinct launch and exit event files, none lost'
+    foreach ($id in $results.LaunchId) {
+        $pair = @($raceEvents | Where-Object { (Read-SwText $_.FullName) -match "Launch ID:\*\* $id" })
+        Assert ($pair.Count -eq 2) 'Each launch id has exactly its launch and exit event'
+        $pairText = ($pair | ForEach-Object { Read-SwText $_.FullName }) -join "`n"
+        Assert ($pairText -match 'Status:\*\* in_progress; launch' -and $pairText -match 'exited; acceptance pending' -and $pairText -match 'Exit code:\*\* 0') 'Complete launch/exit pair with the native exit'
+    }
+    Assert ((Get-FileHash (Join-Path $raceDir 'race-approval.md')).Hash -ceq $priorHash) 'Earlier record immutable under concurrent writers'
 } finally {
     & $moduleScope { Remove-Item Function:script:Get-Command; Remove-Item Function:script:Get-SwUtc -ErrorAction SilentlyContinue }
-    foreach ($name in 'SW_TEST_NATIVE', 'SW_TEST_ARGV', 'SW_TEST_EXIT', 'SW_TEST_MISSING', 'SW_TEST_THROW') { [Environment]::SetEnvironmentVariable($name, $null, 'Process') }
+    foreach ($name in 'SW_TEST_NATIVE', 'SW_TEST_ARGV', 'SW_TEST_EXIT', 'SW_TEST_MISSING', 'SW_TEST_THROW', 'SW_TEST_COUNT_DIR') { [Environment]::SetEnvironmentVariable($name, $null, 'Process') }
 }
 Write-Output "PASS: $script:checks targeted assertions; static and native-stub contracts only, no model calls or security proof."

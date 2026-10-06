@@ -14,8 +14,8 @@ here. Their repositories keep the full history.
 
 ## 2026-09-27: Tiers are light/standard/high, routed per task (accepted)
 
-- **Why:** the owner's model-tier analysis (ModelAnalysis side session,
-  kept local, not committed) routes work per task in two lanes, Planning and
+- **Why:** the owner's model-tier analysis (kept local,
+  not committed) routes work per task in two lanes, Planning and
   Execution, by a written rubric; calibrated 15/15 on owner-labelled tasks.
 - **Decision:** tiers become `light`, `standard`, `high` (no aliases). Planning
   roles default to standard, execution roles and explore to light. The routing

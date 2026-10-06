@@ -258,7 +258,7 @@ Claude falls back to the nearest lower level (F4); Codex says levels
 
 ### Local context
 
-F22. **Local context: the owner's ModelAnalysis project already does
+F22. **Local context: an owner-local tool already does
 keyless free-model retrieval with a strict-$0 filter.** Its README says
 "No keys required for a public run. No billing." Keyless sources:
 OpenRouter, NVIDIA, ZenMux, OpenCode Zen and models.dev; OpenAI,
@@ -269,8 +269,7 @@ price (or a `:free` ID), or a Zen `*-free` route; text-only output; no
 `openrouter/*` router entries. Artificial Analysis $0 rows without strict
 confirmation are listed separately as provisional `[F?]`. This matches F9
 (routers and `:free` are not the same set) and F12. Read-only; the tool
-was not run. `C:\DevProjects\ModelAnalysis\README.md`, last committed
-2026-09-26 (commit 0ca1862). Local evidence, not a primary source.
+was not run. Local evidence, not a primary source.
 
 ## 3. Options compared
 

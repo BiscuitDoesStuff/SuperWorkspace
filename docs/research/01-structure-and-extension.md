@@ -174,9 +174,8 @@ recorded only as a registry and versioning precedent.
   `@RTK.md` import above the block in the Claude rules. So a user-owned
   import line outside the block survives `global install` today.
 - The personal lines at risk are currently edited *inside* the block on
-  the owner's machine (for example "Claude: a fresh Opus session" and
-  "Ponytail" in `~/.claude/CLAUDE.md`), so the next install would overwrite
-  them.
+  the owner's machine (in a user-level config), so the next install would
+  overwrite them.
 - `product/project/profiles/*/profile.json` is already a small manifest
   (`description`, `editDeny`, `lfs`, `watcherIgnore`, `skills`) with a
   `files/` overlay directory. That is pack-shaped.
@@ -224,8 +223,8 @@ rewriting personal lines into the managed block:
 R2. **Move the owner's in-block edits to the overlay; the product rules do
 not change.** `product/global/rules.md` is already tier-neutral: it has no
 model names and no free-first rule. The personal lines are owner edits
-made inside the managed block in `~/.claude/CLAUDE.md`: the Opus and
-Sonnet model routing, Ponytail, `code-review` and free-first. They move to
+made inside the managed block in a user-level config (for example model
+routing and style preferences). They move to
 `rules.local.md`, which leaves the block identical to the product file.
 The core states the tiers, and the overlay says what they mean on this
 machine. Remove, do not override: an overlay that contradicts the block

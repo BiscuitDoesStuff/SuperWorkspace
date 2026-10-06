@@ -2,6 +2,39 @@
 
 ## 0.3.0-dev
 
+- **Unreleased (2026-10-03..05, local, uncommitted, unpublished):**
+  - Identity: this checkout is the development checkout of the public SuperWorkspace product (`origin`); the owner's private
+    instance is the `personal` remote.
+  - WS manager (`lib/Sw.Manager.psm1`, `project/manager/`, `sw manager ...`): offline project registry, status, requests and
+    manual handoffs for a parent directory of independent projects; live planning calls stay unverified and need separate approval.
+    In a manager instance `validate` runs `Test-SwManager`, which checks installed files against the manifest and, offline, against kit sources
+    (drift check; skipped with a warning when kit sources are absent).
+  - `opencode.jsonc` `watcher.ignore` merges the profile's `watcherIgnore` with an optional project `.sw/config.json` `watcherIgnore`;
+    every profile now ignores `.scratch/**`.
+  - Profile selection v1 (`project/selection.json`, `project/capabilities/`): roles and skills are selected per project; the `research`
+    profile and `provider-setup` capability were added, and this Workspace migrated to research + provider-setup.
+  - Task records: `.sw/comms/` is gitignored and local-only in this checkout; previously published records remain in public history.
+  - `.sw/config.json` `"records": "local"` (opt-in; default `tracked`) adds `.sw/comms/` to the managed `.gitignore` block and
+    renders `.sw/collaboration.md` with local-only wording; other values are rejected.
+
+- **Fixed (workspace-v1 review repairs, local, unpublished):**
+  - A selected role's effective permission list (its file plus shared and local overlays) is checked by the same narrow check `validate` runs, before any
+    discovery, event or process; an omitted, empty, malformed, stale or overridden policy is rejected.
+  - `claude enable` records a versioned per-file byte-hash inventory in `.claude/.sw-generated`; `claude disable` removes only verified-owned files
+    without needing the replacement map, keeps edited files and reports PARTIAL; legacy marker-only installs are removed only where exactly reproducible;
+    enable backs up any differing unverified target before replacing it. Marker text alone never authorizes deletion.
+  - Session events and `comms send`/`event` use one exclusive-create allocator; a recording failure after the native exit reports the observed exit
+    instead of losing it, and the native process is never retried.
+  - `init`/`update` validate every managed block (and refuse to drop managed LFS rules on an Unreal-to-generic change) before writing anything.
+    Recovery snapshots (global, adoption, incoming copies, adapter) are unique per operation and never overwrite; an explicit existing backup
+    destination is rejected; a failed copy stops the replacement it protects. Every broad `gh` Claude allow is narrowed.
+  - `doctor` no longer reports a tool that cannot report a version as present (no fabricated 0.0.0): a required OpenCode failure is `FAILED`, optional
+    gh/rtk problems warn, and `main` is accepted only in a solo project (with contributors, the recorded user's own worktree branch is required).
+    Diagnostics reach installed tools through two replaceable functions so tests never run real tools, auth or installers.
+  - Guidance: onboarding enters the checkout after cloning; static checks are described as portability checks, not credential proof; ownership,
+    backup and profile-transition notes added; outline publication facts updated; Claude Leader summary follows each command's availability.
+  - `ForEach-Object Rule` in adapter generation returned nothing under `-WhatIf`; replaced with a script-block form.
+
 - **Changed (publication integration):** preserve published SuperWorkspace and
   local Workspace histories while making the root kit the only active source.
   Retire duplicate `product/` and obsolete role definitions; retain historical

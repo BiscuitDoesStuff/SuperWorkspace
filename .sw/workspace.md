@@ -130,7 +130,9 @@ At every tier agents never push, merge, publish releases, or change repo
 settings. Humans push branches and merge.
 
 No shared model/provider pins, credentials, shell paths, or absolute paths are
-committed; `sw validate` enforces this. Each contributor's tier map lives in the
+committed. `sw validate` checks the portability part statically (model/provider
+pins, absolute machine paths, hygiene); it does not scan for credentials, which
+need a separate disclosure review. Each contributor's tier map lives in the
 git-ignored `.opencode/opencode.jsonc` (`sw tiers`). Users supply provider access.
 A Claude subscription is not OpenCode API access.
 
@@ -218,7 +220,8 @@ Claude roles fail generation; unmapped/non-Claude workers are omitted and their
 commands stop rather than dispatch or impersonate them. No shared user model
 pin or implicit launcher fallback is supplied. Alias/model availability and the
 actual runtime model still need live verification. Keep the map available for
-adapter disable/drift checks, which compare current generated content.
+adapter drift checks, which compare current generated content; `disable` does
+not need it (see ownership below).
 
 The ignored adapter writes `.claude/CLAUDE.md` with `@../AGENTS.md`, relative to
 that file, importing canonical root rules without a duplicate. Official Claude
@@ -244,8 +247,9 @@ opt-in; generation does not configure accounts or verify tool/model access.
 
 Default cost policy is free-first: free OpenCode/OpenRouter models and local
 LM Studio, no metered API spend unless a contributor opts in locally. To pick
-free models per tier, follow the `free-models` skill's procedure; the kit
-ships no model IDs or tier fits. Local models with small context windows must
+free models per tier, follow the `free-models` skill's procedure (installed
+with the `provider-setup` capability or a legacy install); the kit ships no
+model IDs or tier fits. Local models with small context windows must
 override `compaction` locally.
 
 ## Usage optimization
@@ -253,6 +257,16 @@ override `compaction` locally.
 - Startup budget: `AGENTS.md` + role body + skill names/descriptions (the Leader
   also counts the other agents' descriptions), capped per role by `sw validate`
   (`startupBudgetBytes` in `.sw/config.json`); tokens are a bytes/4 estimate.
+- `sw context [-Task <id>] [-StateFile <rel.md>] [-StateSection <heading>]` is a
+  read-only report: the same per-role estimate and cap, the named state section
+  and policy file sizes (no cap), available skill/command/plugin metadata and at
+  most 20 task event references. It reads no event bodies, global stores or
+  runtime data; tool schemas, global instructions, native memory, actual loads
+  and model-visible input are reported as not observed. Without `-StateFile` the
+  state source is unspecified, never guessed. It never selects or approves a
+  task; exit 0 means inspection ran. `/status`, `/resume` and `/handoff` use it
+  as pointers and present one recovery card in which unknown exits and effects
+  stay UNKNOWN. Not available in a manager installation.
 - Skills and docs load on demand; do not re-read `AGENTS.md`.
 - RTK rewrites shell output through `.opencode/plugins/rtk.ts` (fails open).
 - context7 MCP for library docs instead of web search; it receives your queries,
@@ -268,11 +282,52 @@ pointer agents and commands, copied skills, permission rules for the GitHub
 tier, and role-scoped startup material. No unconditional SessionStart hook
 makes worker main sessions the Leader; native entry selects the main role.
 `sw update` regenerates it when `.claude/.sw-generated` exists; otherwise run
-`sw claude enable`. `sw validate` reports drift. Never hand-edit generated
+`sw claude enable`. `sw validate` reports drift.
+
+Ownership: `sw claude enable` records every file it wrote (path and SHA-256 of
+its bytes) in a versioned inventory in `.claude/.sw-generated`, written last.
+`sw claude disable` reads only that inventory, never the current map and never
+marker text: it removes files that still match, keeps edited files,
+`settings.local.json` and your own files, and reports PARTIAL (blocked) when
+anything remains (`$LASTEXITCODE` is 1 in PowerShell; the CLI wrapper does not
+turn it into a process exit code). A record from an older kit has no inventory, so disable
+removes only files it can regenerate byte for byte and reports the rest as
+unresolved. A malformed or hostile inventory is rejected whole, with nothing
+removed. Before replacing a differing file it cannot verify as its own,
+`enable` copies it into a fresh `.sw/backup/<UTC>-<id>/` folder first; a failed
+copy stops that replacement. Never hand-edit generated
 files; edit the `.opencode/` or `.agents/skills` source instead. Claude applies instruction edits
 and `update` output only after `/clear`, `/compact` or a restart. Keep one
 model per session in every harness: switching mid-session breaks the prompt
 cache.
+
+## Backups and profile changes
+
+Anything the kit would replace is copied first into a new folder for that
+operation: `.sw/backup/<UTC>-<id>/` in a project (adopted files, incoming kit
+versions, Claude adapter files) and `~/.sw/backups/<UTC>-<id>/` for
+`sw global install|backup`. Folders are never reused or merged, an explicit
+`global backup` destination must not exist yet, and a failed copy stops the
+replacement it protects. Files whose names look like credentials are skipped by
+name only; contents are never scanned, so a copied settings file can still hold
+secrets.
+
+`sw init` and `sw update` check every managed block (`AGENTS.md`,
+`.gitignore`, `.gitattributes`) before writing anything; a missing or repeated
+marker stops the run with nothing changed. Changing a project from the Unreal
+profile to generic is refused while the managed `.gitattributes` block carries
+LFS rules, even with `-Force` or `-Adopt`; keeping or migrating LFS content is
+a separate owner decision.
+
+Profile selection v1 (`selection` in `.sw/config.json`; fresh `sw init`
+default) installs only the resolved core, preset and capability roles, skills
+and commands, recorded as `effectiveSelection` in `.sw/profile.json`. An
+existing project stays legacy (every base component) until `sw update
+-SelectionV1`; `-Capabilities research,provider-setup` adds to the preset, and
+an empty value clears the additions. Deselecting an edited, unowned, linked or
+unverified component, or one the local model map still names, stops the run
+with nothing written. Selection controls installed files, not runtime loading:
+project-owned extras and global skills stay visible and still count.
 
 ## Verification ladder
 

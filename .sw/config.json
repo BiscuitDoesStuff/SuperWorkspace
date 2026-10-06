@@ -1,8 +1,15 @@
 {
   "project": "Workspace",
-  "profile": "generic",
+  "profile": "research",
   "githubTier": 0,
+  "records": "local",
   "github": true,
   "startupBudgetBytes": 12100,
-  "users": []
+  "users": [],
+  "selection": {
+    "version": 1,
+    "capabilities": [
+      "provider-setup"
+    ]
+  }
 }

@@ -14,11 +14,14 @@ only (Claude Code is an opt-in local adapter; see `.sw/workspace.md`).
 
 ```powershell
 git clone <repo-url>
+cd <checkout-directory>
 pwsh .sw/sw.ps1 doctor -User <you>
 ```
 
 `doctor` is read-only: it never installs or changes anything, it only reports
-what is missing and the exact command to fix it.
+what is missing and the exact command to fix it. With contributors recorded it
+checks the branch you are on: switch to your own `<you>/<you>-worktree` first
+(`main` is accepted only in a solo project).
 
 ## Model tiers
 

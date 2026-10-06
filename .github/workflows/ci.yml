@@ -29,3 +29,6 @@ jobs:
       - name: Offline session contracts
         shell: pwsh
         run: pwsh -NoProfile -File tests/workspace-v1.ps1
+      - name: Offline manager contracts
+        shell: pwsh
+        run: pwsh -NoProfile -File tests/manager.ps1

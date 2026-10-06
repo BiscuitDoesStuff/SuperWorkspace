@@ -2,6 +2,12 @@
   "description": "Unreal Engine C++ project with LFS binary assets.",
   "editDeny": ["*.uasset", "*.umap"],
   "lfs": ["*.uasset", "*.umap"],
-  "watcherIgnore": ["Binaries/**", "Build/**", "DerivedDataCache/**", "Intermediate/**", "Saved/**", ".vs/**"],
-  "skills": ["unreal-validation"]
+  "watcherIgnore": ["Binaries/**", "Build/**", "DerivedDataCache/**", "Intermediate/**", "Saved/**", ".vs/**", ".scratch/**"],
+  "skills": ["unreal-validation"],
+  "composition": {
+    "roles": ["project-leader", "project-developer", "project-review", "explore"],
+    "capabilities": [],
+    "context": ["unreal"],
+    "checks": ["unreal-validation"]
+  }
 }

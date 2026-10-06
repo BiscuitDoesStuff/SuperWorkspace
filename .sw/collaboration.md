@@ -1,8 +1,8 @@
 # Collaboration
 
 Owns task records, messages, branches, publication, and integration under
-`AGENTS.md`. Git is the transport: everything below is plain files in
-`.sw/comms/`, published when a human pushes their branch. `main` is the
+`AGENTS.md`. Everything below is plain files in
+`.sw/comms/`, kept local by `records: local` (git-ignored, never pushed). `main` is the
 integration baseline. Only humans publish; agents never push.
 
 ## Layout

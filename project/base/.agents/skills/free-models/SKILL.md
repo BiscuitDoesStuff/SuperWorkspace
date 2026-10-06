@@ -5,7 +5,7 @@ description: Procedure for finding, verifying and mapping free models to tiers; 
 
 # Free models
 
-Use when choosing free models or effort levels for OpenCode tiers. This is
+Use when choosing free models for OpenCode tiers; tiers are model-only. This is
 procedure, not configuration: it holds no provider credentials, no config
 blocks, and no model IDs, prices, endpoints or effort levels. Those change
 within days; read them from the machine and the provider, never from memory
@@ -33,9 +33,13 @@ or an old note.
 - Free endpoints may silently ignore effort settings server-side. If a
   variant change alters neither behavior nor response length, the server
   is locking the level; do not "fix" this in config.
-- Treat free-endpoint flakiness (refused tool use, bare provider errors,
-  mid-run failures) as normal: retry once, then route around, never
-  reconfigure.
+- On quota, 429, rate or session limits: stop and checkpoint the task record;
+  do not retry, spawn or route around (`.sw/workspace.md`, Approved-plan
+  execution).
+- On other free-endpoint failures (refused tool use, bare provider errors,
+  mid-run failures): reconcile the exit, artifacts and unknown effects first.
+  Retry or reroute only with new evidence and applicable approval, within the
+  three-failed-attempts ceiling; never reconfigure to work around them.
 - No qualitative ranking (such as "strongest coder" or "fastest") is
   sourced here; choose levels by observed behavior on the task, not labels.
 

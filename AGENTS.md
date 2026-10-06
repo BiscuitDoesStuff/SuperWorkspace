@@ -2,8 +2,11 @@
 
 ## Project identity
 
-Workspace is a research-led AI workspace based on the research in the sibling
-`AI-Research [2]` project, not on preserving the inherited SuperWorkspace design.
+Workspace is the development checkout of SuperWorkspace, an optimized workspace
+published as a public product (`origin`). Design is research-led, not driven by preserving inherited design. The owner's
+private instance is the `personal` remote; its adaptations may be upstreamed here.
+Keep private evidence, personal paths and nonredistributable research out of
+anything published to `origin`.
 Read only the Startup section of `docs/workspace-state.md` at startup; it owns
 implemented state and current authorization. `docs/workspace-outline.md` is the
 single project design rules/assumptions register; read its detail on demand.
@@ -76,11 +79,21 @@ and integration. Credentials, machine paths, and model choices stay local.
 <!-- sw:end core -->
 
 <!-- sw:begin profile -->
-## Profile: generic
+## Profile: research
 
-Validation order for code changes: (1) the project's build or type check,
-(2) its automated tests, targeted first, then the suite, (3) manual or
-interactive checks only when a real session exists, (4) `git diff --check` and
-trailing-whitespace checks on new files. Discover the actual commands from the
-repository (README, package manifest, CI workflow) instead of assuming them.
+Most work here is research, evidence and decisions. A finding informs a
+decision; it does not authorize implementation, which needs its own approval.
+Research files follow the research capability checks below. Code changes still
+follow the repository's own build and tests, discovered from the repository
+(README, package manifest, CI workflow), then `git diff --check` and
+trailing-whitespace checks on new files.
+
+## Capability: research
+
+`project-research`, the `research` skill and `/research` are available for
+request-scoped, cited outside research. Availability is not approval to
+collect. Research-file checks: each finding cites a source or is marked Local,
+source access dates and status are recorded, and uncertainty and open
+questions are stated. `sw validate` lints `docs/research/*.md` as warnings
+only; it does not replace these checks or the checks for any code changed.
 <!-- sw:end profile -->

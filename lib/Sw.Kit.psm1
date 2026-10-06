@@ -36,10 +36,21 @@ function Compare-SwVersion([string]$A, [string]$B) {
 # A key ending in '/' is a prefix rule, expanded per-file against the old manifest (Sync-SwProject).
 $script:Moved = [ordered]@{ '.opencode/skills/' = '.agents/skills/' }
 
+function Assert-SwBlockWellFormed([string]$Text, [string]$Name, [string]$Begin, [string]$End) {
+    # Absent is fine; present must be exactly one begin followed by exactly one end.
+    $b = $Text.IndexOf($Begin); $e = $Text.IndexOf($End)
+    if ($b -lt 0 -and $e -lt 0) { return }
+    if ($b -lt 0) { throw "Malformed managed block '$Name': '$End' without '$Begin'" }
+    if ($e -lt 0) { throw "Unterminated managed block '$Name' (found '$Begin' without '$End')" }
+    if ($e -lt $b) { throw "Malformed managed block '$Name': '$End' before '$Begin'" }
+    if ($Text.LastIndexOf($Begin) -ne $b -or $Text.LastIndexOf($End) -ne $e) { throw "Malformed managed block '$Name': repeated markers" }
+}
+
 function Set-SwBlock([string]$Text, [string]$Name, [string]$Body, [ValidateSet('md', 'hash')][string]$Style = 'md') {
     # Insert or replace one named managed block; everything outside it is left alone.
     $b, $e = if ($Style -eq 'md') { "<!-- sw:begin $Name -->", "<!-- sw:end $Name -->" } else { "# sw:begin $Name", "# sw:end $Name" }
     $block = "$b`n$($Body.Trim("`n"))`n$e"
+    Assert-SwBlockWellFormed $Text $Name $b $e
     $start = $Text.IndexOf($b)
     if ($start -ge 0) {
         $end = $Text.IndexOf($e, $start)
@@ -80,6 +91,8 @@ function Add-SwSessionRules([string]$Text, $Rules, [string]$Label) {
 
 function Get-SwRender([Collections.IDictionary]$Config) {
     # Everything the kit owns in a project, rendered from $Config. Pure: writes nothing.
+    # The profile names a source directory: only a canonical ID may reach a path.
+    if ("$($Config['profile'])" -cnotmatch '^[a-z0-9]+(-[a-z0-9]+)*$') { throw "Profile '$($Config['profile'])' is not a canonical identifier (lowercase letters, digits, single hyphens)" }
     $profileDir = Join-Path $script:Kit "project/profiles/$($Config['profile'])"
     if (-not (Test-Path -LiteralPath $profileDir)) { throw "Unknown profile '$($Config['profile'])'. Available: $((Get-ChildItem (Join-Path $script:Kit 'project/profiles') -Directory).Name -join ', ')" }
     $profileData = Read-SwJson (Join-Path $profileDir 'profile.json')
@@ -96,38 +109,246 @@ function Get-SwRender([Collections.IDictionary]$Config) {
     & $add (Join-Path $script:Kit 'project/base')
     & $add (Join-Path $profileDir 'files')
     if ($Config['github'] -ne $false) { & $add (Join-Path $script:Kit 'project/github') }
+    # `records: local` (opt-in) keeps .sw/comms/ out of Git; absent or `tracked` is the default.
+    $local = $Config.Contains('records') -and $Config['records'] -ceq 'local'
+    if ($Config.Contains('records') -and $Config['records'] -cnotin 'tracked', 'local') { throw "Config 'records' must be 'tracked' or 'local', not '$($Config['records'])'" }
+    if ($local) {
+        $collab = $files['.sw/collaboration.md']
+        $published = "Git is the transport: everything below is plain files in`n``.sw/comms/``, published when a human pushes their branch."
+        if (-not $collab.Contains($published)) { throw 'project/base/.sw/collaboration.md lost the records sentence that records: local replaces' }
+        $files['.sw/collaboration.md'] = $collab.Replace($published, "Everything below is plain files in`n``.sw/comms/``, kept local by ``records: local`` (git-ignored, never pushed).")
+    }
     $files['.sw/roles.json'] = Read-SwText (Join-Path $script:Kit 'project/roles.json')
     $files['.sw/profile.json'] = Read-SwText (Join-Path $profileDir 'profile.json')
     $files['.sw/sw.ps1'] = Read-SwText (Join-Path $script:Kit 'sw.ps1')
     $files['.sw/lib/Sw.Project.psm1'] = Read-SwText (Join-Path $script:Kit 'lib/Sw.Project.psm1')
+    $files['.sw/lib/Sw.Manager.psm1'] = Read-SwText (Join-Path $script:Kit 'lib/Sw.Manager.psm1')
+    $roles = Read-SwJson (Join-Path $script:Kit 'project/roles.json')
+    $agentsProfile = Read-SwText (Join-Path $profileDir 'AGENTS.section.md')
 
-    # Session rules lead every agent's own list (OpenCode ignores the project-level one).
+    # Selection v1 (config opt-in) filters the in-memory render; legacy keeps every base file and ignores composition.
+    $selection = $null; $known = $null; $commands = $null
+    if ($Config.Contains('selection')) {
+        $catalogue = Read-SwJson (Join-Path $script:Kit 'project/selection.json')
+        $selection = Resolve-SwSelection $Config['selection'] ([string]$Config['profile']) $profileData $catalogue @($roles.Keys)
+        $known = Get-SwSelectionKnown $catalogue $profileData
+        # Every component the catalogue or profile names must exist in the kit, selected or not.
+        $missing = @(foreach ($r in $known.roles) { if ($roles[$r]['access'] -ne 'builtin' -and -not $files.Contains(".opencode/agents/$r.md")) { ".opencode/agents/$r.md" } }) +
+            @(foreach ($s in $known.skills) { if (-not $files.Contains(".agents/skills/$s/SKILL.md")) { ".agents/skills/$s/SKILL.md" } }) +
+            @(foreach ($c in $selection.capabilities) { if ($catalogue['capabilities'][$c]['context'].Count -and -not (Test-Path -LiteralPath (Join-Path $script:Kit "project/capabilities/$c/AGENTS.section.md") -PathType Leaf)) { "project/capabilities/$c/AGENTS.section.md" } })
+        if ($missing.Count) { throw "Selection source definitions missing; nothing was written: $($missing -join ', ')" }
+        $commands = Get-SwSelectionCommands $selection.roles
+        $dropRoles = @($known.roles | Where-Object { $_ -cnotin $selection.roles })
+        foreach ($rel in @($files.Keys)) {
+            $drop = ($rel -match '^\.opencode/agents/([^/]+)\.md$' -and $Matches[1] -cin $dropRoles) -or
+                ($rel -match '^\.agents/skills/([^/]+)/' -and $Matches[1] -cin $known.skills -and $Matches[1] -cnotin $selection.skills) -or
+                ($rel -match '^\.opencode/commands/([^/]+)\.md$' -and $Matches[1] -cin $known.commands -and $Matches[1] -cnotin $commands)
+            if ($drop) { $files.Remove($rel) }
+        }
+        foreach ($rel in '.opencode/agents/project-leader.md', '.sw/workspace.md') { $files[$rel] = Remove-SwRoleLines $files[$rel] $dropRoles }
+        $selected = [ordered]@{}
+        foreach ($r in $roles.Keys) { if ($r -cin $selection.roles) { $selected[$r] = $roles[$r] } }
+        $roles = $selected
+        $files['.sw/roles.json'] = ConvertTo-SwJson $roles
+        $installed = [ordered]@{}
+        foreach ($k in $profileData.Keys) { $installed[$k] = $profileData[$k] }
+        $installed['effectiveSelection'] = $selection
+        $files['.sw/profile.json'] = ConvertTo-SwJson $installed
+        $files['.sw/selection.json'] = Read-SwText (Join-Path $script:Kit 'project/selection.json')
+        foreach ($c in $selection.capabilities) {
+            $section = Join-Path $script:Kit "project/capabilities/$c/AGENTS.section.md"
+            if (Test-Path -LiteralPath $section -PathType Leaf) { $agentsProfile = $agentsProfile.TrimEnd("`n") + "`n`n" + (Read-SwText $section) }
+        }
+    }
+
+    # Session rules lead every agent's own list.
+    # ponytail: deliberate duplication. OpenCode v2 does append agent rules after the top-level list
+    # (opencode.ai/v2/docs/permissions, /agents; `opencode debug agents` on 2.0.18, docs/decisions.md 2026-09-27),
+    # so the per-agent copy is redundant at runtime. It stays as accepted defence in depth, and because the
+    # static matrix, drift check and `sw context` policy model each agent file alone. Upgrade trigger: an owner
+    # decision to drop it, with validate/context composing opencode.jsonc + agent rules and a live runtime check.
     $session = @(Get-SwSessionRules $profileData['editDeny'] ([int]$Config['githubTier']))
     foreach ($rel in @($files.Keys | Where-Object { $_ -match '^\.opencode/agents/[^/]+\.md$' })) { $files[$rel] = Add-SwSessionRules $files[$rel] $session $rel }
 
-    # opencode.jsonc: session rules (kept for an OpenCode that honours them) + build delegation allowlist.
+    # opencode.jsonc: session rules (applied first to every agent in v2) + build delegation allowlist.
     $oc = Read-SwJson (Join-Path $script:Kit 'project/opencode.base.json')
     $twinned = @(Add-SwRtkTwins $session)
     $oc['permissions'] = $twinned
-    $roles = Read-SwJson (Join-Path $script:Kit 'project/roles.json')
     $build = [Collections.Generic.List[object]]@($twinned)
     $build.Add([ordered]@{ action = 'subagent'; resource = '*'; effect = 'deny' })
     foreach ($r in @($roles.Keys | Where-Object { $_ -notin 'project-leader', 'explore' }) + 'general', 'explore') { $build.Add([ordered]@{ action = 'subagent'; resource = $r; effect = 'allow' }) }
     $oc['agents'] = [ordered]@{ build = [ordered]@{ permissions = @($build) } }
-    if (@($profileData['watcherIgnore']).Count) { $oc['watcher'] = [ordered]@{ ignore = @($profileData['watcherIgnore']) } }
+    # OpenCode's watcher ignores only its built-in list plus watcher.ignore (not .gitignore); projects may append theirs.
+    $watch = @(@($profileData['watcherIgnore']) + @($Config['watcherIgnore']) | Where-Object { $_ } | Select-Object -Unique)
+    if ($watch.Count) { $oc['watcher'] = [ordered]@{ ignore = $watch } }
     $files['opencode.jsonc'] = ConvertTo-SwJson $oc
 
     $template = Read-SwText (Join-Path $script:Kit 'project/base/AGENTS.md')
-    $ignore = @('.opencode/opencode.json', '.opencode/opencode.jsonc', '.claude/', '.sw/backup/', '.env', '.env.*', '!.env.example') -join "`n"
+    $ignore = @('.opencode/opencode.json', '.opencode/opencode.jsonc', '.claude/', '.sw/backup/', '.env', '.env.*', '!.env.example') + $(if ($local) { '.sw/comms/' } else { @() }) -join "`n"
     $attrs = (@($profileData['lfs']) | ForEach-Object { "$_ filter=lfs diff=lfs merge=lfs -text" }) -join "`n"
     [ordered]@{
         Files          = $files
         AgentsTemplate = $template.Replace('{{PROJECT}}', $Config['project'])
         AgentsCore     = Get-SwBlockBody $template 'core'
-        AgentsProfile  = Read-SwText (Join-Path $profileDir 'AGENTS.section.md')
+        AgentsProfile  = $agentsProfile
         GitIgnore      = $ignore
         GitAttributes  = $attrs
+        Selection      = $selection
+        Known          = $known
+        Commands       = $commands
     }
+}
+
+function Remove-SwRoleLines([string]$Text, [string[]]$Roles) {
+    # Drops a deselected role's routing bullet (with its indented continuation) or Roles-table row.
+    if (-not @($Roles).Count) { return $Text }
+    $alt = (@($Roles) | ForEach-Object { [regex]::Escape($_) }) -join '|'
+    $bullet = $false
+    $kept = foreach ($line in $Text -split "`n") {
+        if ($bullet -and $line -match '^  \S') { continue }
+        $bullet = $line -cmatch "^- ($alt):"
+        if ($bullet -or $line -cmatch "^\| ($alt)[ |]") { continue }
+        $line
+    }
+    $kept -join "`n"
+}
+
+function Format-SwSelection($Render) {
+    $s = $Render.Selection
+    if (-not $s) { return 'selection: legacy (no selection field; every base role, skill and command kept; composition ignored)' }
+    $list = { param($v) "[$(@($v) -join ', ')]" }
+    "selection: v1 profile=$($s.profile) capabilities=$(& $list $s.capabilities) roles=$(& $list $s.roles) skills=$(& $list $s.skills) commands=$(& $list $Render.Commands) context=$(& $list $s.context) checks=$(& $list $s.checks)"
+}
+
+function Set-SwSelectionOption([Collections.IDictionary]$Config, [bool]$SelectionV1, $Bound) {
+    # Opt-in is explicit: an existing config without `selection` stays legacy unless -SelectionV1 is passed.
+    if ($SelectionV1 -and -not $Config.Contains('selection')) { $Config['selection'] = [ordered]@{ version = 1; capabilities = @() } }
+    if (-not $Bound.ContainsKey('Capabilities')) { return }
+    if (-not $Config.Contains('selection')) { throw '-Capabilities needs selection v1; pass -SelectionV1 to opt this project in. Nothing was written.' }
+    if ($Config['selection'] -isnot [Collections.IDictionary]) { throw 'Malformed config selection; nothing was written.' }
+    # Present-but-empty (-Capabilities '') clears additional capabilities; comma lists come from the CLI as one string.
+    $Config['selection']['capabilities'] = @(@($Bound['Capabilities']) | ForEach-Object { "$_" -split ',' } | ForEach-Object { $_.Trim() } | Where-Object { $_ })
+}
+
+function Get-SwClaudeCandidate($Render, [Collections.IDictionary]$Config, [string]$MapPath) {
+    # The adapter the enabled generator would emit after this sync: the same generator (classifier, STOP and tool
+    # rules) fed in memory with the rendered, not yet written inputs and the parsed local map. Nothing is written.
+    $files = [ordered]@{}
+    foreach ($e in $Render.Files.GetEnumerator()) { if ($e.Key -match '^(\.opencode/(agents|commands)/|\.agents/skills/)') { $files[$e.Key] = $e.Value } }
+    Get-SwClaudeFiles '' ([pscustomobject]@{
+        Config  = $Config
+        Roles   = $Render.Files['.sw/roles.json'] | ConvertFrom-Json -AsHashtable
+        Profile = $Render.Files['.sw/profile.json'] | ConvertFrom-Json -AsHashtable
+        Map     = $(if (Test-Path -LiteralPath $MapPath -PathType Leaf) { Read-SwJson $MapPath } else { $null })
+        Files   = $files
+    })
+}
+
+function Assert-SwSelectionTransition([string]$Root, $Render, [Collections.IDictionary]$Config) {
+    # Preflight before any write or git init: a deselected kit component that is edited, unowned, unverified or
+    # linked blocks the whole run (paths are project-relative). -Force/-Adopt never reach this. Not a rollback engine.
+    if (-not $Render.Selection) { return }
+    $sel = $Render.Selection; $known = $Render.Known
+    $drop = [ordered]@{
+        roles    = @($known.roles | Where-Object { $_ -cnotin $sel.roles })
+        skills   = @($known.skills | Where-Object { $_ -cnotin $sel.skills })
+        commands = @($known.commands | Where-Object { $_ -cnotin $Render.Commands })
+    }
+    $blocked = [Collections.Generic.List[string]]::new()
+    $paths = {
+        param([string]$Base, $Ids = $drop)
+        foreach ($r in $Ids.roles) { "$Base/agents/$r.md" }
+        foreach ($c in $Ids.commands) { "$Base/commands/$c.md" }
+    }
+    $skillFiles = {
+        param([string]$Dir, $Owned, $Ids = $drop)
+        foreach ($s in $Ids.skills) {
+            $rel = "$Dir/$s"
+            if (Test-SwLinkedPath $Root $rel) { $blocked.Add("$rel (linked)"); continue }
+            $full = Join-Path $Root $rel
+            $onDisk = @(if (Test-Path -LiteralPath $full -PathType Container) { Get-ChildItem -LiteralPath $full -Recurse -Force | ForEach-Object { "$rel/$([IO.Path]::GetRelativePath($full, $_.FullName).Replace('\', '/'))" } })
+            @($onDisk) + @($Owned.Keys | Where-Object { $_.StartsWith("$rel/", [StringComparison]::Ordinal) }) | Sort-Object -Unique
+        }
+    }
+    $check = {
+        param([string]$Rel, $Owned, [bool]$Bytes)
+        $full = Join-Path $Root $Rel
+        if (Test-SwLinkedPath $Root $Rel) { $blocked.Add("$Rel (linked)"); return }
+        if (Test-Path -LiteralPath $full -PathType Container) { return }
+        if (-not (Test-Path -LiteralPath $full -PathType Leaf)) { return }
+        if (-not $Owned.Contains($Rel)) { $blocked.Add("$Rel (unowned or unverified)"); return }
+        $hash = if ($Bytes) { Get-SwByteHash ([IO.File]::ReadAllBytes($full)) } else { Get-SwHash (Read-SwText $full) }
+        if ($hash -cne $Owned[$Rel]) { $blocked.Add("$Rel (modified)") }
+    }
+    $manifestPath = Join-Path $Root '.sw/manifest.json'
+    $owned = if (Test-Path -LiteralPath $manifestPath -PathType Leaf) { (Read-SwJson $manifestPath)['files'] } else { $null }
+    if ($owned -isnot [Collections.IDictionary]) { $owned = @{} }
+    # Includes the supported pre-move `.opencode/skills/` layout: a deselected copy there is never left active.
+    foreach ($rel in @(& $paths '.opencode') + @(& $skillFiles '.agents/skills' $owned) + @(& $skillFiles '.opencode/skills' $owned)) { & $check $rel $owned $false }
+
+    # A deselected role in the local overlay is the owner's map to edit; the kit never rewrites it.
+    $mapRel = '.opencode/opencode.jsonc'
+    $map = $null
+    if (Test-Path -LiteralPath (Join-Path $Root $mapRel) -PathType Leaf) {
+        try { $map = Read-SwJson (Join-Path $Root $mapRel) } catch { $blocked.Add("$mapRel (unreadable local map)") }
+        if ($map -is [Collections.IDictionary] -and $map['agents'] -is [Collections.IDictionary]) {
+            foreach ($r in @($map['agents'].Keys | Where-Object { $_ -cin $drop.roles })) { $blocked.Add("$mapRel agents.$r (deselected role in the local map)") }
+        }
+    }
+    # Enabled Claude adapter: the candidate adapter must generate, and every file it would no longer emit must be
+    # provably generated and unedited (deselected, or a selected role that became unmapped/non-Claude).
+    if (Test-Path -LiteralPath (Join-Path $Root '.claude/.sw-generated')) {
+        $own = Read-SwClaudeOwnership $Root
+        if ($own.State -eq 'invalid') { $blocked.Add(".claude/.sw-generated (invalid ownership: $($own.Reason))") }
+        $entries = if ($own.State -eq 'ok') { $own.Entries } else { @{} }
+        $candidate = $null
+        try { $candidate = Get-SwClaudeCandidate $Render $Config (Join-Path $Root $mapRel) }
+        catch { $blocked.Add("$mapRel (Claude adapter candidate cannot be generated: $($_.Exception.Message))") }
+        $stale = if (-not $candidate) { @(& $paths '.claude') + @(& $skillFiles '.claude/skills' $entries) }
+        elseif ($own.State -eq 'ok') { @($entries.Keys | Where-Object { -not $candidate.Contains($_) }) }
+        else { @(& $paths '.claude' $known) + @(& $skillFiles '.claude/skills' $entries $known) | Where-Object { -not $candidate.Contains($_) } }
+        foreach ($rel in $stale) { & $check $rel $entries $true }
+    }
+    if ($blocked.Count) {
+        throw "Selection change blocked; nothing was written. Resolve these deselected components yourself (separately authorized), then re-run; -Force and -Adopt cannot bypass this:`n  $(($blocked | Select-Object -Unique) -join "`n  ")"
+    }
+}
+
+function Get-SwManagedContent([string]$Root, $Render) {
+    # Pure and validation-first: every managed-block replacement for files the project also owns, or a throw.
+    # Nothing is written, so a malformed block or an unsafe LFS transition stops the operation before any change.
+    $agentsPath = Join-Path $Root 'AGENTS.md'
+    $agents = if (Test-Path -LiteralPath $agentsPath) { Set-SwBlock (Read-SwText $agentsPath) 'core' $Render.AgentsCore } else { $Render.AgentsTemplate }
+    $agents = Set-SwBlock $agents 'profile' $Render.AgentsProfile
+    $agentsNote = $null
+    if ($agents -cnotmatch '(?m)^## Project identity\s*$') {
+        # An adopted AGENTS.md lacks the project sections: insert the template's above the core block.
+        $t = $Render.AgentsTemplate
+        $from = $t.IndexOf("`n") + 1
+        $sections = $t.Substring($from, $t.IndexOf('<!-- sw:begin core -->') - $from).Trim("`n") + "`n`n"
+        $at = $agents.IndexOf('<!-- sw:begin core -->')
+        $agents = $agents.Substring(0, $at) + $sections + $agents.Substring($at)
+        $agentsNote = 'fill Project identity (and the other inserted project sections) in AGENTS.md'
+    }
+    $blocks = [ordered]@{ 'AGENTS.md' = $agents }
+    $gi = Join-Path $Root '.gitignore'
+    $blocks['.gitignore'] = Set-SwBlock $(if (Test-Path -LiteralPath $gi) { Read-SwText $gi } else { '' }) 'superworkspace' $Render.GitIgnore 'hash'
+    # .gitattributes is inspected even when the profile has no LFS rules, so a retained or malformed managed block is seen.
+    $ga = Join-Path $Root '.gitattributes'
+    $gaText = if (Test-Path -LiteralPath $ga) { Read-SwText $ga } else { '' }
+    $gaBegin = '# sw:begin superworkspace'; $gaEnd = '# sw:end superworkspace'
+    Assert-SwBlockWellFormed $gaText 'superworkspace' $gaBegin $gaEnd
+    $gaStart = $gaText.IndexOf($gaBegin)
+    if ($gaStart -ge 0) {
+        $old = $gaText.Substring($gaStart + $gaBegin.Length, $gaText.IndexOf($gaEnd) - $gaStart - $gaBegin.Length) -split "`n"
+        $new = @($Render.GitAttributes -split "`n")
+        $dropped = @($old | Where-Object { $_ -match 'filter=lfs' -and $_ -cnotin $new })
+        if ($dropped.Count) {
+            throw "Refusing to drop $($dropped.Count) managed LFS rule(s) from .gitattributes (for example '$($dropped[0].Trim())'): a profile change must not silently stop LFS tracking. Nothing was written; -Force and -Adopt cannot bypass this. Keeping or migrating LFS content needs a separate owner decision."
+        }
+    }
+    if ($Render.GitAttributes) { $blocks['.gitattributes'] = Set-SwBlock $gaText 'superworkspace' $Render.GitAttributes 'hash' }
+    [ordered]@{ Blocks = $blocks; AgentsNote = $agentsNote }
 }
 
 function Sync-SwProject {
@@ -136,6 +357,7 @@ function Sync-SwProject {
         # Allow running an older kit over a project a newer kit last updated.
         [switch]$Force)
     $render = Get-SwRender $Config
+    Assert-SwSelectionTransition $Root $render $Config
     $manifestPath = Join-Path $Root '.sw/manifest.json'
     $prev = if (Test-Path -LiteralPath $manifestPath) { Read-SwJson $manifestPath } else { @{} }
     $kitVersion = Get-SwKitVersion
@@ -192,7 +414,12 @@ function Sync-SwProject {
         throw "These files exist and are not SuperWorkspace-managed; nothing was written. Re-run with -Adopt to back them up to .sw/backup/ and replace them:`n  $(($conflicts.Path) -join "`n  ")"
     }
 
-    $stamp = [DateTime]::UtcNow.ToString('yyyyMMddTHHmmssZ')
+    # Validate the managed blocks before the first move, copy, removal or write.
+    $managed = Get-SwManagedContent $Root $render
+    # One snapshot per operation; copies never replace an earlier generation.
+    $opId = Get-SwOperationId
+    $backupRoot = Join-Path $Root ".sw/backup/$opId"
+    $reserved = $false
     $manifest = [ordered]@{ kitVersion = $kitVersion; kitCommit = Get-SwKitCommit; files = [ordered]@{} }
     foreach ($p in $plan) {
         $target = Join-Path $Root $p.Path
@@ -204,9 +431,9 @@ function Sync-SwProject {
             { $_ -in 'add', 'update', 'adopt' } {
                 if ($PSCmdlet.ShouldProcess($p.Path, $p.Action)) {
                     if ($p.Action -eq 'adopt') {
-                        $bak = Join-Path $Root ".sw/backup/$stamp/$($p.Path)"
-                        New-Item -ItemType Directory -Force (Split-Path $bak) | Out-Null
-                        Copy-Item -LiteralPath $target -Destination $bak -Force
+                        # A failed recovery copy throws here, before the replacement below.
+                        if (-not $reserved) { $null = New-SwSnapshotDir $backupRoot; $reserved = $true }
+                        Copy-SwNew $target (Join-Path $backupRoot $p.Path)
                     }
                     Write-SwFile $target $render.Files[$p.Path]
                 }
@@ -218,8 +445,11 @@ function Sync-SwProject {
                 $manifest.files[$p.Path] = $old[$p.Path]  # keep old hash so the edit stays detected
                 # Hand over the kit's new version to diff against; credential-like names are never copied.
                 if ((Split-Path $p.Path -Leaf) -notmatch $script:SecretName) {
-                    $incoming = ".sw/backup/$stamp/incoming/$($p.Path)"
-                    if ($PSCmdlet.ShouldProcess($incoming, 'write incoming kit version')) { Write-SwFile (Join-Path $Root $incoming) $render.Files[$p.Path] }
+                    $incoming = ".sw/backup/$opId/incoming/$($p.Path)"
+                    if ($PSCmdlet.ShouldProcess($incoming, 'write incoming kit version')) {
+                        if (-not $reserved) { $null = New-SwSnapshotDir $backupRoot; $reserved = $true }
+                        Write-SwNewFile (Join-Path $Root $incoming) $render.Files[$p.Path]
+                    }
                     $p.Note = @($p.Note, "git diff --no-index $($p.Path) $incoming") -ne $null -join "`n  "
                 }
             }
@@ -227,27 +457,9 @@ function Sync-SwProject {
         }
     }
 
-    # Managed blocks in files the project also owns.
-    $agentsPath = Join-Path $Root 'AGENTS.md'
-    $agents = if (Test-Path -LiteralPath $agentsPath) { Set-SwBlock (Read-SwText $agentsPath) 'core' $render.AgentsCore } else { $render.AgentsTemplate }
-    $agents = Set-SwBlock $agents 'profile' $render.AgentsProfile
-    $agentsNote = $null
-    if ($agents -cnotmatch '(?m)^## Project identity\s*$') {
-        # An adopted AGENTS.md lacks the project sections: insert the template's above the core block.
-        $t = $render.AgentsTemplate
-        $from = $t.IndexOf("`n") + 1
-        $sections = $t.Substring($from, $t.IndexOf('<!-- sw:begin core -->') - $from).Trim("`n") + "`n`n"
-        $at = $agents.IndexOf('<!-- sw:begin core -->')
-        $agents = $agents.Substring(0, $at) + $sections + $agents.Substring($at)
-        $agentsNote = 'fill Project identity (and the other inserted project sections) in AGENTS.md'
-    }
-    $blocks = [ordered]@{ 'AGENTS.md' = $agents }
-    $gi = Join-Path $Root '.gitignore'
-    $blocks['.gitignore'] = Set-SwBlock $(if (Test-Path -LiteralPath $gi) { Read-SwText $gi } else { '' }) 'superworkspace' $render.GitIgnore 'hash'
-    if ($render.GitAttributes) {
-        $ga = Join-Path $Root '.gitattributes'
-        $blocks['.gitattributes'] = Set-SwBlock $(if (Test-Path -LiteralPath $ga) { Read-SwText $ga } else { '' }) 'superworkspace' $render.GitAttributes 'hash'
-    }
+    # Managed blocks in files the project also owns (content validated above).
+    $blocks = $managed.Blocks
+    $agentsNote = $managed.AgentsNote
     foreach ($b in $blocks.GetEnumerator()) {
         $t = Join-Path $Root $b.Key
         $same = (Test-Path -LiteralPath $t) -and (Read-SwText $t) -ceq $b.Value
@@ -280,18 +492,26 @@ function Initialize-SwProject {
     param(
         [Parameter(Position = 0)][string]$Path = '.',
         [string]$Name, [string]$Profile, [ValidateSet(0, 1)][int]$GitHubTier = -1,
-        [switch]$Adopt, [switch]$Claude, [switch]$NoGitHub, [switch]$Force
+        [switch]$Adopt, [switch]$Claude, [switch]$NoGitHub, [switch]$Force,
+        # Opt an existing legacy project into selection v1 (fresh projects default to it); capabilities are additive.
+        [switch]$SelectionV1, [AllowEmptyCollection()][AllowEmptyString()][string[]]$Capabilities
     )
-    if (-not (Test-Path -LiteralPath $Path)) { if ($PSCmdlet.ShouldProcess($Path, 'create directory')) { New-Item -ItemType Directory -Path $Path | Out-Null } else { return } }
-    $Root = (Resolve-Path -LiteralPath $Path).Path
+    # A nonexistent target is validated and previewed before it is created.
+    $Root = $PSCmdlet.SessionState.Path.GetUnresolvedProviderPathFromPSPath($Path)
     $configPath = Join-Path $Root '.sw/config.json'
     $config = if (Test-Path -LiteralPath $configPath) { Read-SwJson $configPath } else {
-        [ordered]@{ project = (Split-Path $Root -Leaf); profile = 'generic'; githubTier = 0; github = $true; startupBudgetBytes = 12100; users = @() }
+        [ordered]@{ project = (Split-Path $Root -Leaf); profile = 'generic'; githubTier = 0; github = $true; startupBudgetBytes = 12100; users = @(); selection = [ordered]@{ version = 1; capabilities = @() } }
     }
     if ($Name) { $config['project'] = $Name }
     if ($Profile) { $config['profile'] = $Profile }
     if ($GitHubTier -ge 0) { $config['githubTier'] = $GitHubTier }
     if ($NoGitHub) { $config['github'] = $false }
+    Set-SwSelectionOption $config $SelectionV1 $PSBoundParameters
+    # Validate everything that can fail on existing content before the first side effect, git init included.
+    $render = Get-SwRender $config
+    $null = Get-SwManagedContent $Root $render
+    Assert-SwSelectionTransition $Root $render $config
+    if (-not (Test-Path -LiteralPath $Root -PathType Container) -and $PSCmdlet.ShouldProcess($Root, 'create directory')) { New-Item -ItemType Directory -Path $Root | Out-Null }
     if (-not (Test-Path -LiteralPath (Join-Path $Root '.git'))) {
         if ($PSCmdlet.ShouldProcess($Root, 'git init -b main')) { & git -C $Root init -b main | Out-Null }
     }
@@ -302,17 +522,25 @@ function Initialize-SwProject {
         foreach ($d in 'tasks', 'inbox', 'archive') { Write-SwFile (Join-Path $Root ".sw/comms/$d/.gitkeep") '' }
     }
     Format-SwPlan $plan $from
+    Format-SwSelection $render
     if ($Claude -and -not $WhatIfPreference) { Invoke-SwClaude enable -Path $Root }
     Write-Output "Next: fill the project sections of AGENTS.md, then run 'pwsh .sw/sw.ps1 validate'. Map models with 'pwsh .sw/sw.ps1 tiers'."
 }
 
 function Update-SwProject {
     [CmdletBinding(SupportsShouldProcess)]
-    param([Parameter(Position = 0)][string]$Path, [switch]$Adopt, [switch]$Force)
+    param([Parameter(Position = 0)][string]$Path, [switch]$Adopt, [switch]$Force,
+        [switch]$SelectionV1, [AllowEmptyCollection()][AllowEmptyString()][string[]]$Capabilities)
     $Root = Resolve-SwRoot $Path
     $from = Get-SwManifestKit $Root
-    $plan = Sync-SwProject -Root $Root -Config (Get-SwConfig $Root) -Adopt:$Adopt -Force:$Force
+    $config = Get-SwConfig $Root
+    $before = ConvertTo-SwJson $config
+    Set-SwSelectionOption $config $SelectionV1 $PSBoundParameters
+    $plan = Sync-SwProject -Root $Root -Config $config -Adopt:$Adopt -Force:$Force
     Format-SwPlan $plan $from
+    Format-SwSelection (Get-SwRender $config)
+    # The selection is recorded only after a successful sync, before the adapter reads it.
+    if ((ConvertTo-SwJson $config) -cne $before -and $PSCmdlet.ShouldProcess('.sw/config.json', 'write selection')) { Write-SwFile (Join-Path $Root '.sw/config.json') (ConvertTo-SwJson $config) }
     if (Test-Path -LiteralPath (Join-Path $Root '.claude/.sw-generated')) {
         if (-not $WhatIfPreference) { Invoke-SwClaude enable -Path $Root } else { Write-Output 'Would regenerate the Claude adapter.' }
     }
@@ -323,6 +551,7 @@ function Update-SwProject {
 function Get-SwGlobalPaths {
     $h = [Environment]::GetFolderPath('UserProfile')
     [ordered]@{
+        Home           = $h
         OpenCodeRules  = Join-Path $h '.config/opencode/AGENTS.md'
         OpenCodeConfig = Join-Path $h '.config/opencode/opencode.json'
         ClaudeRules    = Join-Path $h '.claude/CLAUDE.md'
@@ -337,20 +566,29 @@ function Backup-SwGlobal {
     [CmdletBinding(SupportsShouldProcess)]
     param([string]$Destination)
     $p = Get-SwGlobalPaths
-    $h = [Environment]::GetFolderPath('UserProfile')
-    if (-not $Destination) { $Destination = Join-Path $p.Backups ([DateTime]::UtcNow.ToString('yyyyMMddTHHmmssZ')) }
-    $copied = [Collections.Generic.List[string]]::new()
+    # Every operation gets its own snapshot; an explicit destination must be new (nothing is merged into or replaced).
+    if ($Destination) {
+        $Destination = [IO.Path]::GetFullPath($Destination)
+        if (Test-Path -LiteralPath $Destination) { throw "Backup destination already exists, refusing to reuse it: $Destination" }
+    } else { $Destination = Join-Path $p.Backups (Get-SwOperationId) }
     # OpenCodeConfig (opencode.json) can hold a provider apiKey and install never edits it; not backed up.
-    foreach ($src in $p.OpenCodeRules, $p.ClaudeRules, $p.ClaudeRtk, $p.ClaudeSettings, $p.HomeAgents) {
+    # Only files whose names match the credential-name filter are skipped; contents are never scanned.
+    $items = foreach ($src in $p.OpenCodeRules, $p.ClaudeRules, $p.ClaudeRtk, $p.ClaudeSettings, $p.HomeAgents) {
         if (-not (Test-Path -LiteralPath $src -PathType Leaf)) { continue }
         if ((Split-Path $src -Leaf) -match $script:SecretName) { continue }
-        $rel = [IO.Path]::GetRelativePath($h, $src)
+        $rel = [IO.Path]::GetRelativePath($p.Home, $src)
         $dst = Join-Path $Destination $rel
-        if ($PSCmdlet.ShouldProcess($src, "back up to $dst")) {
-            New-Item -ItemType Directory -Force (Split-Path $dst) | Out-Null
-            Copy-Item -LiteralPath $src -Destination $dst -Force
+        if (-not (Test-SwContained $p.Home $src) -or -not (Test-SwContained $Destination $dst)) { throw "Backup source is outside the home directory: $src" }
+        [pscustomobject]@{ Src = $src; Rel = $rel; Dst = $dst }
+    }
+    $copied = [Collections.Generic.List[string]]::new()
+    $reserved = $false
+    foreach ($item in @($items)) {
+        if ($PSCmdlet.ShouldProcess($item.Src, "back up to $($item.Dst)")) {
+            if (-not $reserved) { $null = New-SwSnapshotDir $Destination; $reserved = $true }
+            Copy-SwNew $item.Src $item.Dst
         }
-        $copied.Add($rel)
+        $copied.Add($item.Rel)
     }
     [pscustomobject]@{ Path = $Destination; Files = @($copied) }
 }
@@ -358,9 +596,7 @@ function Backup-SwGlobal {
 function Get-SwNarrowedGhAllow([string[]]$Allow) {
     # Replace a broad `gh *` (or `gh:*`) Bash allow with the specific read-only gh commands.
     $list = [Collections.Generic.List[string]]@($Allow)
-    $removed1 = $list.Remove('Bash(gh *)')
-    $removed2 = $list.Remove('Bash(gh:*)')
-    $changed = $removed1 -or $removed2
+    $changed = $list.RemoveAll([Predicate[string]] { param($x) $x -ceq 'Bash(gh *)' -or $x -ceq 'Bash(gh:*)' }) -gt 0
     $read = 'Bash(gh issue list:*)', 'Bash(gh issue view:*)', 'Bash(gh pr list:*)', 'Bash(gh pr view:*)', 'Bash(gh pr checks:*)', 'Bash(gh pr diff:*)', 'Bash(gh run list:*)', 'Bash(gh run view:*)', 'Bash(gh run watch:*)', 'Bash(gh repo view:*)', 'Bash(gh auth status:*)'
     foreach ($r in $read) { if (-not $list.Contains($r)) { $list.Add($r); $changed = $true } }
     [pscustomobject]@{ Allow = @($list); Changed = $changed }
@@ -372,7 +608,7 @@ function Install-SwGlobal {
     $p = Get-SwGlobalPaths
     $rules = Read-SwText (Join-Path $script:Kit 'global/rules.md')
     $b = Backup-SwGlobal
-    Write-Output "Backup: $($b.Path) ($($b.Files.Count) files; credential files are never copied)"
+    Write-Output "Backup: $($b.Path) ($($b.Files.Count) files; files named like credentials are skipped by name only, contents are not scanned)"
 
     $oc = if (Test-Path -LiteralPath $p.OpenCodeRules) { Read-SwText $p.OpenCodeRules } else { '' }
     $new = Set-SwBlock $oc 'global' $rules
@@ -425,15 +661,18 @@ function Test-SwGlobal {
     $rows = [Collections.Generic.List[object]]::new()
     $add = { param($n, $state, $detail) $rows.Add([pscustomobject]@{ Item = $n; State = $state; Detail = $detail }) }
     & $add 'pwsh' 'OK' $PSVersionTable.PSVersion.ToString()
+    $probes = @{}
     foreach ($t in @(@('git', $true), @('gh', $false), @('rtk', $false), @('opencode', $false), @('node', $false), @('claude', $false), @('tailscale', $false))) {
-        $v = Get-SwToolVersion $t[0]
-        & $add $t[0] $(if ($v) { 'OK' } elseif ($t[1]) { 'MISSING' } else { 'WARN' }) $(if ($v) { $v.ToString() } else { 'not found' })
+        $probe = Get-SwToolProbe $t[0]
+        $probes[$t[0]] = $probe
+        $state = if ($probe.State -eq 'ok') { 'OK' } elseif ($t[1]) { $(if ($probe.State -eq 'missing') { 'MISSING' } else { 'FAILED' }) } else { 'WARN' }
+        & $add $t[0] $state $(if ($probe.State -eq 'ok') { $probe.Version.ToString() } elseif ($probe.State -eq 'missing') { 'not found' } else { Format-SwProbe $probe })
     }
-    $rtk = Get-SwToolVersion rtk
-    if ($rtk -and $rtk -lt [version]'0.48.0') { & $add 'rtk >= 0.48' 'WARN' "found $rtk" }
-    if (Get-Command gh -ErrorAction SilentlyContinue) {
-        & gh auth status *> $null
-        & $add 'gh auth' $(if ($LASTEXITCODE -eq 0) { 'OK' } else { 'WARN' }) $(if ($LASTEXITCODE -eq 0) { 'logged in' } else { 'run gh auth login' })
+    $rtk = $probes['rtk']
+    if ($rtk.State -eq 'ok' -and $rtk.Version -lt [version]'0.48.0') { & $add 'rtk >= 0.48' 'WARN' "found $($rtk.Version)" }
+    if ($probes['gh'].State -eq 'ok') {
+        $auth = Get-SwGhAuth
+        & $add 'gh auth' $(if ($auth -eq 0) { 'OK' } else { 'WARN' }) $(if ($auth -eq 0) { 'logged in' } else { 'run gh auth login' })
     }
     $has = { param($f) (Test-Path -LiteralPath $f) -and (Read-SwText $f).Contains('<!-- sw:begin global -->') }
     & $add 'opencode rules' $(if (& $has $p.OpenCodeRules) { 'OK' } else { 'WARN' }) $p.OpenCodeRules
@@ -443,14 +682,14 @@ function Test-SwGlobal {
         $broad = $settingsText -match '"Bash\(gh (\*|:\*)\)"|"Bash\(gh\)"'
         & $add 'claude gh allow' $(if ($broad) { 'WARN' } else { 'OK' }) $(if ($broad) { 'Bash(gh *) allows gh writes; run global install -Claude' } else { 'read-only' })
     }
-    foreach ($svc in (Join-Path ([Environment]::GetFolderPath('UserProfile')) '.config/opencode/service.json'), (Join-Path ([Environment]::GetFolderPath('UserProfile')) '.local/state/opencode/service.json')) {
+    foreach ($svc in (Join-Path $p.Home '.config/opencode/service.json'), (Join-Path $p.Home '.local/state/opencode/service.json')) {
         if (Test-Path -LiteralPath $svc) {
             $hostName = (Read-SwJson $svc)['hostname']
             & $add 'opencode bind' $(if ($hostName -in '127.0.0.1', 'localhost', $null) { 'OK' } else { 'WARN' }) "$hostName ($svc); see sw remote setup"
         }
     }
     $rows | Format-Table -AutoSize | Out-String -Width 200 | Write-Output
-    $global:LASTEXITCODE = if (@($rows | Where-Object State -eq 'MISSING').Count) { 1 } else { 0 }
+    $global:LASTEXITCODE = if (@($rows | Where-Object State -in 'MISSING', 'FAILED').Count) { 1 } else { 0 }
 }
 
 function Invoke-SwGlobal {
@@ -523,4 +762,4 @@ function Invoke-SwRemote {
 }
 
 Export-ModuleMember -Function Set-SwBlock, Get-SwRender, Sync-SwProject, Format-SwPlan, Initialize-SwProject, Update-SwProject,
-    Backup-SwGlobal, Install-SwGlobal, Test-SwGlobal, Invoke-SwGlobal, Invoke-SwRemote, Get-SwKitVersion, Get-SwKitCommit, Compare-SwVersion, Get-SwNarrowedGhAllow
+    Backup-SwGlobal, Install-SwGlobal, Test-SwGlobal, Invoke-SwGlobal, Invoke-SwRemote, Get-SwKitVersion, Get-SwKitCommit, Compare-SwVersion, Get-SwNarrowedGhAllow, Format-SwSelection

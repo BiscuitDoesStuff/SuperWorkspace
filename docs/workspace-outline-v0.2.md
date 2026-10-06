@@ -7,7 +7,7 @@ The owner authorized drafting, not adoption of its recommendations.
 
 Current implementation and authorization belong to [Workspace state](workspace-state.md).
 Execution evidence, source cutoff and checks belong to the
-[review task](../.sw/comms/tasks/workspace-state-review/).
+review task (local task record `workspace-state-review/`).
 
 ## 1. Purpose and design direction
 
@@ -42,9 +42,8 @@ proof of an optimal workspace architecture.
   retention verification, independent review or closure yet [R6]. Their proposed
   grades do not supersede reviewed claims. B3-B6 are pending at this cutoff.
 - **Scope:** synthesis of local reports, register rows and collection tables,
-  not a new audit of every original. No external research or direct ModelAnalysis
-  access was performed. Incoming tables referencing that project retain its
-  private/noncommercial/nonredistributable boundary; no data files are copied.
+  not a new audit of every original. No external research or private-data access
+  was performed; no data files are copied.
 - **Authority:** research supports bounded recommendations, not project rules.
   Current policy remains in [AGENTS.md](../AGENTS.md), roles/permissions in
   [workspace guidance](../.sw/workspace.md), and records/publication in
@@ -301,7 +300,7 @@ locators, configuration limits and contrary evidence.
 
 | Ref | Local source / relevant sections |
 | --- | --- |
-| W1 | Workspace [state/structure review](../.sw/comms/tasks/workspace-state-review/2026-10-01T080559Z-leader-review.md), [base setup](../.sw/comms/tasks/workspace-base-setup/2026-10-01T074334Z-leader-submission.md); actual `sw.ps1`, `lib/Sw.Kit.psm1`, `lib/Sw.Project.psm1`, `project/roles.json` and installed manifest |
+| W1 | Workspace state/structure review (local task record `workspace-state-review/2026-10-01T080559Z-leader-review.md`), base setup (local task record `workspace-base-setup/2026-10-01T074334Z-leader-submission.md`); actual `sw.ps1`, `lib/Sw.Kit.psm1`, `lib/Sw.Project.psm1`, `project/roles.json` and installed manifest |
 | R1 | `docs/research/initial-pass-overview.md`, findings; `docs/research/cross-dossier-synthesis.md`, "Convergent principles" and tensions; cumulative `docs/research/ai-engineering-landscape.md` updates |
 | R2 | `docs/research/ai-research-foundation.md`, R1-R4 (method/tool-gate recommendations, not a proven optimal workflow) |
 | R3 | `docs/research/workspaces-04.md`, summary and W01-W10 findings, updated through current register notes rather than its obsolete grades |

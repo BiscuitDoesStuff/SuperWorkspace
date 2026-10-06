@@ -1,0 +1,22 @@
+{
+  "version": 1,
+  "core": {
+    "roles": ["project-leader"],
+    "skills": ["project-planning", "task-handoff"],
+    "context": ["core"],
+    "checks": ["diff-hygiene", "workspace-static"]
+  },
+  "roleSkills": {
+    "project-leader": [],
+    "project-developer": ["agent-documentation", "minimal-change", "structured-debugging"],
+    "project-research": ["research"],
+    "project-review": ["focused-review"],
+    "explore": []
+  },
+  "capabilities": {
+    "provider-setup": { "roles": [], "skills": ["free-models"], "context": [], "checks": [] },
+    "research": { "roles": ["project-research"], "skills": ["research"], "context": ["research"], "checks": ["research-evidence"] }
+  },
+  "context": ["core", "generic", "unreal", "research"],
+  "checks": ["workspace-static", "diff-hygiene", "repository-code", "unreal-validation", "research-evidence"]
+}

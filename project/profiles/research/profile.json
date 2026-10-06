@@ -1,13 +1,13 @@
 {
-  "description": "Any stack. Validation commands are discovered from the repository.",
+  "description": "Research-led project: cited evidence and decisions; implementation needs its own approval.",
   "editDeny": [],
   "lfs": [],
   "watcherIgnore": ["node_modules/**", "dist/**", "build/**", ".venv/**", ".scratch/**"],
   "skills": [],
   "composition": {
     "roles": ["project-leader", "project-developer", "project-review", "explore"],
-    "capabilities": [],
-    "context": ["generic"],
+    "capabilities": ["research"],
+    "context": ["research"],
     "checks": ["repository-code"]
   }
 }

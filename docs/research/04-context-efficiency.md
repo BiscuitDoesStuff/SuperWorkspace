@@ -146,8 +146,8 @@ F10. **Local: the kit's budget counts a subset of what a session loads.**
 role body (698-3,047 bytes) and skill names plus descriptions. Not
 counted: the harness system prompt and tool schemas (F1), command and
 agent descriptions (739 and 856 bytes of `description:` lines here), the
-user-level `~/.claude/CLAUDE.md` (2,157 bytes plus a 460-byte `RTK.md`
-import on this machine), and SessionStart hook output. This session's
+user-level config (2,157 bytes plus a 460-byte import on this
+machine), and SessionStart hook output. This session's
 hooks injected the generated `project-leader.md` pointer and a ~5 KB
 "Ponytail" style block, and the harness listed about 50 skills,
 most from user plugins. Local evidence, measured with `wc -c`;
@@ -248,7 +248,7 @@ returns", but "The subagent's own requests still draw on your usage"
 F19. **Claude documents tool-output condensing through hooks.** A
 PreToolUse hook can rewrite a test command to keep only failures,
 "reducing context from tens of thousands of tokens to hundreds".
-Same page as F2. Local precedent: the owner's `~/.claude/RTK.md` tells the
+Same page as F2. Local precedent: a user-level config tells the
 agent that command output "is condensed to save tokens" and to re-run
 with `rtk proxy` only when output is unusable; `sw doctor` already prints
 `rtk gain --project` when `rtk` is installed (`Sw.Project.psm1` line 761).

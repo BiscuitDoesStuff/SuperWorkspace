@@ -1,7 +1,27 @@
 {
-  "project-leader":        { "tier": "session",   "access": "full",     "claudeTools": "" },
-  "project-developer":     { "tier": "light",     "access": "full",     "claudeTools": "" },
-  "project-research":      { "tier": "standard",  "access": "markdown", "claudeTools": "Read, Grep, Glob, Bash, Edit, Write, WebFetch, WebSearch, Skill" },
-  "project-review":        { "tier": "standard",  "access": "readonly", "claudeTools": "Read, Grep, Glob, Skill" },
-  "explore":               { "tier": "light",     "access": "builtin",  "claudeTools": "" }
+  "project-leader": {
+    "tier": "session",
+    "access": "full",
+    "claudeTools": ""
+  },
+  "project-developer": {
+    "tier": "light",
+    "access": "full",
+    "claudeTools": ""
+  },
+  "project-research": {
+    "tier": "standard",
+    "access": "markdown",
+    "claudeTools": "Read, Grep, Glob, Bash, Edit, Write, WebFetch, WebSearch, Skill"
+  },
+  "project-review": {
+    "tier": "standard",
+    "access": "readonly",
+    "claudeTools": "Read, Grep, Glob, Skill"
+  },
+  "explore": {
+    "tier": "light",
+    "access": "builtin",
+    "claudeTools": ""
+  }
 }
