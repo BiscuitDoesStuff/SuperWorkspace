@@ -9,31 +9,37 @@
   Decision (local task record `workspace-repo-split/2026-10-05T181851Z-owner-decision.md`). Design rules/assumptions:
   [outline](workspace-outline.md). Operational rules: `AGENTS.md`,
   `.sw/workspace.md`, `.sw/collaboration.md`. Git owns ancestry/publication facts.
-- **Implemented (local):** v1 research profile + provider-setup, GitHub tier 0, solo `main`, four-role
-  roster, workspace-v1 launcher/adapter contracts and review repairs, and the
-  context-recovery-v1 context report/recovery feature (uncommitted draft).
-  Profile-selection-v1 and this Workspace's P2 opt-in are complete locally. The WS
-  manager is deployed offline at the parent WS with three projects registered
-  (uncommitted draft). `origin` is public `BiscuitDoesStuff/SuperWorkspace`;
-  `personal` is the owner's private instance (`personal` remote) (local `main` still
-  tracks `personal/main`, 6 ahead/0 behind `origin/main` on 2026-10-05).
+- **Implemented baseline (reconciled 2026-10-11):** research + provider-setup,
+  GitHub tier 0, solo `main`, four-role roster, profile selection, context recovery,
+  launcher/adapter and manager source are committed in the audited `bd5dc48`
+  baseline. Live public `main` was verified at that SHA during the adoption audit;
+  prior local/unpublished Startup labels are superseded, not missing work to redo.
+  Local `main` tracks `personal/main`; Git owns subsequent branch/publication facts.
+  This checkout keeps legacy workspace Git policy and its existing local records.
 - **Unverified:** only the headless OpenCode route passed live acceptance
   (workspace-v1). Claude/interactive/mixed routes, compaction, other users,
   comprehensive security, live manager planning/routing, native loading and
   runtime permission enforcement are untested; static/offline checks do not prove
   them. Do not retry, bypass or relax the one accepted read-only Git denial.
-  `doctor` was last recorded blocked (2026-10-01). Live publication not rechecked.
-- **Current task:** none active. Profile-selection-v1, context-recovery-v1 and
-  validation/adoption P1/P2 are complete locally; closure detail is in
-  [History](#history-dated-checkpoints). No native/platform/other-project/root/Claude/publication
-  work approved or performed. WS manager, relocation (step 4 validation deferred),
-  workspace-v1, review-repair and publication approvals are task-specific
-  history. S3-S6 scoping and R4-R6 requests remain proposals.
-- **Owners / protected work:** developer stopped; Leader recorded local completion.
-  No active writer/build job or successor package. Preserve uncommitted
-  context/recovery, WS manager and relocation drafts (their tracked hunks,
-  `lib/Sw.Manager.psm1`, `.sw/lib/Sw.Manager.psm1`, `project/manager/`,
-  `tests/manager.ps1`, task records) and all other projects. Desktop
+  Configured-machine `doctor` passed at audit time; this is not fresh-user proof.
+  Audited hosted Pester failed on Windows/Linux; later install/offline steps were
+  skipped. A local fix cannot establish hosted success before human publication.
+- **Current task:** owner approved public-adoption-audit P0-P4 fix plan and MIT,
+  preserve-host integration, local new records and human-enabled GitHub private
+  reporting choices (2026-10-11). Implementation is a local unreleased candidate
+  (Git owns commit/publication state):
+  baseline/preflight repairs, policy/privacy compatibility, public setup/support
+  docs and offline acceptance. Sources/copies are consistent; final full Pester
+  passed 333/0 failed/1 file-symlink privilege skip, with offline/static checks
+  recorded locally. Independent review is unavailable after the worker rate
+  limit; public readiness also awaits human publication/hosted checks/settings.
+  Owner requested continuation of delivery steps 2-5, including a local commit;
+  pushes/settings/metadata/releases remain human-owned. Native/platform/account/
+  root/other-project work is not authorized. Old S3-S6/R4-R6 remain proposals.
+- **Owners / protected work:** Leader is the sole writer/validation owner after
+  the executor stopped on a provider rate limit with no product edits. No worker
+  retry or paid fallback. Preserve this task's artifacts/delivery and all
+  unrelated work/projects. No binaries owned or touched by this task. Desktop
   reopening/Claude trust confirmation after relocation remains owner-owned.
 - **Limits:** no implicit native/model starts, live manager calls, installs, new
   dependencies, global settings, adapter enablement, trust/private-memory
@@ -41,10 +47,13 @@
   settings and releases are human-owned. The ignored local map selects
   developer/reviewer models only; the Leader model is chosen per launch; the
   Claude adapter is absent.
-- **Next action:** none authorized. Owner may choose a separately bounded remaining
-  package; prior platform/native gaps are not an automatic execution queue.
+- **Next action:** use Git and the delivery receipt for local commit status;
+  the owner runs publication/settings/metadata/release steps, then Leader verifies
+  hosted CI read-only after a human push. Independent review remains outstanding; no worker
+  retry into the limit and no further implementation is queued.
+  Prior platform/native gaps are not an automatic execution queue.
   Leader does not automate or claim continuous control of that native session.
-  Publication remains human-owned and unrequested. Read that task, then needed
+  Publication remains human-owned. Read that task, then needed
   workspace/collaboration rules. `sw context -Task <id> -StateFile
   docs/workspace-state.md` lists sizes and event references, not approval.
 - **Task records:** `.sw/comms/` is local-only in this checkout (gitignored since

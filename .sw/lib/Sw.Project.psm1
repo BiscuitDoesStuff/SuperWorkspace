@@ -72,7 +72,7 @@ function New-SwExclusiveFile([string]$Dir, [string]$BaseName, [string]$Extension
         catch {
             $e = $_.Exception
             while ($e.InnerException -and $e -isnot [IO.IOException]) { $e = $e.InnerException }
-            if ($e -is [IO.IOException] -and (Test-Path -LiteralPath $path)) { continue }
+            if ($e -is [IO.IOException] -and [IO.File]::Exists($path)) { continue }
             throw
         }
     }
@@ -94,6 +94,12 @@ function Get-SwConfig([string]$Root) {
     $path = Join-Path $Root '.sw/config.json'
     if (-not (Test-Path -LiteralPath $path)) { throw "Not a SuperWorkspace project (missing .sw/config.json): $Root" }
     Read-SwJson $path
+}
+
+function Get-SwGitPolicy([Collections.IDictionary]$Config) {
+    if (-not $Config.Contains('gitPolicy')) { return 'workspace' } # Preserve legacy installations.
+    if ($Config['gitPolicy'] -cnotin 'host', 'workspace') { throw "Config 'gitPolicy' must be 'host' or 'workspace'." }
+    $Config['gitPolicy']
 }
 
 function Get-SwUtc { [DateTime]::UtcNow.ToString('yyyy-MM-ddTHHmmssZ') }
@@ -621,6 +627,7 @@ function Test-SwProject {
     try {
         $Root = Resolve-SwRoot $Path
         $config = Get-SwConfig $Root
+        $null = Get-SwGitPolicy $config
         $tier = [int]$config['githubTier']
         $roles = Read-SwJson (Join-Path $Root '.sw/roles.json')
         $profileData = Read-SwJson (Join-Path $Root '.sw/profile.json')
@@ -1425,6 +1432,7 @@ function Add-SwUser {
     $Root = Resolve-SwRoot $Path
     $configPath = Join-Path $Root '.sw/config.json'
     $config = Read-SwJson $configPath
+    $gitPolicy = Get-SwGitPolicy $config
     $users = [Collections.Generic.List[string]]@($config['users'])
     if ($users -notcontains $Name) { $users.Add($Name) }
     $config['users'] = @($users)
@@ -1432,8 +1440,12 @@ function Add-SwUser {
         Write-SwFile $configPath (ConvertTo-SwJson $config)
         Write-SwFile (Join-Path $Root ".sw/comms/inbox/$Name/.gitkeep") ''
     }
-    Write-Output "Contributor $Name recorded. Their branch (created by the owner, from published main):"
-    Write-Output "  git switch -c $Name/$Name-worktree origin/main"
+    Write-Output "Contributor $Name recorded."
+    if ($gitPolicy -eq 'host') { Write-Output 'Use the project-owned Git onboarding workflow; no branch is created or prescribed.' }
+    else {
+        Write-Output 'Their branch (created by the owner, from published main):'
+        Write-Output "  git switch -c $Name/$Name-worktree origin/main"
+    }
     Write-Output "Send them .sw/onboarding.md; they check their setup with: pwsh .sw/sw.ps1 doctor -User $Name"
 }
 
@@ -1477,13 +1489,16 @@ function Test-SwDoctor {
     if ($rtk.State -eq 'ok' -and $rtk.Version -lt [version]'0.48.0') { & $add 'rtk >= 0.48' 'WARN' "found $($rtk.Version)" }
 
     $config = Get-SwConfig $Root
+    $hostPolicy = (Get-SwGitPolicy $config) -eq 'host'
     $users = @($config['users'])
     $listed = [bool]($User -and ($users -ccontains $User))
     if ($User) {
         & $add "user $User" $(if ($listed) { 'OK' } else { 'MISSING' }) $(if ($listed) { 'listed in .sw/config.json' } else { "Fix (project owner runs): pwsh .sw/sw.ps1 user $User" })
-        $branch = "$User/$User-worktree"
-        $branchExists = [bool](& git -C $Root branch --list $branch 2>$null) -or [bool](& git -C $Root branch -r --list "origin/$branch" 2>$null)
-        & $add "branch $branch" $(if ($branchExists) { 'OK' } else { 'WARN' }) $(if ($branchExists) { 'exists' } else { "Fix: git switch -c $branch origin/main" })
+        if (-not $hostPolicy) {
+            $branch = "$User/$User-worktree"
+            $branchExists = [bool](& git -C $Root branch --list $branch 2>$null) -or [bool](& git -C $Root branch -r --list "origin/$branch" 2>$null)
+            & $add "branch $branch" $(if ($branchExists) { 'OK' } else { 'WARN' }) $(if ($branchExists) { 'exists' } else { "Fix: git switch -c $branch origin/main" })
+        }
     } else {
         & $add 'users' 'WARN' "Recorded: $(if ($users.Count) { $users -join ', ' } else { 'none' }); pass -User <name> to check yours"
     }
@@ -1491,10 +1506,11 @@ function Test-SwDoctor {
     # The checked-out branch, not mere existence: main only for a solo project, otherwise the recorded user's own branch.
     $current = [string](& git -C $Root branch --show-current 2>$null)
     $shown = if ($current) { $current } else { 'detached HEAD' }
-    if (-not $users.Count) { $expected = 'main'; $onOwnBranch = $current -ceq 'main' }
+    if ($hostPolicy) { $expected = $null; $onOwnBranch = $false }
+    elseif (-not $users.Count) { $expected = 'main'; $onOwnBranch = $current -ceq 'main' }
     elseif ($listed) { $expected = "$User/$User-worktree"; $onOwnBranch = $current -ceq $expected }
     else { $expected = $null; $onOwnBranch = $false }
-    & $add 'current branch' $(if ($onOwnBranch) { 'OK' } else { 'WARN' }) $(if ($onOwnBranch) { $current } elseif ($expected) { "$shown (expected $expected)" } else { "$shown (contributors are recorded; pass a listed -User <name> to check your worktree branch)" })
+    & $add 'current branch' $(if ($onOwnBranch) { 'OK' } else { 'WARN' }) $(if ($hostPolicy) { "$shown (host Git policy; verify against your project rules, not checked here)" } elseif ($onOwnBranch) { $current } elseif ($expected) { "$shown (expected $expected)" } else { "$shown (contributors are recorded; pass a listed -User <name> to check your worktree branch)" })
 
     $hasTiers = Test-Path -LiteralPath (Join-Path $Root '.opencode/opencode.jsonc')
     & $add 'tier map' $(if ($hasTiers) { 'OK' } else { 'WARN' }) $(if ($hasTiers) { '.opencode/opencode.jsonc' } else { 'Fix: pwsh .sw/sw.ps1 tiers -Light <id> -Standard <id> -High <id>' })
@@ -1502,7 +1518,8 @@ function Test-SwDoctor {
     $rows | Format-Table -AutoSize | Out-String -Width 200 | Write-Output
     Write-Output 'Reminder: OpenCode Desktop -> default environment = "Local directory" (automatic worktrees create branches outside the policy; cannot be detected).'
     Write-Output 'Startup budget (validate) counts kit files only. Harness prompt, tool schemas, user files, hooks and plugins are not counted; check `/context` (Claude) for the real total.'
-    Write-Output 'Branch protection on main: not checked (needs `gh api`, which agents are denied); see .sw/collaboration.md (Protect main).'
+    if ($hostPolicy) { Write-Output 'Host branch protection and workflow: not checked; consult the project owner.' }
+    else { Write-Output 'Branch protection on main: not checked (needs `gh api`, which agents are denied); see .sw/collaboration.md (Protect main).' }
     $global:LASTEXITCODE = if (@($rows | Where-Object State -in 'MISSING', 'FAILED').Count) { 1 } else { 0 }
 }
 
@@ -1672,7 +1689,13 @@ function Get-SwContext {
         foreach ($f in $skillFiles) { $d = & $need $f (& $read $f { param($p) Read-SwFrontmatter $p 'name', 'description' }); if ($d) { $skills[$d['name']] = $d } }
         $roleNames = @(if ($roles) { & $ordinal @($roles.Keys | Where-Object { $_ -ne 'explore' }) })
         # Expected-role coverage: a role without its definition would silently drop out of the shared arithmetic.
-        foreach ($r in $roleNames) { if (-not $agents.ContainsKey($r) -and $agentDir.Files -notcontains ".opencode/agents/$r.md") { $gaps.Add(".opencode/agents/$r.md missing") } }
+        foreach ($r in $roleNames) {
+            $rel = ".opencode/agents/$r.md"
+            if (-not $agents.ContainsKey($r) -and $agentDir.Files -notcontains $rel) {
+                $status = (Invoke-SwContextRead $Root $rel {}).Status
+                $gaps.Add("$rel $status")
+            }
+        }
         if ($gaps.Count) { Write-Output "core: incomplete ($($gaps -join '; ')); per-role totals withheld; sw validate reports definition errors" }
         else {
             foreach ($b in Get-SwStartupBudget $config $agentsMd $agents $skills $roleNames) {
@@ -1757,7 +1780,7 @@ function Get-SwContext {
     $global:LASTEXITCODE = 0
 }
 
-Export-ModuleMember -Function Resolve-SwRoot, Write-SwFile, Read-SwText, Read-SwJson, ConvertTo-SwJson, Get-SwHash,
+Export-ModuleMember -Function Resolve-SwRoot, Write-SwFile, Read-SwText, Read-SwJson, ConvertTo-SwJson, Get-SwHash, Get-SwGitPolicy,
     Get-SwConfig, Read-SwFrontmatter, Get-SwDecision, Test-SwPattern, Get-SwGhRules, Get-SwSessionRules, Add-SwRtkTwins, Get-SwClaudeGhDeny, Test-SwProject,
     Get-SwClaudeModel, Get-SwClaudeGitRules, Get-SwClaudeFiles, Invoke-SwClaude, Set-SwTiers, Invoke-SwSession, Invoke-SwComms, Add-SwUser, Invoke-SwGitHub, Get-SwUsage, Test-SwLocalOnly,
     Get-SwToolVersion, Get-SwToolProbe, Get-SwGhAuth, Format-SwProbe, Test-SwDoctor,

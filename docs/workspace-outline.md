@@ -1,7 +1,7 @@
 # Workspace design rules, assumptions and outline
 
 **Canonical project design register.** Owner requirements below are approved;
-architecture recommendations are provisional. Updated 2026-10-02 (UTC).
+architecture recommendations are provisional. Updated 2026-10-11 (UTC).
 
 ## 1. Approved direction
 
@@ -14,6 +14,18 @@ execution record (local task record `workspace-state-review/2026-10-01T222130Z-l
 | D2 | **Everything in this project can be modified, overhauled or replaced based on new research/data.** This includes instructions, rules, assumptions, kit sources, generated files, roles, harness choices, architecture, layouts and tooling. Nothing is privileged merely because it already exists or is kit-managed. | Owner requirement. An approved change can retain, revise or replace any project component. This is changeability, not authorization to make every change now. |
 | D3 | **Document every identified rule or assumption that materially shapes Workspace, preferably here in one document.** Identify its source, status, limits and revision trigger; do not silently treat an inherited preference or uncertain inference as a requirement. | Owner requirement. Add newly identified shaping constraints here; the owner can revise the register or its organization. |
 | D4 | **Install a tailored manager instance at the WS root, keeping the three projects independent.** Root owns cross-project planning/communication; bounded OpenCode session control first, Claude native/manual handoffs initially. No root Git repository or inherited default-agent/model override. Existing sessions opt in; project execution/research need their own approvals. | Owner approved the conversational plan, recorded in ws-manager (local task record `ws-manager/2026-10-04T051621Z-leader-assignment.md`). Installation/offline validation do not authorize live model calls. |
+
+**D5 - Public adoption contract (owner, 2026-10-11):** MIT with preserved
+third-party notices; preserve host configuration and Git workflow, compatible
+additions and explicit conflict decisions, no automatic deep merge; local-only
+records for new installs while keeping existing choices; GitHub private
+vulnerability reporting, human-enabled and unverified until confirmed. Owner
+approved the bounded adoption fix plan, not publication/settings or unrelated
+global/native/platform changes. Existing config variants may be explicitly
+refused; neither backup replacement nor static success means seamless runtime
+compatibility. Implementation/check state belongs in the state/task record,
+not this design requirement. Revised integration, privacy or license defaults
+require a new owner decision; evidence can revise implementation boundaries.
 
 These supersede the earlier outline's preserve-base design premise. Preservation
 within a bounded task protects unrelated work; it does not make any component

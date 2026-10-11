@@ -22,8 +22,8 @@ $kit = Join-Path $PSScriptRoot 'lib/Sw.Kit.psm1'
 if (Test-Path -LiteralPath $kit) { Import-Module $kit -Force -DisableNameChecking }
 
 $commands = [ordered]@{
-    init     = @('Initialize-SwProject', 'kit', 'Install or adopt SuperWorkspace in a project: init <path> -Profile generic|research|unreal [-Name] [-GitHubTier 0|1] [-Adopt] [-Claude] [-SelectionV1] [-Capabilities research,provider-setup]')
-    update   = @('Update-SwProject', 'kit', 'Re-apply the kit to a project; modified files are skipped and reported: update [<path>] [-Adopt] [-Force (allow a kit downgrade)] [-SelectionV1 (explicit opt-in)] [-Capabilities <list>]')
+    init     = @('Initialize-SwProject', 'kit', 'Install into a repository root: init <path> -Profile generic|research|unreal [-Name] [-NoGitHub] [-GitPolicy host|workspace] [-Records local|tracked] [-GitHubTier 0|1] [-Adopt (backup and replace conflicts)] [-Claude] [-SelectionV1] [-Force (kit downgrade)] [-Capabilities research,provider-setup]')
+    update   = @('Update-SwProject', 'kit', 'Re-apply to an installed project: update [<path>] [-Adopt] [-Force (kit downgrade)] [-SelectionV1] [-Capabilities <list>] [-GitPolicy host|workspace] [-Records local|tracked]; existing policy/privacy kept unless explicitly changed')
     global   = @('Invoke-SwGlobal', 'kit', 'User-level setup: global install|check|backup [-Claude] [-ReplaceUnmanaged]')
     remote   = @('Invoke-SwRemote', 'kit', 'OpenCode over Tailscale: remote setup|check [-Port 49374] [-KeepLan]')
     validate = @('Test-SwProject', 'project', 'Static workspace contract check: validate [-Path] [-CheckLinks]')

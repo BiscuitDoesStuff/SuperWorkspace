@@ -109,20 +109,26 @@ function Get-SwRender([Collections.IDictionary]$Config) {
     & $add (Join-Path $script:Kit 'project/base')
     & $add (Join-Path $profileDir 'files')
     if ($Config['github'] -ne $false) { & $add (Join-Path $script:Kit 'project/github') }
-    # `records: local` (opt-in) keeps .sw/comms/ out of Git; absent or `tracked` is the default.
+    # New init explicitly selects local; absent stays tracked for legacy configurations.
     $local = $Config.Contains('records') -and $Config['records'] -ceq 'local'
     if ($Config.Contains('records') -and $Config['records'] -cnotin 'tracked', 'local') { throw "Config 'records' must be 'tracked' or 'local', not '$($Config['records'])'" }
     if ($local) {
         $collab = $files['.sw/collaboration.md']
         $published = "Git is the transport: everything below is plain files in`n``.sw/comms/``, published when a human pushes their branch."
         if (-not $collab.Contains($published)) { throw 'project/base/.sw/collaboration.md lost the records sentence that records: local replaces' }
-        $files['.sw/collaboration.md'] = $collab.Replace($published, "Everything below is plain files in`n``.sw/comms/``, kept local by ``records: local`` (git-ignored, never pushed).")
+        $collab = $collab.Replace($published, "Everything below is plain files in`n``.sw/comms/``, kept local by ``records: local`` (git-ignored for new records).`nIgnoring does not untrack existing records or remove published history; review before publishing.")
+        $collab = [regex]::Replace($collab, '(?s)\*\*Claims\.\*\*.*?(?=At GitHub tier 1)', '**Claims.** With local records, the owner confirms assignment at the agreed' + "`n" + 'coordination source. Conflicting assignments need an owner decision, not a push.' + "`n")
+        $collab = $collab.Replace('Close a task only after its last' + "`n" + 'event is on `main`.', 'With local records, close after the owner confirms integration and the final local event.')
+        $collab = [regex]::Replace($collab, '(?s)Across humans, coordination travels as files.*?an issue comment\.', "Across humans, local-only records require an explicit owner-approved handoff.`nDo not assume approvals or inbox messages arrive with a clone. At GitHub tier 1,`npublic issues/comments may carry sanitized coordination if permitted.")
+        $files['.sw/collaboration.md'] = $collab
     }
     $files['.sw/roles.json'] = Read-SwText (Join-Path $script:Kit 'project/roles.json')
     $files['.sw/profile.json'] = Read-SwText (Join-Path $profileDir 'profile.json')
     $files['.sw/sw.ps1'] = Read-SwText (Join-Path $script:Kit 'sw.ps1')
     $files['.sw/lib/Sw.Project.psm1'] = Read-SwText (Join-Path $script:Kit 'lib/Sw.Project.psm1')
     $files['.sw/lib/Sw.Manager.psm1'] = Read-SwText (Join-Path $script:Kit 'lib/Sw.Manager.psm1')
+    $files['.sw/LICENSE'] = Read-SwText (Join-Path $script:Kit 'LICENSE')
+    $files['.sw/THIRD_PARTY_NOTICES.md'] = Read-SwText (Join-Path $script:Kit 'THIRD_PARTY_NOTICES.md')
     $roles = Read-SwJson (Join-Path $script:Kit 'project/roles.json')
     $agentsProfile = Read-SwText (Join-Path $profileDir 'AGENTS.section.md')
 
@@ -184,6 +190,24 @@ function Get-SwRender([Collections.IDictionary]$Config) {
     $files['opencode.jsonc'] = ConvertTo-SwJson $oc
 
     $template = Read-SwText (Join-Path $script:Kit 'project/base/AGENTS.md')
+    $gitPolicy = Get-SwGitPolicy $Config
+    $template = $template.Replace('{{GIT_BRANCH_RULES}}', (Read-SwText (Join-Path $script:Kit "project/git-$gitPolicy.md")).TrimEnd("`n"))
+    if ($gitPolicy -eq 'host') {
+        $collab = $files['.sw/collaboration.md'].Replace('`main` is the' + "`n" + 'integration baseline.', 'The host project owns its integration baseline.')
+        $collab = $collab.Replace('A task is claimed when its `assignment` event is on `main`; if two', 'A task is claimed at the owner-approved coordination source; if two')
+        $collab = $collab.Replace('people assign the same task, the first fast-forward push wins and the other', 'people assign the same task, stop for an owner decision and')
+        $collab = $collab.Replace('reconciles. At GitHub tier 1', 'reconcile. At GitHub tier 1')
+        $collab = $collab.Replace('<user/user-worktree>', '<assigned branch>')
+        $collab = $collab.Replace('published main <full SHA, when observed>', 'host integration ref <full SHA, when observed>')
+        $collab = $collab.Replace('refs/heads/<user>/<user>-worktree', 'refs/heads/<assigned-branch>').Replace('Base: <full main SHA>', 'Base: <full host integration SHA>')
+        $collab = $collab.Replace('Close a task only after its last' + "`n" + 'event is on `main`.', 'Close only after the owner confirms integration under the host workflow.')
+        $branches = "## Branches`n`nFollow the host project's documented branch/worktree workflow and contributor`nsetup. If unspecified, ask its owner; no branch is created by installing the kit`nor recording a user. Work only in your assigned checkout, never another user's`nbranch. A dirty checkout needs coordination, never reset or stash. Keep automatic`nworktrees off unless the host owner explicitly approves their branch behavior.`n`n"
+        $collab = [regex]::Replace($collab, '(?s)## Branches\n.*?(?=## Finish and publish)', $branches)
+        $integrate = "## Integrate (human)`n`nUse the host project's review, merge, protection and integration rules. The kit`ndoes not select an integration branch or configure repository settings. Agents`nnever push or merge a PR; humans own publication and repository settings.`n`n"
+        $collab = [regex]::Replace($collab, '(?s)## Integrate \(human\)\n.*?(?=## Receive)', $integrate)
+        $collab = [regex]::Replace($collab, '(?s)(## Receive\n\n).*?(?=\*\*Kit updates\.\*\*)', '$1Receive changes using the host workflow. Check for local work before syncing;' + "`n" + 'never discard it. Publication, receipt, build, automated checks and manual' + "`n" + "checks are separate facts.`n`n")
+        $files['.sw/collaboration.md'] = $collab
+    }
     $ignore = @('.opencode/opencode.json', '.opencode/opencode.jsonc', '.claude/', '.sw/backup/', '.env', '.env.*', '!.env.example') + $(if ($local) { '.sw/comms/' } else { @() }) -join "`n"
     $attrs = (@($profileData['lfs']) | ForEach-Object { "$_ filter=lfs diff=lfs merge=lfs -text" }) -join "`n"
     [ordered]@{
@@ -355,7 +379,7 @@ function Sync-SwProject {
     [CmdletBinding(SupportsShouldProcess)]
     param([string]$Root, [Collections.IDictionary]$Config, [switch]$Adopt,
         # Allow running an older kit over a project a newer kit last updated.
-        [switch]$Force)
+        [switch]$Force, [switch]$Preflight)
     $render = Get-SwRender $Config
     Assert-SwSelectionTransition $Root $render $Config
     $manifestPath = Join-Path $Root '.sw/manifest.json'
@@ -416,6 +440,8 @@ function Sync-SwProject {
 
     # Validate the managed blocks before the first move, copy, removal or write.
     $managed = Get-SwManagedContent $Root $render
+    # The same read-only plan guards init before directory creation or git init.
+    if ($Preflight) { return $plan }
     # One snapshot per operation; copies never replace an earlier generation.
     $opId = Get-SwOperationId
     $backupRoot = Join-Path $Root ".sw/backup/$opId"
@@ -494,26 +520,42 @@ function Initialize-SwProject {
         [string]$Name, [string]$Profile, [ValidateSet(0, 1)][int]$GitHubTier = -1,
         [switch]$Adopt, [switch]$Claude, [switch]$NoGitHub, [switch]$Force,
         # Opt an existing legacy project into selection v1 (fresh projects default to it); capabilities are additive.
-        [switch]$SelectionV1, [AllowEmptyCollection()][AllowEmptyString()][string[]]$Capabilities
+        [switch]$SelectionV1, [AllowEmptyCollection()][AllowEmptyString()][string[]]$Capabilities,
+        [ValidateSet('local', 'tracked')][string]$Records, [ValidateSet('host', 'workspace')][string]$GitPolicy
     )
     # A nonexistent target is validated and previewed before it is created.
     $Root = $PSCmdlet.SessionState.Path.GetUnresolvedProviderPathFromPSPath($Path)
     $configPath = Join-Path $Root '.sw/config.json'
     $config = if (Test-Path -LiteralPath $configPath) { Read-SwJson $configPath } else {
-        [ordered]@{ project = (Split-Path $Root -Leaf); profile = 'generic'; githubTier = 0; github = $true; startupBudgetBytes = 12100; users = @(); selection = [ordered]@{ version = 1; capabilities = @() } }
+        [ordered]@{ project = (Split-Path $Root -Leaf); profile = 'generic'; githubTier = 0; github = $true; records = 'local'; gitPolicy = 'host'; startupBudgetBytes = 12100; users = @(); selection = [ordered]@{ version = 1; capabilities = @() } }
+    }
+    if (-not (Test-Path -LiteralPath $configPath)) {
+        foreach ($alt in 'opencode.json', '.opencode/opencode.json', '.opencode/opencode.jsonc', '.opencode/agent', '.opencode/command', '.opencode/skill', '.opencode/skills') {
+            if (Test-Path -LiteralPath (Join-Path $Root $alt)) { throw "Unsupported existing configuration '$alt'; nothing was written. Review migration separately; -Adopt does not resolve this contract." }
+        }
+        # A package below another repository is not a new project root. Never create a nested repo implicitly.
+        if (-not (Test-Path -LiteralPath (Join-Path $Root '.git'))) {
+            $probe = $Root
+            while (-not (Test-Path -LiteralPath $probe -PathType Container)) { $probe = Split-Path $probe -Parent }
+            $top = & git -C $probe rev-parse --show-toplevel 2>$null
+            if ($LASTEXITCODE -eq 0 -and $top) { throw "Target is inside an existing Git repository. Use its repository root or decide nested-repository setup separately; nothing was written." }
+        }
     }
     if ($Name) { $config['project'] = $Name }
     if ($Profile) { $config['profile'] = $Profile }
     if ($GitHubTier -ge 0) { $config['githubTier'] = $GitHubTier }
     if ($NoGitHub) { $config['github'] = $false }
+    if ($PSBoundParameters.ContainsKey('Records')) { $config['records'] = $Records.ToLowerInvariant() }
+    if ($PSBoundParameters.ContainsKey('GitPolicy')) { $config['gitPolicy'] = $GitPolicy.ToLowerInvariant() }
     Set-SwSelectionOption $config $SelectionV1 $PSBoundParameters
     # Validate everything that can fail on existing content before the first side effect, git init included.
-    $render = Get-SwRender $config
-    $null = Get-SwManagedContent $Root $render
-    Assert-SwSelectionTransition $Root $render $config
+    $null = Sync-SwProject -Root $Root -Config $config -Adopt:$Adopt -Force:$Force -Preflight
     if (-not (Test-Path -LiteralPath $Root -PathType Container) -and $PSCmdlet.ShouldProcess($Root, 'create directory')) { New-Item -ItemType Directory -Path $Root | Out-Null }
     if (-not (Test-Path -LiteralPath (Join-Path $Root '.git'))) {
-        if ($PSCmdlet.ShouldProcess($Root, 'git init -b main')) { & git -C $Root init -b main | Out-Null }
+        if ($PSCmdlet.ShouldProcess($Root, 'git init -b main')) {
+            & git -C $Root init -b main | Out-Null
+            if ($LASTEXITCODE -ne 0) { throw 'git init failed; no workspace files were written. Inspect Git effects before retrying.' }
+        }
     }
     $from = Get-SwManifestKit $Root
     $plan = Sync-SwProject -Root $Root -Config $config -Adopt:$Adopt -Force:$Force
@@ -522,7 +564,9 @@ function Initialize-SwProject {
         foreach ($d in 'tasks', 'inbox', 'archive') { Write-SwFile (Join-Path $Root ".sw/comms/$d/.gitkeep") '' }
     }
     Format-SwPlan $plan $from
-    Format-SwSelection $render
+    Format-SwSelection (Get-SwRender $config)
+    Write-Output "Git policy: $(Get-SwGitPolicy $config); records: $(if ($config['records']) { $config['records'] } else { 'tracked (legacy)' })."
+    if ($config['records'] -eq 'local') { Write-Output 'Local records are git-ignored; existing tracked files/history are not removed. Review before publishing.' }
     if ($Claude -and -not $WhatIfPreference) { Invoke-SwClaude enable -Path $Root }
     Write-Output "Next: fill the project sections of AGENTS.md, then run 'pwsh .sw/sw.ps1 validate'. Map models with 'pwsh .sw/sw.ps1 tiers'."
 }
@@ -530,17 +574,22 @@ function Initialize-SwProject {
 function Update-SwProject {
     [CmdletBinding(SupportsShouldProcess)]
     param([Parameter(Position = 0)][string]$Path, [switch]$Adopt, [switch]$Force,
-        [switch]$SelectionV1, [AllowEmptyCollection()][AllowEmptyString()][string[]]$Capabilities)
+        [switch]$SelectionV1, [AllowEmptyCollection()][AllowEmptyString()][string[]]$Capabilities,
+        [ValidateSet('local', 'tracked')][string]$Records, [ValidateSet('host', 'workspace')][string]$GitPolicy)
     $Root = Resolve-SwRoot $Path
     $from = Get-SwManifestKit $Root
     $config = Get-SwConfig $Root
     $before = ConvertTo-SwJson $config
+    if ($PSBoundParameters.ContainsKey('Records')) { $config['records'] = $Records.ToLowerInvariant() }
+    if ($PSBoundParameters.ContainsKey('GitPolicy')) { $config['gitPolicy'] = $GitPolicy.ToLowerInvariant() }
     Set-SwSelectionOption $config $SelectionV1 $PSBoundParameters
     $plan = Sync-SwProject -Root $Root -Config $config -Adopt:$Adopt -Force:$Force
     Format-SwPlan $plan $from
     Format-SwSelection (Get-SwRender $config)
-    # The selection is recorded only after a successful sync, before the adapter reads it.
-    if ((ConvertTo-SwJson $config) -cne $before -and $PSCmdlet.ShouldProcess('.sw/config.json', 'write selection')) { Write-SwFile (Join-Path $Root '.sw/config.json') (ConvertTo-SwJson $config) }
+    # Explicit config choices are recorded only after a successful sync, before adapter reads.
+    if ((ConvertTo-SwJson $config) -cne $before -and $PSCmdlet.ShouldProcess('.sw/config.json', 'write configuration')) { Write-SwFile (Join-Path $Root '.sw/config.json') (ConvertTo-SwJson $config) }
+    Write-Output "Git policy: $(Get-SwGitPolicy $config); records: $(if ($config['records']) { $config['records'] } else { 'tracked (legacy)' })."
+    if ($config['records'] -eq 'local') { Write-Output 'Local records are git-ignored; existing tracked files/history are not removed. Review before publishing.' }
     if (Test-Path -LiteralPath (Join-Path $Root '.claude/.sw-generated')) {
         if (-not $WhatIfPreference) { Invoke-SwClaude enable -Path $Root } else { Write-Output 'Would regenerate the Claude adapter.' }
     }

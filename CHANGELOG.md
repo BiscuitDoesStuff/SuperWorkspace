@@ -1,6 +1,33 @@
 # Changelog
 
+## Unreleased - public adoption candidate (2026-10-11)
+
+- MIT license and preserved third-party notices, distributed with installed kits.
+- Public README, new/existing/join setup routes, bootstrap/update/recovery guide,
+  contribution/security guidance and sanitized bug diagnostics.
+- New installs default to host-owned Git policy and local-only records. Explicit
+  `-GitPolicy host|workspace` and `-Records local|tracked` choices; updates and
+  re-init keep existing choices, absent legacy fields retain the old behavior.
+  No automatic config merge, Git untracking or history migration.
+- Installer preflight now checks conflicts/downgrades before directory/Git
+  effects; initial adoption refuses unsupported config variants and nested
+  repository targets. `-Adopt` remains explicit backup-and-replace.
+- Exclusive event allocation distinguishes file collisions from directory/I/O
+  failures; context reporting distinguishes unsafe linked role definitions
+  from missing files. Portable regression fixtures correct newline, hidden-file,
+  denial scope, executable-hook and Unix directory-link assumptions.
+- Offline whole-tree/preservation fixtures added. This is an unreleased
+  candidate; hosted CI, independent review and private-reporting enablement are
+  still gates, not completed publication or runtime assurance.
+
 ## 0.3.0-dev
+
+**Publication correction (observed 2026-10-11):** the local/unpublished labels
+below record earlier checkpoints, not current publication. The audited public
+`main` at `bd5dc48` includes these features; that exact hosted CI run failed
+Pester on Windows/Linux and skipped the later fresh-install/offline steps.
+It is not a release tag or a green adoption baseline. The former `product/`
+layout and superseded roster/permission descriptions below are historical.
 
 - **Unreleased (2026-10-03..05, local, uncommitted, unpublished):**
   - Identity: this checkout is the development checkout of the public SuperWorkspace product (`origin`); the owner's private

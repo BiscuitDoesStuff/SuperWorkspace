@@ -13,7 +13,7 @@ BeforeAll {
             [switch]$Legacy)
         $dir = Join-Path $TestDrive $Name
         if ($Legacy) { Write-SwFile (Join-Path $dir '.sw/config.json') (ConvertTo-SwJson ([ordered]@{ project = $Name; profile = $Profile; githubTier = $GitHubTier; github = $true; startupBudgetBytes = 12100; users = @() })) }
-        Initialize-SwProject -Path $dir -Profile $Profile -Name $Name -GitHubTier $GitHubTier | Out-Null
+        Initialize-SwProject -Path $dir -Profile $Profile -Name $Name -GitHubTier $GitHubTier -GitPolicy workspace | Out-Null
         git -C $dir config user.name tester
         git -C $dir config user.email tester@example.com
         $dir
@@ -483,6 +483,218 @@ Describe 'Sync and init lifecycle' {
     }
 }
 
+Describe 'Public adoption' {
+    BeforeAll {
+        function Get-AdoptionTree([string]$Root) {
+            if (-not (Test-Path -LiteralPath $Root)) { return 'absent' }
+            $items = foreach ($f in Get-ChildItem -LiteralPath $Root -Recurse -Force | Sort-Object FullName) {
+                $rel = [IO.Path]::GetRelativePath($Root, $f.FullName).Replace('\', '/')
+                if ($f.PSIsContainer) { "dir:$rel" } else { "file:${rel}:$((Get-FileHash -LiteralPath $f.FullName).Hash)" }
+            }
+            $items -join "`n"
+        }
+        function New-AdoptionTarget([switch]$Git) {
+            $d = Join-Path $TestDrive "host$(New-Id)"
+            Write-SwFile (Join-Path $d 'app.txt') 'host-app'
+            Write-SwFile (Join-Path $d 'app.tests.ps1') 'if ((Get-Content -LiteralPath (Join-Path $PSScriptRoot "app.txt") -Raw) -ne "host-app") { throw "application regression" }'
+            if ($Git) {
+                git -C $d init -b develop 2>$null | Out-Null
+                if ($LASTEXITCODE) { throw 'Fixture git init failed' }
+                git -C $d config user.name tester
+                git -C $d config user.email tester@example.invalid
+            }
+            $d
+        }
+        function Get-HostRender([string]$Policy = 'host') {
+            Get-SwRender ([ordered]@{ project = 'H'; profile = 'generic'; githubTier = 0; github = $false; users = @(); records = 'local'; gitPolicy = $Policy })
+        }
+    }
+
+    It 'fresh <Profile> defaults to host policy and local records; preview creates nothing' -ForEach @(
+        @{ Profile = 'generic' }, @{ Profile = 'research' }, @{ Profile = 'unreal' }
+    ) {
+        $d = Join-Path $TestDrive "fresh$Profile$(New-Id)"
+        Initialize-SwProject $d -Profile $Profile -WhatIf | Out-Null
+        Get-AdoptionTree $d | Should -Be 'absent'
+        Initialize-SwProject $d -Profile $Profile | Out-Null
+        $c = Get-SwConfig $d
+        $c['gitPolicy'] | Should -Be 'host'
+        $c['records'] | Should -Be 'local'
+        $c['selection']['version'] | Should -Be 1
+        git -C $d check-ignore -q -- .sw/comms/tasks/approval.md
+        $LASTEXITCODE | Should -Be 0
+        git -C $d ls-files -- .sw/comms | Should -BeNullOrEmpty
+        Read-SwText (Join-Path $d '.sw/LICENSE') | Should -Be (Read-SwText (Join-Path $RepoRoot 'LICENSE'))
+        Read-SwText (Join-Path $d '.sw/THIRD_PARTY_NOTICES.md') | Should -Be (Read-SwText (Join-Path $RepoRoot 'THIRD_PARTY_NOTICES.md'))
+        (Test-SwValidate $d).ExitCode | Should -Be 0
+    }
+
+    It 'preserves host application/text/extras and Git state in an existing <Kind> root' -ForEach @(
+        @{ Kind = 'Git'; UseGit = $true }, @{ Kind = 'non-Git'; UseGit = $false }
+    ) {
+        $d = New-AdoptionTarget -Git:$UseGit
+        Write-SwFile (Join-Path $d 'AGENTS.md') "# Host rules`n`n## Project identity`nHost app; Startup state is docs/state.md. No task approved.`n`n## Git workflow`nUse develop and reviewed topic branches.`n"
+        Write-SwFile (Join-Path $d '.gitignore') "host-cache/`n"
+        Write-SwFile (Join-Path $d '.gitattributes') "*.txt text`n"
+        Write-SwFile (Join-Path $d '.opencode/agents/host-helper.md') "---`ndescription: Host-owned helper`nmode: subagent`n---`nHost helper.`n"
+        Write-SwFile (Join-Path $d '.opencode/plugins/host-plugin.ts') '// host plugin fixture, not executed'
+        Write-SwFile (Join-Path $d '.github/workflows/host.yml') "name: host`non: workflow_dispatch`n"
+        $preserved = @('app.txt', 'app.tests.ps1', '.opencode/agents/host-helper.md', '.opencode/plugins/host-plugin.ts', '.github/workflows/host.yml')
+        $hashes = @($preserved | ForEach-Object { (Get-FileHash (Join-Path $d $_)).Hash })
+        $agents = Read-SwText (Join-Path $d 'AGENTS.md')
+        $gitTree = if ($UseGit) { Get-AdoptionTree (Join-Path $d '.git') }
+        & (Join-Path $d 'app.tests.ps1')
+        $tree = Get-AdoptionTree $d
+        Initialize-SwProject $d -Profile generic -NoGitHub -WhatIf | Out-Null
+        Get-AdoptionTree $d | Should -BeExactly $tree
+        Initialize-SwProject $d -Profile generic -NoGitHub | Out-Null
+        @($preserved | ForEach-Object { (Get-FileHash (Join-Path $d $_)).Hash }) | Should -Be $hashes
+        (Read-SwText (Join-Path $d 'AGENTS.md')).StartsWith($agents) | Should -BeTrue
+        Read-SwText (Join-Path $d '.gitignore') | Should -Match '\Ahost-cache/\n'
+        Read-SwText (Join-Path $d '.gitattributes') | Should -Be "*.txt text`n"
+        (Get-SwConfig $d)['github'] | Should -BeFalse
+        Test-Path (Join-Path $d '.github/workflows/sw-validate.yml') | Should -BeFalse
+        if ($UseGit) {
+            Get-AdoptionTree (Join-Path $d '.git') | Should -BeExactly $gitTree
+            git -C $d branch --show-current | Should -Be 'develop'
+        } else { git -C $d branch --show-current | Should -Be 'main' }
+        & (Join-Path $d 'app.tests.ps1')
+        (Test-SwValidate $d).ExitCode | Should -Be 0
+    }
+
+    It 'refuses unsupported initial <Rel> without changing any file/directory or creating Git' -ForEach @(
+        @{ Rel = 'opencode.json'; Body = '{"mcp":{"host":{}}}' },
+        @{ Rel = '.opencode/opencode.json'; Body = '{}' },
+        @{ Rel = '.opencode/opencode.jsonc'; Body = "{ // host config`n}" },
+        @{ Rel = '.opencode/agent/host.md'; Body = 'legacy' },
+        @{ Rel = '.opencode/command/host.md'; Body = 'legacy' },
+        @{ Rel = '.opencode/skill/host/SKILL.md'; Body = 'legacy' },
+        @{ Rel = '.opencode/skills/host/SKILL.md'; Body = 'legacy' }
+    ) {
+        $d = New-AdoptionTarget
+        Write-SwFile (Join-Path $d $Rel) $Body
+        $tree = Get-AdoptionTree $d
+        { Initialize-SwProject $d -Adopt } | Should -Throw '*Unsupported existing configuration*nothing was written*'
+        Get-AdoptionTree $d | Should -BeExactly $tree
+        Test-Path (Join-Path $d '.git') | Should -BeFalse
+    }
+
+    It 'refuses unmanaged <Rel> without whole-tree/Git effects, including JSONC/MCP settings' -ForEach @(
+        @{ Rel = 'opencode.jsonc'; Body = '{"mcp":{"host":{"command":["host-fixture"]}}}' },
+        @{ Rel = 'opencode.jsonc'; Body = "{ // host comments`n  `"mcp`": {},`n}" },
+        @{ Rel = '.opencode/agents/project-leader.md'; Body = 'host agent' },
+        @{ Rel = '.opencode/plugins/rtk.ts'; Body = '// host plugin' },
+        @{ Rel = '.github/workflows/sw-validate.yml'; Body = 'host workflow' }
+    ) {
+        $d = New-AdoptionTarget
+        Write-SwFile (Join-Path $d $Rel) $Body
+        $tree = Get-AdoptionTree $d
+        { Initialize-SwProject $d } | Should -Throw '*not SuperWorkspace-managed*nothing was written*'
+        Get-AdoptionTree $d | Should -BeExactly $tree
+        Test-Path (Join-Path $d '.git') | Should -BeFalse
+    }
+
+    It 'refuses a downgrade before initializing Git or changing the config/manifest/tree' {
+        $d = New-AdoptionTarget
+        Write-SwFile (Join-Path $d '.sw/config.json') '{"project":"legacy","profile":"generic","githubTier":0,"users":[]}'
+        Write-SwFile (Join-Path $d '.sw/manifest.json') '{"kitVersion":"99.0.0","files":{}}'
+        $tree = Get-AdoptionTree $d
+        { Initialize-SwProject $d -Name changed } | Should -Throw '*newer than this kit*nothing was written*'
+        Get-AdoptionTree $d | Should -BeExactly $tree
+        Test-Path (Join-Path $d '.git') | Should -BeFalse
+    }
+
+    It 'refuses a subpackage and an absent nested target without changing the parent repo' {
+        $parent = New-AdoptionTarget -Git
+        Write-SwFile (Join-Path $parent 'package/app.txt') 'subpackage'
+        $tree = Get-AdoptionTree $parent
+        foreach ($rel in 'package', 'absent') {
+            { Initialize-SwProject (Join-Path $parent $rel) } | Should -Throw '*inside an existing Git repository*nothing was written*'
+            Get-AdoptionTree $parent | Should -BeExactly $tree
+        }
+    }
+
+    It 'Adopt is explicit backup-and-replace, not a config merge; preview writes nothing' {
+        $d = New-AdoptionTarget -Git
+        $body = "{ // host settings`n  `"mcp`": { `"host-fixture`": {} },`n}"
+        Write-SwFile (Join-Path $d 'opencode.jsonc') $body
+        $tree = Get-AdoptionTree $d
+        Initialize-SwProject $d -Adopt -WhatIf | Out-Null
+        Get-AdoptionTree $d | Should -BeExactly $tree
+        Initialize-SwProject $d -Adopt | Out-Null
+        $backups = @(Get-ChildItem (Join-Path $d '.sw/backup') -Recurse -File -Force -Filter opencode.jsonc)
+        $backups.Count | Should -Be 1
+        Read-SwText $backups[0].FullName | Should -BeExactly $body
+        Read-SwText (Join-Path $d 'opencode.jsonc') | Should -Not -Match 'host-fixture'
+        (Test-SwValidate $d).ExitCode | Should -Be 0
+    }
+
+    It 'host guidance does not prescribe workspace branches/main integration and rejects invalid policy' {
+        $r = Get-HostRender
+        $r.AgentsCore | Should -Match "project's documented branch"
+        $r.AgentsCore | Should -Not -Match 'Only `main`|solo projects: `main`'
+        $collab = $r.Files['.sw/collaboration.md']
+        $collab | Should -Not -Match '\bmain\b|first fast-forward push|<user>/<user>-worktree'
+        $collab | Should -Match "host project's review"
+        { Get-HostRender 'custom' } | Should -Throw "*'gitPolicy' must be*"
+    }
+
+    It 'legacy update/init retain absent fields; explicit choices are previewed and opt in separately' {
+        $d = New-AdoptionTarget -Git
+        Write-SwFile (Join-Path $d '.sw/config.json') '{"project":"legacy","profile":"generic","githubTier":0,"users":[]}'
+        Initialize-SwProject $d | Out-Null
+        Update-SwProject $d | Out-Null
+        $c = Get-SwConfig $d
+        $c.Contains('gitPolicy') | Should -BeFalse
+        $c.Contains('records') | Should -BeFalse
+        Get-SwGitPolicy $c | Should -Be 'workspace'
+        Read-SwText (Join-Path $d 'AGENTS.md') | Should -Match 'Only `main`'
+        $tree = Get-AdoptionTree $d
+        Update-SwProject $d -GitPolicy host -Records local -WhatIf | Out-Null
+        Get-AdoptionTree $d | Should -BeExactly $tree
+        Update-SwProject $d -GitPolicy host -Records local | Out-Null
+        Update-SwProject $d | Out-Null
+        (Get-SwConfig $d)['gitPolicy'] | Should -Be 'host'
+        (Get-SwConfig $d)['records'] | Should -Be 'local'
+        (Test-SwValidate $d).ExitCode | Should -Be 0
+    }
+
+    It 'explicit tracked/workspace opt-in is preserved; local choice never silently untracks records' {
+        $d = New-AdoptionTarget -Git
+        Initialize-SwProject $d -GitPolicy workspace -Records tracked | Out-Null
+        Write-SwFile (Join-Path $d '.sw/comms/tasks/test/approval.md') 'synthetic public approval'
+        git -C $d add -- .sw/comms/tasks/test/approval.md
+        Update-SwProject $d | Out-Null
+        (Get-SwConfig $d)['records'] | Should -Be 'tracked'
+        (Get-SwConfig $d)['gitPolicy'] | Should -Be 'workspace'
+        $output = (Update-SwProject $d -Records local) -join "`n"
+        $output | Should -Match 'existing tracked files/history are not removed'
+        git -C $d ls-files -- .sw/comms/tasks/test/approval.md | Should -Be '.sw/comms/tasks/test/approval.md'
+    }
+
+    It 'host doctor/user do not invent a branch policy (native tool discovery stubbed)' {
+        $d = New-AdoptionTarget -Git
+        Initialize-SwProject $d | Out-Null
+        $out = (Add-SwUser alice -Path $d) -join "`n"
+        $out | Should -Match 'project-owned Git onboarding'
+        $out | Should -Not -Match 'git switch|origin/main'
+        Mock -ModuleName Sw.Project Get-SwToolProbe { [pscustomobject]@{ State = 'missing'; Version = $null } }
+        $out = (Test-SwDoctor -Path $d -User alice) -join "`n"
+        $out | Should -Match 'develop \(host Git policy;.*not checked here'
+        $out | Should -Not -Match 'expected alice/alice-worktree|git switch|Branch protection on main'
+    }
+
+    It 'an invalid Git policy refuses contributor recording before any effects' {
+        $d = New-AdoptionTarget -Git
+        Initialize-SwProject $d | Out-Null
+        $c = Get-SwConfig $d; $c['gitPolicy'] = 'custom'
+        Write-SwFile (Join-Path $d '.sw/config.json') (ConvertTo-SwJson $c)
+        $tree = Get-AdoptionTree $d
+        { Add-SwUser alice -Path $d } | Should -Throw "*'gitPolicy' must be*"
+        Get-AdoptionTree $d | Should -BeExactly $tree
+    }
+}
+
 Describe 'Records option' {
     BeforeAll {
         function Get-RecordsRender($Value) {
@@ -505,7 +717,10 @@ Describe 'Records option' {
         @($local.GitIgnore -split "`n") | Should -Be (@($default.GitIgnore -split "`n") + '.sw/comms/')
         @($default.Files.Keys | Where-Object { $default.Files[$_] -cne $local.Files[$_] }) | Should -Be @('.sw/collaboration.md')
         $local.Files['.sw/collaboration.md'] | Should -Not -Match 'published when a human pushes'
-        $local.Files['.sw/collaboration.md'] | Should -Match 'kept local by `records: local` \(git-ignored, never pushed\)'
+        $local.Files['.sw/collaboration.md'] | Should -Match 'kept local by `records: local` \(git-ignored for new records\)'
+        $local.Files['.sw/collaboration.md'] | Should -Match 'does not untrack existing records'
+        $local.Files['.sw/collaboration.md'] | Should -Not -Match 'first fast-forward push wins|published by push and received|event is on `main`'
+        $local.Files['.sw/collaboration.md'] | Should -Match 'local-only records require an explicit owner-approved handoff'
     }
 
     It 'rejects any other records value' {
@@ -1757,7 +1972,7 @@ Describe 'Global setup (synthetic home)' {
         $s['permissions']['allow'] | Should -Not -Contain 'Bash(gh:*)'
         $s['permissions']['allow'] | Should -Contain 'Bash(npm test:*)'
         $s['permissions']['allow'] | Should -Contain 'Bash(gh issue view:*)'
-        $backup = @(Get-ChildItem (Join-Path $h '.sw/backups') -Recurse -Filter settings.json -File)
+        $backup = @(Get-ChildItem (Join-Path $h '.sw/backups') -Recurse -Filter settings.json -File -Force)
         $backup.Count | Should -Be 1
         (Read-SwText $backup[0].FullName) | Should -Match 'Bash\(gh \*\)'
         $after = Get-Tree $h
@@ -1796,9 +2011,7 @@ Describe 'Generated copies and current guidance' {
     }
 
     It 'onboarding enters the checkout directory between clone and doctor' {
-        $script:Render.Files['.sw/onboarding.md'] | Should -Match '(?m)^git clone <repo-url>
-cd <checkout-directory>
-pwsh \.sw/sw\.ps1 doctor -User <you>$'
+        $script:Render.Files['.sw/onboarding.md'] | Should -Match '(?m)^git clone <repo-url>\r?\ncd <checkout-directory>\r?\npwsh \.sw/sw\.ps1 doctor -User <you>$'
     }
 
     It 'guidance qualifies static checks and documents ownership, backups and profile transitions' {
@@ -2114,7 +2327,7 @@ Describe 'Context and recovery reporting' {
             Mock -ModuleName Sw.Project Read-SwText { throw [UnauthorizedAccessException]::new('denied PRIVATE-VALUE') } -ParameterFilter { $Path -like '*workspace.md' }
             Mock -ModuleName Sw.Project Read-SwFrontmatter { throw 'Unsupported frontmatter at line 2: PRIVATE-VALUE' } -ParameterFilter { $Path -like '*project-developer.md' }
             Mock -ModuleName Sw.Project Get-ChildItem { throw [IO.DirectoryNotFoundException]::new('vanished') } -ParameterFilter { $LiteralPath -like '*commands' -or $LiteralPath -like '*tasks*t1' }
-            Mock -ModuleName Sw.Project Get-Item { throw [UnauthorizedAccessException]::new('denied') }
+            Mock -ModuleName Sw.Project Get-Item { throw [UnauthorizedAccessException]::new('denied') } -ParameterFilter { $LiteralPath -like '*tasks*t1' -or $LiteralPath -like '*docs*state.md' }
             $out = @(Get-SwContext -Path $dir -Task t1 -StateFile docs/state.md)
             $global:LASTEXITCODE | Should -Be 0
             $text = $out -join "`n"
@@ -2189,6 +2402,7 @@ Describe 'Context and recovery reporting' {
             $marker = Join-Path $TestDrive "fsmonitor$(New-Id).log"
             $hook = Join-Path $TestDrive "fsmonitor$(New-Id).sh"
             [IO.File]::WriteAllText($hook, "#!/bin/sh`necho invoked >> '$($marker.Replace('\', '/'))'`nexit 1`n")
+            if (-not $IsWindows) { & chmod +x $hook; if ($LASTEXITCODE -ne 0) { throw 'Cannot make the positive-control hook executable' } }
             git -C $dir config core.fsmonitor $hook.Replace('\', '/')
             git -C $dir status 2>$null | Out-Null
             Test-Path -LiteralPath $marker | Should -BeTrue -Because 'positive control: plain status runs the fixture hook'
@@ -2229,7 +2443,7 @@ Describe 'Profile selection v1' {
             # Isolated kit for source-corruption cases; the live source tree is never rewritten.
             $kit = Join-Path $TestDrive $Name
             New-Item -ItemType Directory -Path $kit | Out-Null
-            foreach ($p in 'lib', 'project', 'sw.ps1', 'VERSION') { Copy-Item -LiteralPath (Join-Path $RepoRoot $p) -Destination (Join-Path $kit $p) -Recurse }
+            foreach ($p in 'lib', 'project', 'sw.ps1', 'VERSION', 'LICENSE', 'THIRD_PARTY_NOTICES.md') { Copy-Item -LiteralPath (Join-Path $RepoRoot $p) -Destination (Join-Path $kit $p) -Recurse }
             $kit
         }
         function Use-Kit([string]$Kit, [scriptblock]$Action) {
@@ -2505,7 +2719,7 @@ Describe 'Profile selection v1' {
             $target = Join-Path $TestDrive "linkTarget$(New-Id)"
             Copy-Item -LiteralPath (Join-Path $dir '.agents/skills/research') -Destination $target -Recurse
             Remove-Item -LiteralPath (Join-Path $dir '.agents/skills/research') -Recurse -Force
-            try { New-Item -ItemType Junction -Path (Join-Path $dir '.agents/skills/research') -Target $target -ErrorAction Stop | Out-Null }
+            try { New-Item -ItemType $(if ($IsWindows) { 'Junction' } else { 'SymbolicLink' }) -Path (Join-Path $dir '.agents/skills/research') -Target $target -ErrorAction Stop | Out-Null }
             catch { Set-ItResult -Skipped -Because "a directory link cannot be created here: $($_.Exception.Message)"; return }
             $tree = Get-Tree $dir
             { Update-SwProject -Path $dir -SelectionV1 } | Should -Throw '*skills/research (linked)*'

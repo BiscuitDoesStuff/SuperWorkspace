@@ -19,12 +19,21 @@ Each rule has one owning source; everything else links to it.
 | Project state file named in `AGENTS.md` | Implemented state and what work is authorized |
 | This file | Roles, approved-plan execution, permissions, tiers, verification |
 | `.sw/collaboration.md` | Task records, messages, branches, publication, integration |
-| `.sw/config.json` | Profile, GitHub tier, contributors, startup budget |
+| `.sw/config.json` | Profile, GitHub tier, contributors, startup budget, Git policy and record privacy |
 | `opencode.jsonc`, `.opencode/{agents,commands,plugins}`, `.agents/skills` | Actual shared configuration; inspect these and runtime discovery before asserting behavior |
 | Git and `.sw/comms/tasks/` | Ancestry, publication, and approved work; not a second memory ledger |
 | `.sw/onboarding.md` | New contributor setup |
 
 Keep required startup reading small: this map is read on demand.
+
+New installs use `gitPolicy: host` (the project owns branches/integration) and
+`records: local` (new comms files git-ignored). Absent legacy fields retain the
+workspace Git policy and tracked records. `init`/`update` preserve existing
+choices unless `-GitPolicy` or `-Records` explicitly changes them. These options
+do not merge host configuration, untrack files, rewrite history or change global
+instructions. Resolve conflicting project/global rules with their owner before
+agent work. The kit's whole-file conflicts stop by default; `-Adopt` explicitly
+backs up and replaces them, never deep-merges them.
 
 ## Roles
 

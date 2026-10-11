@@ -6,7 +6,7 @@ Git history, not as a second active generator.
 
 | Path | Responsibility |
 | --- | --- |
-| `sw.ps1`, `lib/`, `project/`, `global/`, `VERSION` | Current kit sources |
+| `sw.ps1`, `lib/`, `project/`, `global/`, `VERSION`, `LICENSE`, `THIRD_PARTY_NOTICES.md` | Current kit sources and distributed license notices |
 | `.sw/`, `.opencode/`, `.agents/` | Generated installation used by this project |
 | `tests/Sw.Tests.ps1` | Inherited lifecycle, validator, permission and adapter Pester coverage, adapted to current contracts |
 | `tests/workspace-v1.ps1` | Dependency-free offline launcher/adapter regression, native CLIs stubbed |
@@ -34,6 +34,13 @@ Apply an approved update with `sw.ps1 update .`, then validate. Do not enable a
 local Claude adapter or configure models/accounts merely to run checks; those
 are separate owner opt-ins. Older nine-role, effort and implicit-model test
 assumptions have been replaced by the implemented four-role/model-only contracts.
+
+Adopter instructions live in [setup.md](setup.md); generated join instructions
+come from `project/base/.sw/onboarding.md`. This checkout retains its existing
+workspace Git policy and local-record choice; self-regeneration does not adopt
+new-install defaults. Edit Git-policy snippets in `project/git-*.md`; rendering
+selects one from `gitPolicy`, absent means legacy workspace policy. Licenses are
+copied under `.sw/` without changing the host license.
 
 ## Validation
 
@@ -73,6 +80,34 @@ keep those results separate from the bounded v1 live evidence. After human
 publication, verify the exact remote SHA and both GitHub workflows; local Windows
 success is not proof of hosted Linux CI. No release/tag or account setup is
 implied by a normal main-branch push.
+
+Public-adoption regression is `Public adoption*` in `tests/Sw.Tests.ps1`:
+new generic/research/Unreal, existing Git/non-Git, host files/application and
+Git-state preservation, alternate/JSONC/MCP conflicts, preview/refusal complete
+trees, policy/privacy compatibility and explicit backup-replacement. Synthetic
+application tests are not acceptance against every adopter's real application.
+
+### Human publication gates
+
+1. Inspect selected diffs and new files for private data; never publish the
+   local comparison audit or raw comms/backup/model files. No full history or
+   credential audit is implied by static checks.
+2. Commit only the reviewed paths when requested; humans push their branch.
+   Current `main` is development; choose any tag/release version deliberately,
+   not from `VERSION` alone. Do not overwrite historical tags.
+3. Verify remote SHA and both `ci` OS jobs, fresh-install/offline steps and
+   `sw-validate` at that SHA before calling the published candidate ready.
+   Local green results do not repair an old hosted run.
+4. Human repository settings: enable private vulnerability reporting and
+   confirm **Report a vulnerability** is available. Suggested About:
+   "Project-local OpenCode agents, skills and task handoffs for new or existing
+   repositories." Suggested topics: `opencode`, `ai-agents`, `powershell`,
+   `developer-tools`; setup URL is the published `docs/setup.md`. Metadata is
+   not changed by this task.
+
+Do not describe the Leader's own checks as an independent review; record any
+unavailable planned review in the task/state record. No platform/native/account
+gap is silently waived.
 
 ## Manager deployment
 

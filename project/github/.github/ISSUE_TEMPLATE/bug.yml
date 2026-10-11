@@ -2,6 +2,9 @@ name: Bug
 description: Something that worked, or should work, does not
 labels: ["type:bug"]
 body:
+  - type: markdown
+    attributes:
+      value: "Check your setup/adoption guide first. Do not include secrets, private records, local model/account settings, machine paths or backup contents. For security reports use the repository's private reporting route when available; never post vulnerability details here."
   - type: textarea
     id: expected
     attributes:
@@ -18,3 +21,8 @@ body:
     id: revision
     attributes:
       label: Branch and SHA where observed
+  - type: textarea
+    id: environment
+    attributes:
+      label: Sanitized environment and setup context
+      description: "OS, PowerShell/Git/OpenCode versions, kit version/commit and clean/dirty status, profile/capabilities, Git/privacy choices; new setup, adoption, joining or update. No private paths or full configuration dumps."

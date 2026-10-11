@@ -2,7 +2,8 @@
 
 Owns task records, messages, branches, publication, and integration under
 `AGENTS.md`. Everything below is plain files in
-`.sw/comms/`, kept local by `records: local` (git-ignored, never pushed). `main` is the
+`.sw/comms/`, kept local by `records: local` (git-ignored for new records).
+Ignoring does not untrack existing records or remove published history; review before publishing. `main` is the
 integration baseline. Only humans publish; agents never push.
 
 ## Layout
@@ -50,9 +51,9 @@ events with Git and the actual files, not just the status field. Context
 summaries and model switches do not carry uncommitted work. Never guess the SHA
 of the commit that will contain a record.
 
-**Claims.** A task is claimed when its `assignment` event is on `main`; if two
-people assign the same task, the first fast-forward push wins and the other
-reconciles. At GitHub tier 1 an assignment may name an issue and its assignee,
+**Claims.** With local records, the owner confirms assignment at the agreed
+coordination source. Conflicting assignments need an owner decision, not a push.
+At GitHub tier 1 an assignment may name an issue and its assignee,
 but the record stays the truth. With recorded contributors, task IDs start with
 the owner's user name (`<user>-<slug>`) so two people never create the same
 folder.
@@ -61,8 +62,7 @@ folder.
 `archive/<task-id>/SUMMARY.md` (outcome, final SHA, decisions, open follow-ups)
 and moves the events beside it. Agents read the summary, not the old events, so
 closed work stops costing context. `-Outcome` is the whole summary: give the
-outcome, the decisions and the open follow-ups. Close a task only after its last
-event is on `main`.
+outcome, the decisions and the open follow-ups. With local records, close after the owner confirms integration and the final local event.
 
 ## Multi-session work (optional)
 
@@ -70,9 +70,9 @@ One Leader session per human writes assignments; worker sessions, opened by that
 human, each own one package. The task record is the truth. "Go" and "done"
 travel by harness messaging where it exists, else the human relays them. A
 Leader is never shared between humans and assigns only tasks its human owns.
-Across humans, coordination travels as files (a message in `inbox/<user>/` or a
-task event, published by push and received by fetch) or, at GitHub tier 1, as
-an issue comment.
+Across humans, local-only records require an explicit owner-approved handoff.
+Do not assume approvals or inbox messages arrive with a clone. At GitHub tier 1,
+public issues/comments may carry sanitized coordination if permitted.
 
 ## Messages
 
