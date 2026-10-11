@@ -1,6 +1,6 @@
 {
   "kitVersion": "0.3.0-dev",
-  "kitCommit": "bd5dc48a778e76c2d9472c6a46b75194c8a02851",
+  "kitCommit": "811228fa32e2ef296bb9f88a865de4ef3c8bb2e5",
   "files": {
     ".agents/skills/agent-documentation/SKILL.md": "1855622a3d1eddc9f427aad4ef6378a23d3758853e875d9a67bd321cb99176c7",
     ".agents/skills/focused-review/SKILL.md": "4ddbcc7733f930a328c5cdb41cf02f1709d5586c4a056ad77681c8d944c4a417",
