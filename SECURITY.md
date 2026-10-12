@@ -11,8 +11,9 @@ reporting, **when the repository owner has enabled it**:
 
 This file does not enable the feature. If that button is unavailable, open a
 public issue requesting a private security contact **without sensitive details**
-and wait for a private route before sharing them. Availability has not yet been
-confirmed for the adoption candidate; no response-time guarantee is offered.
+and wait for a private route before sharing them. The reporting entry was
+verified available on 2026-10-12; no report was submitted or end-to-end handling
+verified, and no response-time guarantee is offered.
 
 Privately include affected kit version/commit, OS/tool versions, minimal steps,
 impact and sanitized evidence. Do not send active secrets; revoke any exposed

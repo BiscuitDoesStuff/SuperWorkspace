@@ -44,15 +44,16 @@ copied under `.sw/` without changing the host license.
 
 ## Validation
 
-PowerShell 7.2+ is required. The suite requires already-installed Pester 5.5+;
-local dependency installation needs separate approval. CI uses isolated hosted
-Windows/Linux runners and its inherited Pester setup.
+PowerShell 7.2+ is required. Local validation and isolated Windows/Linux CI use
+Pester **5.6.1** explicitly; local dependency installation needs separate approval.
+Do not silently select a newer major: Pester 6 changes filtered-mock fallthrough.
+Updating the test dependency requires its own compatibility validation.
 
 ```powershell
 pwsh -NoProfile -File tests/workspace-v1.ps1 -ParseOnly
 pwsh -NoProfile -File tests/workspace-v1.ps1
 pwsh -NoProfile -File tests/manager.ps1
-pwsh -NoProfile -Command 'Invoke-Pester -Path tests -CI'
+pwsh -NoProfile -Command 'Import-Module Pester -RequiredVersion 5.6.1 -Force -ErrorAction Stop; Invoke-Pester -Path tests -CI'
 pwsh -NoProfile -File .sw/sw.ps1 validate -CheckLinks
 pwsh -NoProfile -File sw.ps1 update . -WhatIf
 git diff --check

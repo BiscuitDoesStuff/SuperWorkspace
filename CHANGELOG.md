@@ -17,8 +17,13 @@
   from missing files. Portable regression fixtures correct newline, hidden-file,
   denial scope, executable-hook and Unix directory-link assumptions.
 - Offline whole-tree/preservation fixtures added. This is an unreleased
-  candidate; hosted CI, independent review and private-reporting enablement are
-  still gates, not completed publication or runtime assurance.
+  candidate, published at `525b5bb` with MIT detected and the private-reporting
+  entry verified (2026-10-12). Hosted CI at that SHA failed one context fixture
+  on each OS and skipped fresh-install/offline steps; independent review remains
+  outstanding. Publication is not release or runtime assurance.
+- CI follow-up pins/imports the locally tested Pester 5.6.1 instead of allowing
+  an unvalidated newer major, and logs the selected version. Hosted success
+  requires a new human publication and verification of both OS jobs/all steps.
 
 ## 0.3.0-dev
 

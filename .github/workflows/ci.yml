@@ -18,7 +18,9 @@ jobs:
         run: |
           git config --global user.name ci
           git config --global user.email ci@example.invalid
-          Install-Module Pester -MinimumVersion 5.5 -Force -Scope CurrentUser
+          Install-Module Pester -RequiredVersion 5.6.1 -Force -Scope CurrentUser
+          Import-Module Pester -RequiredVersion 5.6.1 -Force -ErrorAction Stop
+          Get-Module Pester | Select-Object Name, Version
           Invoke-Pester tests -CI
       - name: Fresh install validates
         shell: pwsh
