@@ -22,22 +22,21 @@
   runtime permission enforcement are untested; static/offline checks do not prove
   them. Do not retry, bypass or relax the one accepted read-only Git denial.
   Configured-machine `doctor` passed at audit time; this is not fresh-user proof.
-  Observed 2026-10-12: published 2d49b10 passed Pester (334/0/0) and fresh
-  installation on both hosted OSes; offline session failed on an absent ignored
-  comms doc and offline manager was skipped. Separate sw-validate passed.
-  A local follow-up cannot establish hosted success before human publication.
+  Hosted automated acceptance at published ddd2c65 passed on 2026-10-12: both
+  OSes Pester 334/0/0, fresh installation, session 307 and manager 89 assertions;
+  separate sw-validate passed. These are static/stub checks, not live assurance.
 - **Current task:** owner approved public-adoption-audit P0-P4 fix plan and MIT,
   preserve-host integration, local new records and human-enabled GitHub private
-  reporting choices (2026-10-11). Candidate 525b5bb is published and unreleased;
-  owner push receipt and exact origin main were verified 2026-10-12. Git owns
-  subsequent commit/publication state. Implemented scope:
+  reporting choices (2026-10-11). Development-only implementation acceptance is
+  complete at published ddd2c65; human push and hosted results verified 2026-10-12.
+  Git owns subsequent commit/publication state. Implemented scope:
   baseline/preflight repairs, policy/privacy compatibility, public setup/support
   docs and offline acceptance. Sources/copies are consistent; follow-up full
   CI-mode Pester 5.6.1 passed 333/0 failed/1 file-symlink privilege skip, with
   offline/static checks recorded locally. Owner explicitly waived independent
   review (not performed) and chose development-only delivery on 2026-10-12.
-  GitHub recognizes MIT and the private-reporting entry is available; public
-  readiness still awaits green hosted checks and human About metadata.
+  GitHub recognizes MIT; the private-reporting entry and requested About/setup
+  homepage/topics are verified. No stable release or broader runtime readiness.
   Owner requested continuation of delivery steps 2-5, including a local commit;
   pushes/settings/metadata/releases remain human-owned. Native/platform/account/
   root/other-project work is not authorized. Old S3-S6/R4-R6 remain proposals.
@@ -52,12 +51,12 @@
   settings and releases are human-owned. The ignored local map selects
   developer/reviewer models only; the Leader model is chosen per launch; the
   Claude adapter is absent.
-- **Next action:** offline fixture construction is corrected and validated:
-  307 session assertions in normal and clean checkouts, 89 clean-checkout manager
-  assertions. Use Git/task receipt for the local correction SHA. Human pushes it and sets
-  About/homepage/topics; Leader verifies both hosted OS jobs/all steps read-only.
-  No product-logic or Pester-major migration is queued; no worker retry into the
-  quota limit. Keep VERSION 0.3.0-dev; no release/tag work is queued.
+- **Next action:** no implementation is queued. Use Git and the task's final
+  receipt for any remaining local status-docs commit/publication; human pushes,
+  Leader verifies the actual published ref/checks read-only. Do not reopen the
+  accepted implementation from old failure events. No worker retry into quota,
+  product-logic or Pester-major migration. Keep VERSION 0.3.0-dev; no release/tag
+  work is queued. Broader verification gaps are not a new approved task.
   Prior platform/native gaps are not an automatic execution queue.
   Leader does not automate or claim continuous control of that native session.
   Publication remains human-owned. Read that task, then needed

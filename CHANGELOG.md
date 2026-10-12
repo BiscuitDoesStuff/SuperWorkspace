@@ -30,6 +30,11 @@
   copying private records or weakening assertions. Hosted rerun remains required.
 - Owner explicitly waived independent review (not performed) and chose to keep
   this development-only on 2026-10-12; no version change, tag or release.
+- **Verified development delivery (2026-10-12):** published `ddd2c65` passes both
+  hosted OS jobs: Pester 334/0/0, fresh-install validation, offline session 307
+  assertions and manager 89 assertions, plus `sw-validate`. The dated failures
+  above are superseded for that implementation SHA, not erased or retroactively
+  made green. Broader live/platform/security assurance remains unverified.
 
 ## 0.3.0-dev
 
