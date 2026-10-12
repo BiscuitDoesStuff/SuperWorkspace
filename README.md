@@ -59,7 +59,8 @@ completed setup or task approval.
 `VERSION` identifies the development kit; it is not a release tag or a claim of
 green hosted CI. Use a clean, explicitly selected kit revision for repeatable
 installs. Observed 2026-10-12: the public-adoption candidate is published but
-unreleased; hosted CI is not yet green and independent review remains outstanding.
+unreleased; hosted CI is not yet green. Independent review was explicitly waived
+by the owner; it was not performed. This delivery remains development-only.
 See [changelog](CHANGELOG.md) and
 [validation/release gates](docs/development.md#validation).
 

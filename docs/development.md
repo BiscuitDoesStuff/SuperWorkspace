@@ -64,6 +64,10 @@ Context-report and recovery-card regressions are the Pester block
 'Context and recovery reporting*'`). `sw context` and `sw validate` share
 `Get-SwStartupBudget`; changing it changes both.
 
+Offline fixtures must also run from a fresh checkout without ignored local
+records/settings. The session suite reads generated comms docs from their
+tracked `project/base/` sources, never from private task records.
+
 Profile selection v1 (`project/selection.json`, profile `composition`, the
 `research` preset and `project/capabilities/`) is the Pester block `Profile
 selection v1` (`-FullNameFilter 'Profile selection v1*'`). Fresh `init` defaults

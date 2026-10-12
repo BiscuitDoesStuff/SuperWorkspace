@@ -44,7 +44,9 @@ New-Item -ItemType Directory -Path $fixture | Out-Null
 Write-Output "Fixture evidence: $fixture"
 $manifest = Read-SwJson (Join-Path $root '.sw/manifest.json')
 foreach ($rel in @($manifest['files'].Keys) + 'AGENTS.md', '.sw/config.json') {
-    Write-SwFile (Join-Path $fixture $rel) (Read-SwText (Join-Path $root $rel))
+    # Local-only generated comms docs are absent from fresh checkouts; use their tracked kit source, never private records.
+    $source = if ($rel.StartsWith('.sw/comms/', [StringComparison]::Ordinal)) { "project/base/$rel" } else { $rel }
+    Write-SwFile (Join-Path $fixture $rel) (Read-SwText (Join-Path $root $source))
 }
 Write-SwFile (Join-Path $fixture '.sw/roles.json') (Read-SwText (Join-Path $root 'project/roles.json'))
 Write-SwFile (Join-Path $fixture '.sw/workspace.md') (Read-SwText (Join-Path $root 'project/base/.sw/workspace.md'))

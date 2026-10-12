@@ -22,8 +22,9 @@
   runtime permission enforcement are untested; static/offline checks do not prove
   them. Do not retry, bypass or relax the one accepted read-only Git denial.
   Configured-machine `doctor` passed at audit time; this is not fresh-user proof.
-  Published adoption SHA 525b5bb failed hosted Pester on Windows/Linux: each
-  333 passed / 1 failed / 0 skipped; later install/offline steps were skipped.
+  Observed 2026-10-12: published 2d49b10 passed Pester (334/0/0) and fresh
+  installation on both hosted OSes; offline session failed on an absent ignored
+  comms doc and offline manager was skipped. Separate sw-validate passed.
   A local follow-up cannot establish hosted success before human publication.
 - **Current task:** owner approved public-adoption-audit P0-P4 fix plan and MIT,
   preserve-host integration, local new records and human-enabled GitHub private
@@ -33,9 +34,10 @@
   baseline/preflight repairs, policy/privacy compatibility, public setup/support
   docs and offline acceptance. Sources/copies are consistent; follow-up full
   CI-mode Pester 5.6.1 passed 333/0 failed/1 file-symlink privilege skip, with
-  offline/static checks recorded locally. Independent review is unavailable after the worker rate
-  limit. GitHub recognizes MIT and the private-reporting entry is available;
-  public readiness still awaits green hosted checks and review disposition.
+  offline/static checks recorded locally. Owner explicitly waived independent
+  review (not performed) and chose development-only delivery on 2026-10-12.
+  GitHub recognizes MIT and the private-reporting entry is available; public
+  readiness still awaits green hosted checks and human About metadata.
   Owner requested continuation of delivery steps 2-5, including a local commit;
   pushes/settings/metadata/releases remain human-owned. Native/platform/account/
   root/other-project work is not authorized. Old S3-S6/R4-R6 remain proposals.
@@ -50,13 +52,12 @@
   settings and releases are human-owned. The ignored local map selects
   developer/reviewer models only; the Leader model is chosen per launch; the
   Claude adapter is absent.
-- **Next action:** CI follow-up is implemented and locally validated: explicit
-  Pester 5.6.1 selection/logging and publication/reporting wording. Use Git and the
-  task delivery receipt for the actual local follow-up SHA. Human pushes it;
-  Leader verifies both hosted OS jobs and later steps read-only. No product-logic
-  or Pester-major migration is queued. About/homepage/topics and release choice
-  remain human-owned.
-  Independent review remains outstanding; no worker retry into the limit.
+- **Next action:** offline fixture construction is corrected and validated:
+  307 session assertions in normal and clean checkouts, 89 clean-checkout manager
+  assertions. Use Git/task receipt for the local correction SHA. Human pushes it and sets
+  About/homepage/topics; Leader verifies both hosted OS jobs/all steps read-only.
+  No product-logic or Pester-major migration is queued; no worker retry into the
+  quota limit. Keep VERSION 0.3.0-dev; no release/tag work is queued.
   Prior platform/native gaps are not an automatic execution queue.
   Leader does not automate or claim continuous control of that native session.
   Publication remains human-owned. Read that task, then needed

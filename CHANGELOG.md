@@ -19,11 +19,17 @@
 - Offline whole-tree/preservation fixtures added. This is an unreleased
   candidate, published at `525b5bb` with MIT detected and the private-reporting
   entry verified (2026-10-12). Hosted CI at that SHA failed one context fixture
-  on each OS and skipped fresh-install/offline steps; independent review remains
-  outstanding. Publication is not release or runtime assurance.
+  on each OS and skipped fresh-install/offline steps. Publication is not release
+  or runtime assurance.
 - CI follow-up pins/imports the locally tested Pester 5.6.1 instead of allowing
   an unvalidated newer major, and logs the selected version. Hosted success
   requires a new human publication and verification of both OS jobs/all steps.
+- At published `2d49b10`, both OSes pass Pester (334/0/0) and fresh installation;
+  the offline session fixture fails because it expects a local-only generated
+  comms doc. Follow-up reads that doc from its tracked kit source, without
+  copying private records or weakening assertions. Hosted rerun remains required.
+- Owner explicitly waived independent review (not performed) and chose to keep
+  this development-only on 2026-10-12; no version change, tag or release.
 
 ## 0.3.0-dev
 
