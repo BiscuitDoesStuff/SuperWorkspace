@@ -57,7 +57,8 @@ but the record stays the truth. With recorded contributors, task IDs start with
 the owner's user name (`<user>-<slug>`) so two people never create the same
 folder.
 
-**Closing.** When a task is integrated, `sw comms close <task-id>` writes
+**Closing.** When a task is integrated,
+`sw comms close -Task <task-id> -Outcome "<summary>"` writes
 `archive/<task-id>/SUMMARY.md` (outcome, final SHA, decisions, open follow-ups)
 and moves the events beside it. Agents read the summary, not the old events, so
 closed work stops costing context. `-Outcome` is the whole summary: give the

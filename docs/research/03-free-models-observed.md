@@ -1,5 +1,7 @@
 # Free models: observed per-model facts
 
+<!-- sw:research-format: snapshot -->
+
 Source: moved from the shipped `free-models` skill
 (`product/project/base/.opencode/skills/free-models/SKILL.md`) on
 2026-09-27, Phase 1 package 2 (03 R3, 06 R5 option A). Dated evidence, not a

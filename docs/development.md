@@ -68,6 +68,12 @@ Offline fixtures must also run from a fresh checkout without ignored local
 records/settings. The session suite reads generated comms docs from their
 tracked `project/base/` sources, never from private task records.
 
+Research lint normally expects the six-section topic format. A dated evidence
+snapshot may put `<!-- sw:research-format: snapshot -->` in its header (before
+the first `##` heading) to exempt only the topic-section check. Date and numbered
+finding checks remain active; explicit `Source F1` / `Sources F1, F2` citations
+are recognized. This is lightweight citation lint, not source verification.
+
 Profile selection v1 (`project/selection.json`, profile `composition`, the
 `research` preset and `project/capabilities/`) is the Pester block `Profile
 selection v1` (`-FullNameFilter 'Profile selection v1*'`). Fresh `init` defaults

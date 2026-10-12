@@ -25,7 +25,7 @@
   Hosted automated acceptance at published ddd2c65 passed on 2026-10-12: both
   OSes Pester 334/0/0, fresh installation, session 307 and manager 89 assertions;
   separate sw-validate passed. These are static/stub checks, not live assurance.
-- **Current task:** owner approved public-adoption-audit P0-P4 fix plan and MIT,
+- **Accepted adoption delivery:** owner approved public-adoption-audit P0-P4 fix plan and MIT,
   preserve-host integration, local new records and human-enabled GitHub private
   reporting choices (2026-10-11). Development-only implementation acceptance is
   complete at published ddd2c65; human push and hosted results verified 2026-10-12.
@@ -40,6 +40,12 @@
   Owner requested continuation of delivery steps 2-5, including a local commit;
   pushes/settings/metadata/releases remain human-owned. Native/platform/account/
   root/other-project work is not authorized. Old S3-S6/R4-R6 remain proposals.
+- **Current task (2026-10-12):** owner approved `adoption-small-fixes` and local
+  commit: correct closure syntax, explicitly classify dated research snapshots,
+  recognize Sources finding citations, add targeted regressions and regenerate
+  owned copies. Git and the task record own actual validation/publication and
+  completion; archived adoption acceptance is not reopened. No CI action/runner
+  migration, disclosure audit, live tests, new dependency or release is included.
 - **Owners / protected work:** Leader is the sole writer/validation owner after
   the executor stopped on a provider rate limit with no product edits. No worker
   retry or paid fallback. Preserve this task's artifacts/delivery and all
@@ -51,9 +57,10 @@
   settings and releases are human-owned. The ignored local map selects
   developer/reviewer models only; the Leader model is chosen per launch; the
   Claude adapter is absent.
-- **Next action:** no implementation is queued. Use Git and the task's final
-  receipt for any remaining local status-docs commit/publication; human pushes,
-  Leader verifies the actual published ref/checks read-only. Do not reopen the
+- **Next action:** follow `adoption-small-fixes`' latest record (or its archive
+  summary if closed). Finish scoped checks/selected local commit before human
+  explicit-origin publication; Leader verifies actual ref/checks read-only.
+  Completed work is not an automatic re-execution queue. Do not reopen the
   accepted implementation from old failure events. No worker retry into quota,
   product-logic or Pester-major migration. Keep VERSION 0.3.0-dev; no release/tag
   work is queued. Broader verification gaps are not a new approved task.

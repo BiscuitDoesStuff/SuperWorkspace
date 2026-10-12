@@ -444,15 +444,18 @@ function Get-SwResearchWarnings([string]$Root) {
     foreach ($file in Get-ChildItem -LiteralPath $dir -Filter *.md -File -Force | Sort-Object Name) {
         $rel = "docs/research/$($file.Name)"
         $lines = @((Read-SwText $file.FullName) -split "`n")
-        $missing = @(1..6 | Where-Object { $n = $_; -not @($lines | Where-Object { $_ -match "^## $n\. " }).Count })
-        if ($missing.Count) { "${rel}: missing section(s) $($missing -join ', ') (expected '## 1.' to '## 6.')" }
         $first = [array]::FindIndex([string[]]$lines, [Predicate[string]] { param($l) $l -match '^## ' })
         $header = if ($first -ge 0) { $lines[0..([math]::Max(0, $first - 1))] } else { $lines }
+        # Explicit dated snapshots are not six-section topics; date and finding lint still applies.
+        if ($header -cnotcontains '<!-- sw:research-format: snapshot -->') {
+            $missing = @(1..6 | Where-Object { $n = $_; -not @($lines | Where-Object { $_ -match "^## $n\. " }).Count })
+            if ($missing.Count) { "${rel}: missing section(s) $($missing -join ', ') (expected '## 1.' to '## 6.')" }
+        }
         if (-not (($header -join "`n") -match '\d{4}-\d{2}-\d{2}')) { "${rel}: header has no YYYY-MM-DD date" }
         # Findings: F<n>. blocks under '## 2.'; a subsection heading containing "local" covers its findings.
         $inFindings = $false; $localHeading = $false; $id = $null; $block = ''
         $check = {
-            if ($id -and -not $localHeading -and $block -notmatch 'https?://|Same\s[\s\S]*?\sas\s+(\d{2}-)?F\d+|\bLocal\b|\(F\d+|\b\d{2}-F\d+') {
+            if ($id -and -not $localHeading -and $block -notmatch 'https?://|Same\s[\s\S]*?\sas\s+(\d{2}-)?F\d+|\bLocal\b|\(F\d+|\b\d{2}-F\d+|\bSources?\s+(?:\d{2}-)?F\d+\b') {
                 "${rel}: $id has no citation (URL, 'Same ... as F<n>', 'Local', or a finding cross-reference)"
             }
         }

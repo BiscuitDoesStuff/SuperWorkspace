@@ -2,6 +2,10 @@
 
 ## Unreleased - public adoption candidate (2026-10-11)
 
+- Follow-up: correct task-closure examples to use explicit `-Task` / `-Outcome`;
+  recognize explicit research snapshots and `Sources F<n>` citations without
+  suppressing genuine date/section/uncited-finding warnings. Add lint and
+  installed-CLI regressions; VERSION remains 0.3.0-dev, not a release.
 - MIT license and preserved third-party notices, distributed with installed kits.
 - Public README, new/existing/join setup routes, bootstrap/update/recovery guide,
   contribution/security guidance and sanitized bug diagnostics.

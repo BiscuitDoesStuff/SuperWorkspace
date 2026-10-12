@@ -913,6 +913,34 @@ Describe 'Research lint' {
         $out | Should -Match 'WARNING: docs/research/02-bad\.md: header has no YYYY-MM-DD date'
         $out | Should -Match 'PASS:'
     }
+
+    It 'exempts explicit header snapshots from topic sections, not date or finding checks' {
+        $dir = New-SwProject "research$(New-Id)" generic
+        $marker = '<!-- sw:research-format: snapshot -->'
+        Write-SwFile (Join-Path $dir 'docs/research/01-snapshot.md') "# Snapshot`n`n$marker`n`nObserved 2026-10-12; local evidence.`n`n## Observations`n`nA dated snapshot.`n"
+        Write-SwFile (Join-Path $dir 'docs/research/02-undated.md') "# Snapshot`n`n$marker`n`n## 2. Findings`n`nF1. **Uncited.** A claim.`n"
+        Write-SwFile (Join-Path $dir 'docs/research/03-body-marker.md') "# Topic`n`nAccessed 2026-10-12.`n`n## 1. Question`n`n$marker`n"
+        $result = Test-SwValidate $dir
+        $result.ExitCode | Should -Be 0
+        $out = $result.Output -join "`n"
+        $out | Should -Not -Match 'WARNING: docs/research/01-snapshot\.md:'
+        $out | Should -Not -Match '02-undated\.md: missing section'
+        $out | Should -Match '02-undated\.md: header has no YYYY-MM-DD date'
+        $out | Should -Match '02-undated\.md: F1 has no citation'
+        $out | Should -Match '03-body-marker\.md: missing section\(s\) 2, 3, 4, 5, 6'
+    }
+
+    It 'recognizes explicit Source and Sources finding references, not arbitrary mentions' {
+        $dir = New-SwProject "research$(New-Id)" generic
+        $text = "# Topic`n`nAccessed 2026-10-12.`n`n## 1. Question`n`nQ.`n`n## 2. Findings`n`nF1. **Cited.** <https://example.com>.`n`nF2. **Cross-reference.** Sources F1.`n`nF3. **Cross-references.** Sources F1, F2.`n`nF4. **Singular reference.** Source F1.`n`nF5. **Malformed reference.** Sources F1ish.`n`nF6. **Mention only.** This claim mentions F1.`n`n## 3. Options`n`nO.`n`n## 4. Recommendation`n`nR.`n`n## 5. Open questions`n`nNone.`n`n## 6. Supersedes / updates`n`nNone.`n"
+        Write-SwFile (Join-Path $dir 'docs/research/01-topic.md') $text
+        $result = Test-SwValidate $dir
+        $result.ExitCode | Should -Be 0
+        $out = $result.Output -join "`n"
+        $out | Should -Not -Match '01-topic\.md: (F1|F2|F3|F4) '
+        $out | Should -Match '01-topic\.md: F5 has no citation'
+        $out | Should -Match '01-topic\.md: F6 has no citation'
+    }
 }
 
 Describe 'Startup budget output' {
@@ -1477,6 +1505,20 @@ Describe 'Comms' {
         $events = @(Get-ChildItem (Join-Path $dir '.sw/comms/archive/T2/events') -Filter *.md)
         $events.Count | Should -Be 1
         Test-Path (Join-Path $dir '.sw/comms/archive/T2/SUMMARY.md') | Should -BeTrue
+    }
+
+    It 'the documented close command works through the installed CLI' {
+        $doc = Read-SwText (Join-Path $dir '.sw/collaboration.md')
+        $doc | Should -Match 'sw comms close -Task <task-id> -Outcome "<summary>"'
+        $cli = Join-Path $dir '.sw/sw.ps1'
+        & pwsh -NoProfile -File $cli comms event -Task cli-close | Out-Null
+        $LASTEXITCODE | Should -Be 0
+        & pwsh -NoProfile -File $cli comms close -Task cli-close -Outcome 'shipped with evidence' | Out-Null
+        $LASTEXITCODE | Should -Be 0
+        Test-Path (Join-Path $dir '.sw/comms/tasks/cli-close') | Should -BeFalse
+        $events = @(Get-ChildItem (Join-Path $dir '.sw/comms/archive/cli-close/events') -Filter *.md)
+        $events.Count | Should -Be 1
+        (Read-SwText (Join-Path $dir '.sw/comms/archive/cli-close/SUMMARY.md')) | Should -Match 'shipped with evidence'
     }
 
     It 'Add-SwUser adds the contributor to config and creates their inbox' {
