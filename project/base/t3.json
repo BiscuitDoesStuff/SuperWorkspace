@@ -1,0 +1,8 @@
+{
+  "$schema": "https://t3.codes/schema/t3.json",
+  "scripts": [
+    { "name": "Validate workspace", "command": "powershell -NoProfile -ExecutionPolicy Bypass -File .sw/sw.ps1 validate", "icon": "test" },
+    { "name": "Doctor", "command": "powershell -NoProfile -ExecutionPolicy Bypass -File .sw/sw.ps1 doctor", "icon": "configure" },
+    { "name": "Context report", "command": "powershell -NoProfile -ExecutionPolicy Bypass -File .sw/sw.ps1 context", "icon": "play" }
+  ]
+}

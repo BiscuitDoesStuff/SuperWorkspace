@@ -1,0 +1,11 @@
+{
+  "description": "Research-led project: cited evidence and decisions; implementation needs its own approval.",
+  "editDeny": [],
+  "lfs": [],
+  "skills": [],
+  "composition": {
+    "capabilities": ["research"],
+    "context": ["research"],
+    "checks": ["repository-code"]
+  }
+}

@@ -1,0 +1,11 @@
+{
+  "description": "Unreal Engine C++ project with LFS binary assets.",
+  "editDeny": ["*.uasset", "*.umap"],
+  "lfs": ["*.uasset", "*.umap"],
+  "skills": ["unreal-validation"],
+  "composition": {
+    "capabilities": [],
+    "context": ["unreal"],
+    "checks": ["unreal-validation"]
+  }
+}

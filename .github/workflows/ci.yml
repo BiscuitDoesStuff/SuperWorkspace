@@ -1,0 +1,44 @@
+name: ci
+on:
+  push:
+    branches: [main]
+    paths-ignore: ['docs/**']
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+    paths-ignore: ['docs/**']
+permissions:
+  contents: read
+jobs:
+  test:
+    if: ${{ !github.event.pull_request.draft }}
+    strategy:
+      fail-fast: false
+      matrix:
+        shell: [powershell, pwsh]
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: ${{ matrix.shell }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # The shipped global rules hashes are checked against every committed global/rules.md.
+          fetch-depth: 0
+      - name: Pester
+        run: |
+          git config --global user.name ci
+          git config --global user.email ci@example.invalid
+          $PSVersionTable.PSVersion.ToString()
+          if (-not (Get-PackageProvider -ListAvailable -Name NuGet -ErrorAction SilentlyContinue)) { Install-PackageProvider -Name NuGet -MinimumVersion 2.8.5.201 -Force -Scope CurrentUser | Out-Null }
+          Install-Module Pester -RequiredVersion 5.6.1 -Force -Scope CurrentUser -SkipPublisherCheck
+          Import-Module Pester -RequiredVersion 5.6.1 -Force -ErrorAction Stop
+          Get-Module Pester | Select-Object Name, Version
+          Invoke-Pester tests -CI
+      - name: Fresh install validates
+        run: |
+          $shell = (Get-Process -Id $PID).Path
+          $t = Join-Path ([IO.Path]::GetTempPath()) 'sw-ci'
+          & $shell -NoProfile -ExecutionPolicy Bypass -File sw.ps1 init $t -Profile unreal -Name CiCheck
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          & $shell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $t '.sw/sw.ps1') validate
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }

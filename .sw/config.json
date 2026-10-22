@@ -1,0 +1,13 @@
+{
+  "project": "Workspace",
+  "profile": "research",
+  "githubTier": 2,
+  "records": "local",
+  "github": true,
+  "startupBudgetBytes": 12100,
+  "users": [],
+  "selection": {
+    "version": 1,
+    "capabilities": []
+  }
+}

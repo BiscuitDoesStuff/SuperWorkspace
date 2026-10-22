@@ -1,0 +1,11 @@
+{
+  "description": "Any stack. Validation commands are discovered from the repository.",
+  "editDeny": [],
+  "lfs": [],
+  "skills": [],
+  "composition": {
+    "capabilities": [],
+    "context": ["generic"],
+    "checks": ["repository-code"]
+  }
+}

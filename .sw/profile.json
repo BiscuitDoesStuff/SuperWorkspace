@@ -1,0 +1,46 @@
+{
+  "description": "Research-led project: cited evidence and decisions; implementation needs its own approval.",
+  "editDeny": [],
+  "lfs": [],
+  "skills": [],
+  "composition": {
+    "capabilities": [
+      "research"
+    ],
+    "context": [
+      "research"
+    ],
+    "checks": [
+      "repository-code"
+    ]
+  },
+  "effectiveSelection": {
+    "version": 1,
+    "profile": "research",
+    "capabilities": [
+      "research"
+    ],
+    "skills": [
+      "agent-documentation",
+      "handoff",
+      "minimal-change",
+      "research",
+      "resume",
+      "review",
+      "status",
+      "structured-debugging",
+      "validate",
+      "work"
+    ],
+    "context": [
+      "core",
+      "research"
+    ],
+    "checks": [
+      "diff-hygiene",
+      "repository-code",
+      "research-evidence",
+      "workspace-static"
+    ]
+  }
+}
