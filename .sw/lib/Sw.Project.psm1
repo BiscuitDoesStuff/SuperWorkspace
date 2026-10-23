@@ -1180,8 +1180,10 @@ function Invoke-SwComms {
             $base = "$(Get-SwUtc)-$From-$(ConvertTo-SwSlug $Subject)"
             $file = Join-Path $dir "$base.md"
             $text = "# $Subject`n`n- **From:** $From`n- **To:** $To`n- **Task:** $(if ($Task) { $Task } else { 'none' })`n- **Sent (UTC):** $([DateTime]::UtcNow.ToString('u'))`n`n$Body`n"
-            if ($PSCmdlet.ShouldProcess($file, 'write message')) { $file = New-SwExclusiveFile $dir $base '.md' $text }
-            Write-Output "Message written: $((Get-SwRelativePath $Root $file)) (local until a human pushes it)."
+            if ($PSCmdlet.ShouldProcess($file, 'write message')) {
+                $file = New-SwExclusiveFile $dir $base '.md' $text
+                Write-Output "Message written: $((Get-SwRelativePath $Root $file)) (local until a human pushes it)."
+            }
         }
         'inbox' {
             if (-not $User) { $User = Get-SwUser $Root }
@@ -1193,10 +1195,14 @@ function Invoke-SwComms {
         'archive' {
             if (-not $User) { $User = Get-SwUser $Root }
             if (-not $Message) { throw 'archive needs -Message <file name from sw comms inbox>.' }
-            $src = Join-Path $comms "inbox/$User/$Message"
-            $dst = Join-Path $comms "archive/inbox/$User/$Message"
-            if ($PSCmdlet.ShouldProcess($src, 'archive')) { New-Item -ItemType Directory -Force (Split-Path $dst) | Out-Null; Move-Item -LiteralPath $src -Destination $dst }
-            Write-Output "Archived: $Message"
+            $src = Resolve-SwManagedPath $Root ".sw/comms/inbox/$User/$Message"
+            $dst = Resolve-SwManagedPath $Root ".sw/comms/archive/inbox/$User/$Message"
+            if ($PSCmdlet.ShouldProcess($src, 'archive')) {
+                # The outer approval covers directory creation and the move.
+                New-Item -ItemType Directory -Force (Split-Path $dst) -Confirm:$false -ErrorAction Stop | Out-Null
+                Move-Item -LiteralPath $src -Destination $dst -Confirm:$false -ErrorAction Stop
+                Write-Output "Archived: $Message"
+            }
         }
         'event' {
             if (-not $Task) { throw 'event needs -Task <task-id>.' }
@@ -1226,26 +1232,32 @@ function Invoke-SwComms {
 - **Publication:** local-only until a human pushes
 - **Next action:** <owner; executable step; completion evidence>
 "@ + "`n"
-            if ($PSCmdlet.ShouldProcess($file, 'write task event')) { $file = New-SwExclusiveFile $taskDir "$utc-$author-$Event" '.md' $text }
-            Write-Output "Event written: $((Get-SwRelativePath $Root $file)). Fill the <placeholders> before handing off."
+            if ($PSCmdlet.ShouldProcess($file, 'write task event')) {
+                $file = New-SwExclusiveFile $taskDir "$utc-$author-$Event" '.md' $text
+                Write-Output "Event written: $((Get-SwRelativePath $Root $file)). Fill the <placeholders> before handing off."
+            }
         }
         'close' {
             if (-not $Task -or -not $Outcome) { throw 'close needs -Task and -Outcome.' }
-            $src = Join-Path $comms "tasks/$Task"
+            $src = Resolve-SwManagedPath $Root ".sw/comms/tasks/$Task"
+            $dst = Resolve-SwManagedPath $Root ".sw/comms/archive/$Task"
+            $eventDir = Resolve-SwManagedPath $Root ".sw/comms/archive/$Task/events"
+            $summaryPath = Resolve-SwManagedPath $Root ".sw/comms/archive/$Task/SUMMARY.md"
             if (-not (Test-Path -LiteralPath $src)) { throw "No task record: .sw/comms/tasks/$Task" }
-            $dst = Join-Path $comms "archive/$Task"
             $events = @(Get-ChildItem -LiteralPath $src -Filter *.md -File -Force | Sort-Object Name)
             $head = (Invoke-SwNative git @('-C', $Root, 'rev-parse', 'HEAD'))
             if (Test-Path -LiteralPath $dst) { throw "Archive already exists, refusing to overwrite: .sw/comms/archive/$Task" }
-            $summary = "# $Task - summary`n`n- **Outcome:** $Outcome`n- **Closed:** $([DateTime]::UtcNow.ToString('u')) by $(Get-SwUser $Root) at $head`n- **Events:** $($events.Count), kept in ``events/`` for evidence; read this summary instead.`n`n" +
+            $author = if ($From) { $From } elseif ($User) { $User } else { Get-SwUser $Root }
+            $summary = "# $Task - summary`n`n- **Outcome:** $Outcome`n- **Closed:** $([DateTime]::UtcNow.ToString('u')) by $author at $head`n- **Events:** $($events.Count), kept in ``events/`` for evidence; read this summary instead.`n`n" +
                 (($events | ForEach-Object { "- $($_.Name)" }) -join "`n") + "`n"
             if ($PSCmdlet.ShouldProcess($dst, 'archive task')) {
                 # Move the whole task folder (not just *.md) so nothing non-markdown is silently dropped.
-                New-Item -ItemType Directory -Force $dst | Out-Null
-                Move-Item -LiteralPath $src -Destination (Join-Path $dst 'events')
-                Write-SwFile (Join-Path $dst 'SUMMARY.md') $summary
+                New-Item -ItemType Directory -Force $dst -Confirm:$false -ErrorAction Stop | Out-Null
+                Move-Item -LiteralPath $src -Destination $eventDir -Confirm:$false -ErrorAction Stop
+                # Catch statement-terminating writer errors even when the caller uses -ErrorAction Continue.
+                try { Write-SwFile $summaryPath $summary } catch { throw }
+                Write-Output "Closed $Task -> .sw/comms/archive/$Task/SUMMARY.md"
             }
-            Write-Output "Closed $Task -> .sw/comms/archive/$Task/SUMMARY.md"
         }
     }
 }

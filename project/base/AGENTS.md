@@ -44,15 +44,16 @@ The harness auto-loads this file; do not re-read it. Before a meaningful change:
 - No installs, third-party assets, plugins or dependencies without explicit
   approval.
 - Do not add systems because they seem like the natural next step; new scope
-  needs explicit planning and approval.
+  needs explicit planning and approval. Scope limits what you build, not what
+  you recommend: still propose a new system when evidence supports it.
 
 ## Safety
 
 - Never discard, reset, stash, clean or overwrite work you did not create;
   never work on another thread's branch or files. T3 Code Restore checkpoints
   undo your own turns.
-- Credentials, machine paths and model choices stay local and out of tracked
-  files and records.
+- Credentials never go in tracked files or records. Machine paths and model
+  choices stay out of tracked files in projects intended to be public.
 - After a failure with unknown effects, reconcile what happened before
   retrying. Ordinary repair work gets at most three attempts, then stop and
   report. A quota, rate-limit or permission failure means stop at once: never

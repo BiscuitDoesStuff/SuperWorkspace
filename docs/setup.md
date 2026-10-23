@@ -335,14 +335,36 @@ or authenticates.
    `T3CODE_TELEMETRY_ENABLED=false` for the server to opt out.
 
 Open a **new thread in the project** with a model you choose, then use the
-`work` skill on the approved task. The main thread coordinates: it plans,
-records and dispatches independent packages to T3 worktree threads (one
-`t3/<name>` branch and checkout each); task records stay in the main checkout,
-and worktree threads report in their final message. Under workspace policy,
-commits, pull requests, review (Codex by default) and auto-merge follow the
+`work` skill on the approved task. Under host policy, follow the host project's
+workflow; T3 worktree threads require explicit host-owner approval. Under
+workspace policy, the main thread coordinates: it plans, records and dispatches
+independent packages to T3 worktree threads (one `t3/<name>` branch and checkout
+each); task records stay in the main checkout, and worktree threads report in
+their final message. Commits, pull requests, review (Codex by default) and
+auto-merge under workspace policy follow the
 [Git flow](../.sw/workspace.md#git-flow). Check loaded rules, skills and
 effective permissions before consequential work; static validation is not
 runtime verification. See [T3 Code threads](../.sw/workspace.md#t3-code-threads).
+
+### First approved tasks
+
+Start with a bounded task and state what the result should preserve. These
+examples use the existing procedures and do not require another capability.
+
+- **Writing:** "Edit the supplied paragraph for clarity. Preserve its meaning
+  and factual claims; flag missing information rather than invent it. Return
+  the revised paragraph and any unresolved questions." Check the result against
+  the original for changed meaning or unsupported additions.
+- **Research:** "Answer this question using only the supplied documents. Cite
+  the supporting passages, distinguish weak evidence and reused sources, and
+  retain disagreements the documents cannot resolve. Return a cited answer
+  with uncertainty and open questions; ask before outside collection." Check
+  each conclusion against its cited passage and keep unsupported claims open.
+- **Software:** "Use `work` to make this approved, bounded behavior change.
+  Find the owning source and callers, preserve unrelated work, discover and run
+  the repository's appropriate checks, and obtain the required review. Report
+  the change, exact check results and remaining limits." Follow the project's
+  Git policy and distinguish automated checks from any unperformed acceptance.
 
 ## Updates and recovery
 
@@ -364,7 +386,9 @@ powershell -NoProfile -ExecutionPolicy Bypass -File sw.ps1 update ../ExistingPro
    resolve by intent. No automatic merge. `released` marks an edited retired
    kit output now owned by the project. Other modified files removed from the
    kit remain as `orphan-kept`; unchanged owned files removed from the kit are
-   removed.
+   removed. `stale` means the file changed while you were confirming, so it was
+   left exactly as found; the run ends `PARTIAL` with exit 1 and records no
+   configuration choices. Find out what changed it, then preview again.
 4. Revalidate the installation **and application**. Publish selected shared
    changes only after private-data review. Other contributors receive them,
    including the regenerated `.claude/` and `.codex/` files, through the host
@@ -384,6 +408,91 @@ separate approval. Before retrying any partial failure, inspect actual files,
 Git state, manifest and recovery copies. There is no automatic rollback or
 uninstall: restore/merge only the specific affected files you verified, keeping
 unrelated work and the operation's backup. Never reset/clean/stash to recover.
+
+### Recovery recipes and leaving
+
+Each recipe starts the same way: name the last operation the owner approved,
+then look at the actual files and Git state before choosing anything. Do not
+restore over a file whose current edits you cannot account for; copy it aside
+first.
+
+**Which managed files are unedited.** `.sw/manifest.json` holds a SHA-256 for
+each whole-file managed copy (UTF-8 text with CRLF read as LF). This read-only
+check, run from the project root, prints `unchanged`, `edited`, `missing` or
+`linked` (reached through a junction or symbolic link, or outside the project)
+for each one:
+
+```powershell
+$root = (Get-Location).ProviderPath.TrimEnd('\', '/')
+$m = Get-Content -Raw .sw/manifest.json | ConvertFrom-Json
+$sha = [Security.Cryptography.SHA256]::Create()
+foreach ($p in $m.files.PSObject.Properties) {
+  $state = 'missing'
+  if (Test-Path -LiteralPath $p.Name -PathType Leaf) {
+    $full = (Resolve-Path -LiteralPath $p.Name).ProviderPath
+    $linked = -not $full.StartsWith($root + [IO.Path]::DirectorySeparatorChar, [StringComparison]::OrdinalIgnoreCase)
+    for ($d = $full; -not $linked -and $d; $d = [IO.Path]::GetDirectoryName($d)) {
+      $linked = [bool]([IO.File]::GetAttributes($d) -band [IO.FileAttributes]::ReparsePoint)
+    }
+    if ($linked) { $state = 'linked' } else {
+      $text = [IO.File]::ReadAllText($full).Replace("`r`n", "`n")
+      $hash = -join ($sha.ComputeHash([Text.Encoding]::UTF8.GetBytes($text)) | ForEach-Object { $_.ToString('x2') })
+      $state = if ($hash -eq $p.Value) { 'unchanged' } else { 'edited' }
+    }
+  }
+  "$state  $($p.Name)"
+}
+```
+
+Only `unchanged` proves a file is still the kit's copy inside this project.
+Never delete through a `linked` path: it can lead to shared files elsewhere.
+Managed blocks in `AGENTS.md`, `.gitignore` and `.gitattributes` are not
+covered by this check.
+
+**Interrupted task close.** `sw comms close` creates
+`.sw/comms/archive/<task-id>/`, moves the whole task folder (all files, not
+only Markdown) to `events/` inside it, and then writes `SUMMARY.md`. It refuses
+to run when that archive folder already exists, so do not retry it blindly:
+
+- Task folder still in `tasks/`, archive folder empty: the move did not happen.
+  Remove only the empty archive folder, then close again.
+- Archive has `events/` but no `SUMMARY.md` (or a partial one): the evidence
+  is intact in `events/`. Keep it and write or finish `SUMMARY.md` by hand from
+  those events; do not move them back and close again.
+- Anything else (files in both places, unexpected contents): stop and ask the
+  owner. Keep every copy until they decide.
+
+**Kit clone or source missing.** The installed project keeps working without
+the clone; only `update` needs one. Keep the installed files as they are and
+use the check above to see which are still kit copies. To update later, obtain
+a reviewed kit revision (the manifest records the version and commit it came
+from) and follow the update steps above.
+
+**Leaving SuperWorkspace.** There is no uninstall command. Remove it by hand,
+in this order:
+
+1. Decide what to keep: your own `AGENTS.md` sections, research and docs, task
+   records (`.sw/comms/`, local or tracked), your choices in `.sw/config.json`,
+   personal files such as `.claude/settings.local.json` and
+   `.sw/models.local.md`, notices, and any skill you edited. Native app memory
+   and host settings live outside the project and are not touched by removal.
+2. Copy what you keep somewhere you choose. A copy on the same disk protects
+   against your own deletion, not against losing the machine; an independent
+   backup is a separate copy elsewhere.
+3. Run the check above. Delete only files it reports `unchanged`. An `edited`
+   file is yours: keep it, move it, or delete it as a deliberate choice. An
+   edited skill left in `.agents/skills/` or `.claude/skills/` is still found
+   and offered by the apps, so move it out if you no longer want it used.
+4. In `AGENTS.md`, `.gitignore` and `.gitattributes`, remove the kit's managed
+   blocks by reading them, keeping any of your lines inside them that you still
+   want.
+5. Do not delete `.sw/`, `.agents/` or `.claude/` wholesale: they can hold
+   records, personal settings and edited files. Remove what remains only after
+   you have looked at it. Leave the host repository's Git history, branches,
+   remotes and settings alone; commit the removal like any other change.
+6. If you also used global setup, remove each home's block from
+   `<!-- sw:begin global -->` through `<!-- sw:end global -->`; the backups
+   under `~/.sw/backups/` stay until you delete them.
 
 ## Troubleshooting and support
 

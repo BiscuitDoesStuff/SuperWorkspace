@@ -13,10 +13,12 @@
   pull request ready (`gh pr ready`), and enables auto-merge
   (`gh pr merge --auto`) only once the relevant
   CI checks on the current pull request revision have passed. If hosted CI
-  cannot run for a quota or billing reason (jobs not started), the gate is
+  cannot run for a quota or billing reason or because Actions is disabled
+  (jobs not started), the gate is
   the full local test suite on every shell CI covers at that revision, plus
   `sw validate` and review, with exact commands and results in the pull
   request body and task record; hosted jobs are not rerun or worked around
-  (Safety). Below
+  (Safety). Where the repository does not allow auto-merge, the owner merges
+  once the gate passes. Below
   tier 2 the owner uses T3 Code's Git actions. Tiers: `.sw/config.json`,
   `.sw/workspace.md`.

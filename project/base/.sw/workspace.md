@@ -124,12 +124,14 @@ apply.
    pushing again to a pull request with auto-merge on, disable it
    (`gh pr merge --disable-auto`) and re-enable it only after the gate passes
    on the new revision. **Fallback:** if hosted CI cannot run for a quota or
-   billing reason (its jobs never start), the gate is the repository's full
-   local test suite on every shell its CI covers, at the current pull request
-   revision, plus `sw validate` and review, with the exact commands and
-   results recorded in the pull request body and task record; then auto-merge
-   may be enabled. The hosted jobs are not rerun or worked around: a quota
-   stop is still a stop (`AGENTS.md` Safety).
+   billing reason or because Actions is disabled (its jobs never start), the
+   gate is the repository's full local test suite on every shell its CI
+   covers, at the current pull request revision, plus `sw validate` and
+   review, with the exact commands and results recorded in the pull request
+   body and task record; then auto-merge may be enabled. Where the
+   repository does not allow auto-merge, the owner merges once the gate
+   passes. The hosted jobs are not rerun or worked around: a quota stop is
+   still a stop (`AGENTS.md` Safety).
 
 **Hard limits** (every mode, every tier): no force-push (`--force`, `-f`,
 `--force-with-lease`, `+refspec`), no push to `main`, no `gh release` writes,

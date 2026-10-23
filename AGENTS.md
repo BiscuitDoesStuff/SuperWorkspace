@@ -63,15 +63,16 @@ The harness auto-loads this file; do not re-read it. Before a meaningful change:
 - No installs, third-party assets, plugins or dependencies without explicit
   approval.
 - Do not add systems because they seem like the natural next step; new scope
-  needs explicit planning and approval.
+  needs explicit planning and approval. Scope limits what you build, not what
+  you recommend: still propose a new system when evidence supports it.
 
 ## Safety
 
 - Never discard, reset, stash, clean or overwrite work you did not create;
   never work on another thread's branch or files. T3 Code Restore checkpoints
   undo your own turns.
-- Credentials, machine paths and model choices stay local and out of tracked
-  files and records.
+- Credentials never go in tracked files or records. Machine paths and model
+  choices stay out of tracked files in projects intended to be public.
 - After a failure with unknown effects, reconcile what happened before
   retrying. Ordinary repair work gets at most three attempts, then stop and
   report. A quota, rate-limit or permission failure means stop at once: never
@@ -94,11 +95,13 @@ The harness auto-loads this file; do not re-read it. Before a meaningful change:
   pull request ready (`gh pr ready`), and enables auto-merge
   (`gh pr merge --auto`) only once the relevant
   CI checks on the current pull request revision have passed. If hosted CI
-  cannot run for a quota or billing reason (jobs not started), the gate is
+  cannot run for a quota or billing reason or because Actions is disabled
+  (jobs not started), the gate is
   the full local test suite on every shell CI covers at that revision, plus
   `sw validate` and review, with exact commands and results in the pull
   request body and task record; hosted jobs are not rerun or worked around
-  (Safety). Below
+  (Safety). Where the repository does not allow auto-merge, the owner merges
+  once the gate passes. Below
   tier 2 the owner uses T3 Code's Git actions. Tiers: `.sw/config.json`,
   `.sw/workspace.md`.
 - Commit as you go in small conventional commits

@@ -1,7 +1,7 @@
 # Workspace design rules, assumptions and outline
 
 **Canonical project design register.** Owner requirements below are approved;
-architecture recommendations are provisional. Updated 2026-10-17 (UTC).
+architecture recommendations are provisional. Updated 2026-10-20 (UTC).
 
 ## 1. Approved direction
 
@@ -26,6 +26,13 @@ refused; neither backup replacement nor static success means seamless runtime
 compatibility. Implementation/check state belongs in the state/task record,
 not this design requirement. Revised integration, privacy or license defaults
 require a new owner decision; evidence can revise implementation boundaries.
+
+**D6/D9 reading note (2026-10-20):** these dated decisions retain their original
+reasoning. D7 supersedes D6's OpenCode provider choice; D9 supersedes D6's
+commit/push restrictions. The later rebuild reinstated generated hard-limit
+rules for Claude Code and Codex, superseding D9's proposal to drop shell deny
+lists. Current controls are O7/O13 and `AGENTS.md`; neither historical paragraph
+below authorizes a return to retired providers or removal of hard limits.
 
 **D6 - T3 Code is the required app (owner, 2026-10-15 UTC):** T3 Code
 (`pingdotgg/t3code`, MIT; its README says "very very early... expect bugs") is
@@ -126,6 +133,27 @@ from the personal tier. This refines topic 14's S3 skill-links
 recommendation. It replaces two earlier local plans: one managed provider home
 per harness, and the skill-links execution plan. Evidence: research topic 15.
 
+Planning view: [central skills/rules delivery roadmap](central-delivery-roadmap.html)
+maps proposed milestones and open choices to this direction. The register owns
+decisions; state and task records own implementation, authorization and evidence.
+Detailed execution planning (2026-10-19 UTC) is recorded in a local task
+record: E0-E9 map evidence/contract decisions through
+implementation, migration, native acceptance and adoption. The owner approved
+E0/E1 evidence/contract preparation. Exact candidate source/license inspection
+is complete. The owner accepted G2's direct-source/A7 contract and E3's strict
+schema/pure planning/read-only synthetic preview, now verified in a private-instance PR
+as recorded in [state](workspace-state.md#startup). G1's individual review covers
+31 ECC/Hermes skills and primary documentation; drafting, comparisons and the
+catalogue still need their selected scope. Task attachments own commands/schema,
+case definitions and decision history. Contract acceptance authorizes no real
+links, rule replacement, project migration, installation or deployment in E3.
+
+Audience refinement (owner, 2026-10-19 UTC): a general foundation with research
+and software development equally included by default. Specialist selection is
+outside this audience decision. Public skill/plugin/MCP choices are being
+evaluated in [topic 16](research/16-public-capabilities.md). This sets the target
+audience, not the catalogue or an installation/implementation approval.
+
 Live checks (2026-10-17, one T3 Code version):
 - a Claude instance with a custom config directory loads that directory's
   `CLAUDE.md`;
@@ -138,9 +166,11 @@ use `powershell -NoProfile -ExecutionPolicy Bypass -File`. Pester 5 stays a
 development and CI dependency. The Linux/macOS code paths and the Linux CI job
 are removed. Both are implemented: Windows-only in PR #4 and PowerShell 5.1
 plus 7 in PR #5 (merged 2026-10-17). JSON keys that differ only in letter case
-are now refused on both shells. Not yet checked: `t3.json` scripts run from
-T3 Code, and Group Policy that blocks Bypass. Each implementation package
-needs its own approval.
+are now refused on both shells. Later evidence (owner, 2026-10-18): `t3.json`
+scripts run from T3 Code passed; Context was run from a terminal only. Group
+Policy blocking Bypass and a real no-console parent remain unverified. Current
+evidence and authorization belong in [state](workspace-state.md#startup);
+each implementation package needs its own approval.
 
 **D11 - Never overwrite local edits (A7; owner, 2026-10-16):** no update,
 removal, conversion or restore may overwrite or delete an installed copy that
@@ -161,6 +191,37 @@ Evidence: Codex review rounds 1-5, all findings fixed, and CI Pester
 then no longer applies: the kit is Windows-only since PR #4. The project
 generator's managed
 blocks and `-Adopt` still have the gap; fixing them is not yet scheduled.
+
+Project-generator follow-ups (owner, 2026-10-22 UTC): a private-instance PR added prompt-time
+freshness refusal (C1/C2). The remaining semantics stay as implemented and are
+documented here. C3: a block that changed before inspection keeps the current
+behavior; revisit at E5. C4: explicit `-Adopt` over unowned conflicting content
+counts as consent and keeps backup-then-replace. C5: a run that skips edited
+items still exits 0 and reports the skips; revisit at E4/E6.
+
+**D12 - Current truth before deeper restructuring (owner, 2026-10-20 UTC):**
+simplify the path to current behavior, authority and next decisions first;
+then use four representative read-only task traces to judge deeper structural
+changes. Execute the bounded documentation cleanup, repair scoped existing
+native memories in place with dated pointers and recoverable backups, and
+archive verified completed records using the existing mechanism. Keep central
+delivery open. Preserve useful lessons and dated evidence. Source-reading
+burden is not measured runtime tokens or task efficacy. Trace findings become
+concrete proposals, not automatic code/skill changes or model comparisons.
+A local task record owns execution and acceptance;
+the register records this sequencing decision for later work. Revisit when
+representative tasks or new evidence identify a concrete benefit and the owner
+selects its scope. No new memory service, catalogue, installation, native probe
+or publication is selected.
+
+**D13 - The public repository is the template (owner, 2026-10-22 UTC):**
+the public SuperWorkspace repository itself is what new users copy or install
+from (option A), rather than a separately generated template repository. This
+answers the public-template handoff's first question. Its remaining questions
+(maintenance home, minimal public instructions, skill and Git defaults, the
+upgrade contract, keeping the existing repository with a clean tree, trial
+budgets and a sanitized handoff) and the P0 selection stay open. No public
+publication or history rewrite is authorized by this decision.
 
 These supersede the earlier outline's preserve-base design premise. Preservation
 within a bounded task protects unrelated work; it does not make any component
@@ -200,11 +261,11 @@ presence is not evidence that this design is optimal.
 
 | ID / area | Current rule or assumption | Provenance, applicability and limits | Revision trigger / authority |
 | --- | --- | --- | --- |
-| O1 Purpose | Reusable, generic AI workspace for bounded project work. No particular application workload is selected. | Existing project brief and generic profile; a working scope, not a research-proven taxonomy or architecture. | Owner clarifies intended workloads; compare design against those needs. |
+| O1 Purpose | Reusable, generic AI workspace for bounded project work. The owner selected a general foundation with research and software development equally default (D10); particular application workloads remain unselected. | Existing project brief and generic profile; a working scope, not a research-proven taxonomy or architecture. | Owner clarifies intended workloads; compare design against those needs. |
 | O2 Installed base | SuperWorkspace 0.4.0-dev (2026-10-15, `t3-native-rebuild`); v1 research profile with the research capability, solo `users: []`, GitHub tier 2 in this checkout (owner M7 decision 1, 2026-10-15; set in the project-owned `.sw/config.json`; the tier is a stated rule and changes no generated file). T3 Code threads run Claude Code or Codex; no default agent or roles. | [Config](../.sw/config.json), [manifest](../.sw/manifest.json), [T3 scripts](../t3.json). The `provider-setup` capability and OpenCode configuration were retired by the 0.4.0-dev update. These describe installation, not target requirements. | Any separately approved refit can change or replace the base/profile/harness. |
-| O3 Generation | Kit sources currently live in `project/`, `lib/`, `global/` and `sw.ps1`; installed definitions are manifest-managed. Avoid silent competing copies while this generator is used. | [AGENTS](../AGENTS.md), manifest, workspace guidance. Source-generation consistency is conditional on retaining that mechanism. | Change upstream sources or explicitly migrate/replace the generator; no permanent kit-preservation rule. S2 sets the target (refit around S1 layers); this stays the current control until a scoped refit. |
+| O3 Generation | Kit sources currently live in `project/`, `lib/`, `global/` and `sw.ps1`; installed definitions are manifest-managed. Avoid silent competing copies while this generator is used. | [AGENTS](../AGENTS.md), manifest, workspace guidance. Source-generation consistency is conditional on retaining that mechanism. | Change upstream sources or explicitly migrate/replace the generator; no permanent kit-preservation rule. S2 is a dated synthesis; D7/D10 and the selected delivery contract refine the target. Any further refit needs scoped approval. |
 | O4 Context ownership | Read Startup, inspect Git and relevant files, reconcile authorization before meaningful work; load detail/skills on demand. State and task records have distinct owners. | AGENTS (Claude loads it through `.claude/CLAUDE.md`); [skills](../.agents/skills/) mirrored to `.claude/skills/`. No demonstrated universal task-success gain from this file scheme. | Approved context/continuity changes, measured loading failures or representative-task evidence. |
-| O5 Scope and effects | Only approved work executes; a plan covers routine execution/checks/corrections, not new scope. No automatic installs, dependencies, external access or global configuration changes. Owner requests carry exact copy-paste commands that run from any directory (explicit repository targets, absolute paths; owner, task `owner-commands`). | AGENTS and workspace guidance; this task authorizes documentation only. Research is advice, not permission. | Owner approves a bounded change and any consequential effects; global/session limits still apply. |
+| O5 Scope and effects | Only approved work executes; a plan covers routine execution/checks/corrections, not new scope. No automatic installs, dependencies, external access or global configuration changes. Owner requests carry exact copy-paste commands that run from any directory (explicit repository targets, absolute paths; owner, task `owner-commands`). | AGENTS and workspace guidance; state records the currently selected execution scope. Research is advice, not permission. | Owner approves a bounded change and any consequential effects; global/session limits still apply. |
 | O6 Change method | Preserve unrelated/uncommitted work and working behavior; reuse first, smallest independently testable change; avoid speculative refactors. | AGENTS and `minimal-change` skill; an execution method, not a veto on an approved overhaul. | An approved replacement/refit defines broader scope, preservation/migration and acceptance. |
 | O7 Roles/access | No roles (D7, topic 11): the main T3 thread coordinates and plans; skills hold procedures (`work`, `review`, `resume`, `handoff`, `status`, `validate`, `research`, `minimal-change`, `structured-debugging`, `agent-documentation`); side-effect skills are user-invoked only. Child work runs as T3 delegated tasks or worktree threads with a brief and a final report. | [AGENTS](../AGENTS.md), [skills](../.agents/skills/), workspace guidance. The four-role roster and `roles.json` were removed in 0.4.0-dev. Claude workflow skills set `disable-model-invocation: true`; their Codex copies ship `agents/openai.yaml` with `policy.allow_implicit_invocation: false`. Method skills (`minimal-change`, `structured-debugging`, `agent-documentation`) have neither and may load implicitly. Runtime enforcement of both settings is not separately verified. | Owner-approved orchestration/access redesign; measured coordination failures. |
 | O8 Coordination | Explicit task/checkout/path ownership, dependencies and acceptance; independent reads may overlap; writers serialize unless disjoint; parallel implementation uses separate T3 worktree threads or delegated tasks with disjoint file ownership; the main thread integrates. One validation owner per checkout; records are written in the main checkout only. | Workspace guidance and collaboration. Child sessions in a shared checkout do not isolate files. No fixed delegation requirement for every task. | Measured coordination need or failure; approved change must address shared-state/ownership risks. |
@@ -212,11 +273,11 @@ presence is not evidence that this design is optimal.
 | O10 Cost/data setup | Free-first; no metered spend without opt-in. Model mappings and credentials stay local; shared files avoid machine paths/provider pins. Owner requirement (2026-10-02): every installing user configures their own tools, models and accounts locally. | Workspace guidance, validation contracts and global/session rules. These are current policy/portability choices, not evidence that cheapest-token models are best. | Owner-approved cost/data/portability policy; check actual terms and task-level effort first. |
 | O11 Runtime configuration | The kit configures no MCP servers, plugins or compaction settings; Context7 and RTK plugin configuration left with OpenCode (0.4.0-dev). MCP servers are configured per user in Claude Code or Codex. T3 project settings (automatic pull, worktree cleanup, `t3/` prefix) are human-set. | [Workspace guidance](../.sw/workspace.md), [T3 scripts](../t3.json). Settings presence does not establish effective loading or trust. | Evidence of task/context/tool failure or an approved harness/tool change. |
 | O12 Safety | No credential probing or denied-action bypass. Git/GitHub hard limits (force-push, push to `main`, releases, repository settings, rewriting `main`; since M7 round 1 also `reset --hard`, `commit --amend` and rebase on every branch, because prefix rules cannot see the branch; since M7 decisions 5-6 also `pull --rebase` and any reset that moves the branch, keeping unstaging open) are tracked `.claude/settings.json` denies and `.codex/rules/workspace.rules` forbidden prefixes; `.env` reads are asked. Threads have host-user shell authority; T3 Restore and worktrees are the recovery net (D9). | Generated settings/rules, workspace guidance and global/session controls. Prefix matching stops the command as written, not every spelling; not a sandbox. Not covered in either harness: aliases and Git configuration, scripts and APIs (`gh api`), run-time-built commands, escapes inside a word, line continuation, abbreviated long options, unnamed reset targets, a push to `main` that does not name it (a `:` or glob refspec), some `main`-rewrite spellings and flag clusters, and commands the limits do not name (including repository writes such as `gh repo unarchive`; adding a category is an owner decision). Claude also misses quoted or doubled-space verbs and arguments, a tab, a quoted program and (Bash) an uppercase target or program; Codex misses options or runners before Git, arguments before a flag, path-qualified or differently cased programs, unlisted flag or refspec spellings and (per its source) shell scripts that are not plain words. `git reset <sha>` vs `<path>` is approximated, with documented over-blocks; since M7 review round 3 a commit-like name after `--` is never read as a commit, and `.exe` and push flag-cluster spellings are blocked; since round 4 so are the common `checkout -B`, `switch -C` and `branch -f` spellings that rewrite `main`, `pull -vr`/`-qr` and a reset with `-N` or `--end-of-options` before a commit. No Claude pattern holds a doubled space: in a live test with one Claude Code version, a doubled-space pattern alone also denied `git diff --stat`, while quote-ending patterns alone did not; quote-ending patterns stay out too, since quote handling in patterns is undocumented. Every command in the gap and over-block tables in `.sw/workspace.md` (Git flow) is a `sw validate` static case, tied by the kit's tests to its row's Harness column; examples marked *not a rule case* are checked by nothing. The owner accepted the tables as the 0.4.0-dev baseline (decision 15, 2026-10-16). Supervised is not used; threads run Auto or Full access, so the accepted gaps rely on agent restraint. Live check L5 passed for Claude and Codex in a scratch project: Supervised and Auto on the round-3 rules, Auto and Full access on the final round-5 rules. Every rule decision matched the static model, and no rule denied a control. In Supervised, Codex prompted before its gap spellings; in Full access it ran them silently. In Auto, Claude's classifier and Codex's auto-review refused some gap spellings and some ordinary commands, inconsistently, so they are not counted as enforcement. On Windows, Codex rules did not check a plain-word `bash -lc` script. | Approved threat-model/access/isolation change; project edits cannot disable external tool restrictions. |
-| O13 Git/publication | D9 implemented in 0.4.0-dev: commit as you go in small conventional commits; small, docs-only or solo work on `main`; code changes and `origin` work through a `t3/<name>` thread and a pull request (the owner's private instance, a separate remote configured locally, or `origin` for product changes). At GitHub tier 2 the agent pushes its `t3/` branch, opens a draft PR (drafts run no CI), watches it, marks it ready after Codex review, and enables auto-merge once the relevant CI checks pass on the current PR revision; if hosted CI cannot run for a quota or billing reason (jobs not started), the gate is the full local test suite on every CI shell at that revision plus `sw validate` and review, recorded in the PR body and task record (task `ci-minutes`, owner 2026-10-18); otherwise the owner publishes. Hard limits per O12. No other branches, hard reset, clean, stash or discarding work. | AGENTS, collaboration, workspace guidance, global rules. D9's tier text was corrected to tier 2 (M7 decision 8). `main` is protected against force-push and deletion (a human repository setting); CI is not yet a required check, so auto-merge alone does not wait for it (a required check would also block direct `main` pushes). | Owner-approved workflow revision, while session publication/data-loss constraints still apply. |
+| O13 Git/publication | D9 implemented in 0.4.0-dev: commit as you go in small conventional commits; small, docs-only or solo work on `main`; code changes and `origin` work through a `t3/<name>` thread and a pull request (the owner's private instance, a separate remote configured locally, or `origin` for product changes). At GitHub tier 2 the agent pushes its `t3/` branch, opens a draft PR (drafts run no CI), watches it, marks it ready after Codex review, and enables auto-merge once the relevant CI checks pass on the current PR revision; if hosted CI cannot run for a quota or billing reason or because Actions is disabled (jobs not started), the gate is the full local test suite on every CI shell at that revision plus `sw validate` and review, recorded in the PR body and task record (task `ci-minutes`, owner 2026-10-18; Actions-disabled case and owner merge where auto-merge is not allowed, owner 2026-10-22); otherwise the owner publishes. Hard limits per O12. No other branches, hard reset, clean, stash or discarding work. Public publication (snapshot method, owner 2026-10-22): `origin` shares no history with private `main`, so each publication is one commit built by `git commit-tree <source>^{tree} -p origin/main` with a `Source-Commit: <full source SHA>` trailer and notes from `git log --oneline <previous Source-Commit>..<source>`; it is screened (leak scan of the diff against `origin/main`, then review; `tools/publish-scan.ps1 -Base origin/main -Source <source>` prints `path:line: rule` per hit without the matched text and exits 1 on any hit, and `-Tree` scans the whole source tree), the owner pushes it to a `t3/publish-<name>` branch on `origin` and opens the PR, and after merge `origin/main^{tree}` must equal `<source>^{tree}`. Private `main` never merges `origin`; agents never push to `origin`; each publication still needs owner approval (D13). | AGENTS, collaboration, workspace guidance, global rules. D9's tier text was corrected to tier 2 (M7 decision 8). `main` is protected against force-push and deletion (a human repository setting); CI is not yet a required check, so auto-merge alone does not wait for it (a required check would also block direct `main` pushes). A mismatched tree after a publication merge means `origin/main` moved or the PR changed; stop and reconcile. | Owner-approved workflow revision, while session publication/data-loss constraints still apply; adopting the planned public-first flow replaces the snapshot method. |
 | O14 Records/review | Task events carry approval, progress, ownership and exact evidence; append-only/author rules protect history. Resume reconciles records with Git. Codex reviews before merge through a T3 delegated task (read-only by instruction) or `codex exec -s read-only` when enforcement is needed; review stays advisory. Closing summaries carry a dated lessons line, promoted after review. | Collaboration, `review`/`resume`/`handoff` skills. Complete, committed and published are separate states. | Approved record/review migration can revise this mechanism; no silent history rewrite or duplicate memory ledger in the meantime. |
 | O15 Checks | Docs: `sw validate` and `git diff --check`; code: discover build/type check, targeted tests then suite, actual manual checks only when available. Static/discovery/permission evaluation/workflow/review evidence stays separate. | Current AGENTS research profile/capability and workspace verification ladder. Untracked Git diffs and known ordinary-project-doc coverage gaps need explicit checks. | Approved validation change or demonstrated coverage gap; report unavailable checks rather than claim them. |
 | O16 Optional capabilities | Other profiles, persistent memory, network exposure/connectors, PR auto-review, scheduled Codex audit and remote setup are not enabled or authorized by their availability. PR watching is on whenever a PR exists. | State and workspace guidance. The [remote-access procedure](remote-access.md) is retired OpenCode history. | Concrete owner-selected need, permitted data and separately approved acceptance/security scope. |
-| O17 Root manager | Removed from the product in 0.4.0-dev (plan O3). The installed WS root manager is left untouched until a separate task; its sources remain in Git history before `eecacbd`. | Plan O3 (local task record `t3-native-rebuild/`). | Separate owner-approved task for the root installation. |
+| O17 Root manager | Removed from the product in 0.4.0-dev (plan O3). The owner also removed the former parent WS directory; migration is complete (D4). Retired sources remain in Git history before `eecacbd`. This manager is distinct from the separate private Workspace remote. | D4 relocation closure; plan O3 (local task record `t3-native-rebuild/`). | Owner revises D4. |
 
 ## 4. Evidence-informed proposals, not a selected architecture
 
@@ -234,6 +295,7 @@ interpretations. Neither research nor kit packaging selects an optimal Workspace
 | P6 Extensions/safety | Treat skills/plugins/MCP and supplied instructions as trust surfaces. Evaluate provenance, privileges, destinations, cost and recovery; don't mistake prompt rules for isolation. | E5/E6 C082/C088/C101-C102/C141-C156: differing risk measures and attacker positions; no approval-enabled skill exploit study or certified repository/tool-injection defence. Protocol portability is not compatibility certification. | Concrete missing capability or threat model, with approved harmless tests and controls. |
 | P7 Value | Evaluate accepted outcomes, quality, rework and sustained utility—not agent count, survey popularity or generated output alone. | E7 C205-C212: self-selected/vendor-recruited survey trends, not population estimates. C213-C221: short-run field output gains, unresolved persistence and mixed controlled findings; no universal productivity promise. | Owner selects intended outcomes and appropriate observation horizon. |
 | P8 Lifecycle/portability | Compare keeping, refitting and replacing components on evidence. Make preservation/recovery/loading tests proportionate to the chosen change. | E5/E6: differing harness loading/truncation semantics; C104 Windows reproducibility/removal remains a gap. Workspace manifest integrity does not establish whole-project recovery. | Approved lifecycle/harness change; source/adapter preservation is not an automatic preference. |
+| P9 Public capabilities | Owner requested individual ECC/Hermes/common-source review before selecting revisions/trials. Nine workflow contracts remain an interim evaluation baseline. General writing and cited document reasoning join synthesis, local analysis and frontend design as proposed outcomes; format production and specialists stay optional. G3 selected empty external plugin/MCP defaults (owner, 2026-10-22); RTK is the first named pilot candidate, not installed. | Owner's D10 audience refinement; [topic 16](research/16-public-capabilities.md#individual-public-source-review) records 31 actual source assessments, scoped licenses/helpers and primary documentation. Bundling, repetition and source recommendations do not establish use, benefit, T3 loading or preservation. | G1 is selected as drafting and test fixtures only, no paid trials (owner, 2026-10-22); E2 follows. A pilot needs source review, an adoption record, a budget and install approval. G2 accepted the direct-source/A7 contract and E3 read-only synthetic preview only. Distribution, installation and enablement remain distinct; no new dependency/install is approved. |
 
 ## 5. Design synthesis (U5, in progress)
 
@@ -315,6 +377,12 @@ publication, and to data handling.
 
 ### S2 U1 partial resolution: roster, generator, harness criterion
 
+**Historical synthesis (2026-10-02/03), superseded in part by D7/D9/D10.**
+The implementation updates, role roster, provider choices and model tiers below
+are dated evidence, not current controls. Current U1-U5 are in section 6;
+current implementation/authorization is in Startup. Only later approved
+decisions retain or replace these individual design points.
+
 **Current implementation update (2026-10-03, workspace-v1):** the
 bounded owner approval (local task record `workspace-v1/2026-10-03T063903Z-leader-approval.md`)
 now authorizes the launcher, superseding the older "not yet approved" table
@@ -357,7 +425,7 @@ not-yet-scoped labels. They do not authorize redoing accepted work.
 
 | Component | Decision | Evidence and limits |
 | --- | --- | --- |
-| Harness | **Revised (owner, 2026-10-02; decision (local task record `workspace-harness-decision/2026-10-02T213000Z-leader-decision-control-surface.md`)): one control surface and one set of task records replace the one-harness criterion. Claude roles run in Claude Code on a subscription login (owner requirement; third-party subscription use barred, C093, C283); other roles run in OpenCode. Effort is not a requirement. The launcher is implemented and accepted on one route (workspace-v1, above).** Earlier: chosen: OpenCode (owner, 2026-10-02, after the U3 hands-on check; decision (local task record `workspace-harness-decision/2026-10-02T181644Z-leader-decision-u1-opencode.md`)).** On the CLI path, only `-m` selects the primary model; the launcher must pass it. Kilo honours agent models but drops Workspace's V2 config without warning. Earlier: shortlisted (owner, 2026-10-02; E9, E10). Option 2: shortlist **OpenCode** and **Kilo**, then a hands-on check (U3) before choosing. Constraint: the harness must be free / open source, so Cursor, Factory Droid and GitHub Copilot CLI are out; Goose is excluded (models per recipe only, C270; thin evidence). OpenCode: per-agent Claude and non-Claude models (C225, C316); caveats: subagent model-override reports (C226, C319), plugins can defeat rules (C317), no OS isolation on Windows (C256). Kilo: sticky model per agent (C303); caveat: a parent can override the subagent model, fix closed not_planned (C304); Windows not inspected. Licences are not in the corpus: confirm from each repo's LICENSE. Claude still needs a subscription or API key; third-party subscription OAuth is unresolved (C283, C329), recheck at decision time. Owner criterion unchanged: Claude models usable in the same harness as every other model and role. | E8 selects no harness. Claude Code and Codex declare per-agent model and effort (C222, C227); OpenCode passes effort to the provider (C225); Copilot has no effort field (C229). Each of Claude Code, OpenCode and Codex has a report of per-agent routing being ignored (C223, C226, C228). Native Windows isolation: see S4. E8 did not examine which harnesses run Claude models alongside other providers, or the provider terms for doing so. |
+| Harness | **Superseded by D7 (2026-10-15): Claude Code and Codex through T3 Code; OpenCode and the launcher are retired. Kept as 2026-10-02 history.** **Revised (owner, 2026-10-02; decision (local task record `workspace-harness-decision/2026-10-02T213000Z-leader-decision-control-surface.md`)): one control surface and one set of task records replace the one-harness criterion. Claude roles run in Claude Code on a subscription login (owner requirement; third-party subscription use barred, C093, C283); other roles run in OpenCode. Effort is not a requirement. The launcher is implemented and accepted on one route (workspace-v1, above).** Earlier: chosen: OpenCode (owner, 2026-10-02, after the U3 hands-on check; decision (local task record `workspace-harness-decision/2026-10-02T181644Z-leader-decision-u1-opencode.md`)).** On the CLI path, only `-m` selects the primary model; the launcher must pass it. Kilo honours agent models but drops Workspace's V2 config without warning. Earlier: shortlisted (owner, 2026-10-02; E9, E10). Option 2: shortlist **OpenCode** and **Kilo**, then a hands-on check (U3) before choosing. Constraint: the harness must be free / open source, so Cursor, Factory Droid and GitHub Copilot CLI are out; Goose is excluded (models per recipe only, C270; thin evidence). OpenCode: per-agent Claude and non-Claude models (C225, C316); caveats: subagent model-override reports (C226, C319), plugins can defeat rules (C317), no OS isolation on Windows (C256). Kilo: sticky model per agent (C303); caveat: a parent can override the subagent model, fix closed not_planned (C304); Windows not inspected. Licences are not in the corpus: confirm from each repo's LICENSE. Claude still needs a subscription or API key; third-party subscription OAuth is unresolved (C283, C329), recheck at decision time. Owner criterion unchanged: Claude models usable in the same harness as every other model and role. | E8 selects no harness. Claude Code and Codex declare per-agent model and effort (C222, C227); OpenCode passes effort to the provider (C225); Copilot has no effort field (C229). Each of Claude Code, OpenCode and Codex has a report of per-agent routing being ignored (C223, C226, C228). Native Windows isolation: see S4. E8 did not examine which harnesses run Claude models alongside other providers, or the provider terms for doing so. |
 | Role roster | **Small.** The Leader works inline by default; core optional roles are a read-only explorer, an independent repository-exploring reviewer (S3) and one executor (merging developer, build, documentation and worker). Research is a profile role, enabled by a research profile (S1). Planning and architecture fold into the Leader. Implemented 2026-10-02 except the research profile role (generator refit). Delegate for context isolation or separable work, not by default. Worktrees are file isolation only: serialize writers or check intended changes before parallel writes. | C234 (declared); C235, C236, C243 (qualified, task-dependent, not compute-matched); C121 (replicated direction); C241, C242 (qualified; C242 a feasibility check). No roster-size study exists. |
 | Generator and layout | **Refit.** Model-field part implemented and committed 2026-10-02 (approval (local task record `workspace-harness-decision/2026-10-02T183500Z-leader-approval-generator-refit.md`)): no effort output, `validate` rejects effort and `#variant`, launch rules in `.sw/workspace.md`. One source generates the core, profile and per-harness adapter files (S1 layers). The current SuperWorkspace layout gets no preference. | See S1 open points (C233). Skill and instruction locations differ per harness (E8 note on C067; C068, C146, C150). |
 | Tier rubric | **Model-only (owner, 2026-10-02; E9 Rec 2).** Tiers name a model, not a per-agent effort setting; Implemented by the generator refit (2026-10-02; committed). On OpenCode `run` only `-m` routes the primary model, so launches pass it. Whatever routing is configured, verify the model per launch path from runtime logs (S4, U3). | C222 alias caveat (E8 review): a family alias can resolve to the main model. Effort is dropped because neither shortlisted harness declares a usable per-agent effort field (OpenCode `#variant` mapping unstated, C316; Kilo not stated). |
@@ -401,17 +469,24 @@ catch configuration regressions is unmeasured (C108 gap). This revises O14's
 **Decision.** Hard core rules go in enforced controls (settings, deny rules,
 permissions, sandboxes) where the harness has them, not in prose. On Windows,
 a hook is not a path boundary until a local acceptance test shows a denied write
-is blocked. Shell-pattern denylists are guardrails, not isolation. Plugin-carried
-agents do not carry enforcement. Native Windows OS isolation is a comparison
-factor for the harness research question (S2 Open), not an owner criterion.
+is blocked. Shell-pattern denylists are guardrails, not isolation. Claude Code
+plugin subagents have documented tool restrictions, with field exclusions
+detailed below; tool restrictions do not establish OS isolation. Native Windows
+OS isolation is a comparison factor for the harness research question (S2 Open),
+not an owner criterion.
 
 **Evidence.** Vendors declare instruction files advisory and settings, deny
 rules, hooks or sandboxes enforced (C230, declared). One Windows desktop report
 measured a PreToolUse hook exiting 2 while a subagent write still happened
 (C258, qualified, one report, not vendor-confirmed). Denylists were bypassable
 in 69.0-98.6% of cases by bypass class (C257, qualified, secondary relay).
-Claude Code plugin subagents ignore hooks, mcpServers and permissionMode (C224,
-declared). OpenCode ships no OS isolation and allows all in-project actions by
+Claude Code's [subagent documentation](https://code.claude.com/docs/en/sub-agents)
+says plugin subagents ignore `hooks`, `mcpServers` and `permissionMode` (C224,
+declared), while `disallowedTools` removes tools. Its
+[changelog](https://github.com/anthropics/claude-code/blob/main/CHANGELOG.md)
+records `disallowedTools` support for plugin-shipped agents. These are
+source/version-specific vendor declarations, not universal runtime proof.
+OpenCode ships no OS isolation and allows all in-project actions by
 default (C256, qualified); Claude Code's sandbox needs WSL2 (C231). Of Claude
 Code, OpenCode and Codex, only Codex declares a native Windows sandbox (C231,
 C254); its unelevated fallback limits network only advisorily (C255). A source
@@ -452,6 +527,12 @@ shipped harness is untested.
 
 ### S6 Skills curation
 
+**Current qualification (2026-10-20):** this earlier short-profile proposal
+does not settle the tension with the shipped workflow set or topic 16's
+provisional catalogue. G1 is selected as drafting and fixtures only and G3 as
+empty external defaults (owner, 2026-10-22); E2 drafts the catalogue. No skill
+count or catalogue change is inferred from S6.
+
 **Decision.** Each profile gets one to three short, human-curated skills. No
 auto-generated skills and no exhaustive procedure. Each skill is tested with
 paired with/without runs on the profile's acceptance cases, including negative
@@ -470,9 +551,29 @@ directories differ per harness (E8 note on C067).
 **Limits.** Mostly one benchmark family; the contrary SWE result used one small
 model. No study of non-code profile skills.
 
+Qualification (2026-10-19 research, not a revised owner decision): the bundle
+ablations above do not establish a maximum installed/distributed library size.
+Newer saved practice guidance describes selective use of a much larger library,
+without controlled product-efficacy evidence. [Topic 16](research/16-public-capabilities.md#f3-useful-skills-are-task-specific-a-numerical-library-cap-is-unproven)
+proposes a shared default and task/trigger checks; catalogue selection must
+explicitly reconcile this guidance with O7's existing common procedures.
+
 ## 6. Assumptions and decisions still open
 
 | ID | Unresolved assumption / decision | Source / limit | Resolution trigger |
+| --- | --- | --- | --- |
+| U1 | Which deeper structural changes improve representative tasks? | D7/D9 retired the role roster, OpenCode and launcher; D10 selects Windows/T3/central tiers. E3 is read-only only. File size and generated copies alone do not establish over-engineering. | D12 selects four read-only traces and concrete alternatives first; code/layout or catalogue changes need their own selected scope. |
+| U2 | Which individual skills, plugins and MCPs should ship publicly? | D10 selects a general foundation with research and development equally default. Topic 16 reviewed 31 ECC/Hermes skills; recommendations are not measured use or outcome gains. | G1 drafting/fixtures (no trials) and G3 empty external defaults were selected 2026-10-22; catalogue contents come from E2. No comparison or trial budget is selected. |
+| U3 | Which native loading, routing, enforcement, resume and runtime claims remain unverified? | Bounded rebuild scratch checks and the owner's T3 script checks have explicit limits in Startup. E3 synthetic tests establish no real delivery/native loading; memory loading, compaction, fresh-user and no-console behavior remain unverified. | Separately selected G4/native scope with named targets and evidence; do not resume retired OpenCode diagnosis from historical rows. |
+| U4 | What recovery, migration and removal behavior is demonstrated? | D11/A7 preserves installed global edits; E3 adds strict reading and pure preflight only. Project managed blocks/Adopt retain the recorded gap. Independent recovery and central effects are not demonstrated by Git history or memory backups. | E4-E6 scoped implementation, G4 acceptance and G5 named adoption/publication. D12's local archival/memory backups are bounded evidence preservation only. |
+| U5 | Which research/design assumptions need renewed synthesis? | D1/D2 keep all components reconsiderable. S1-S6 are dated synthesis, partly superseded by D7/D10 and topic 16; they do not constitute a complete updated comparison of all alternatives. | D12 task traces first; scope any deeper synthesis around concrete outcomes and current evidence rather than replaying retired architecture. |
+
+### Historical U1-U5 rows (pre-cleanup 2026-10-20)
+
+Retained verbatim as dated design history; the current rows above supersede
+their present-tense status and next actions.
+
+| ID | Historical question | Historical evidence | Historical next action |
 | --- | --- | --- | --- |
 | U1 | Whether to retain, refit or replace SuperWorkspace, OpenCode, the role roster, file layout, tier rubric or branching model. | Existing implementation plus D1/D2; no inspected comparative evidence establishes these as the best architecture. | Evidence-led design proposal and owner decision, not inheritance. **Partly resolved 2026-10-02 from E8 (S2):** small roster and generator refit decided (owner); tier rubric held with the harness and branching retained (owner-confirmed). **Further resolved 2026-10-02 from E9 and E10 (S2):** option 2 chosen (owner): shortlist OpenCode and Kilo under a free / open-source constraint, then a hands-on check; tier rubric is model-only, no effort. **Harness resolved 2026-10-02:** OpenCode (owner), after the U3 hands-on check of OpenCode and Kilo (decision (local task record `workspace-harness-decision/2026-10-02T181644Z-leader-decision-u1-opencode.md`)). |
 | U2 | Intended workloads, data sensitivity, acceptance outcomes, cost/effort limits and target harnesses. | O1 is broad; no application workload was selected by this task. | Owner clarification when it materially affects a design choice; not a prerequisite to documenting research. |
