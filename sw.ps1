@@ -22,7 +22,7 @@ if (Test-Path -LiteralPath $kit) { Import-Module $kit -Force -DisableNameCheckin
 $commands = [ordered]@{
     init     = @('Initialize-SwProject', 'kit', 'Install into a repository root: init <path> -Profile generic|research|unreal [-Name] [-NoGitHub] [-GitPolicy host|workspace] [-Records local|tracked] [-GitHubTier 0|1|2] [-Adopt (backup and replace conflicts)] [-SelectionV1] [-Force (kit downgrade)] [-Capabilities research]')
     update   = @('Update-SwProject', 'kit', 'Re-apply to an installed project: update [<path>] [-Adopt] [-Force (kit downgrade)] [-SelectionV1] [-Capabilities <list>] [-GitPolicy host|workspace] [-Records local|tracked]')
-    global   = @('Invoke-SwGlobal', 'kit', 'User-level setup for Claude Code and Codex: global install|check|backup [-ClaudeConfigDir <dirs>] [-CodexHome <dirs>] (absolute paths; several as one quoted list separated by ; default: CLAUDE_CONFIG_DIR / CODEX_HOME, else ~/.claude / ~/.codex) [-InstallRtk (install: winget-install RTK if missing)]; install never overwrites an edited or unprovable rules block')
+    global   = @('Invoke-SwGlobal', 'kit', 'User-level rules: global install|check|backup [-ClaudeConfigDir <dirs>] [-CodexHome <dirs>] (absolute paths; quoted ; list or PowerShell array; env homes, else ~/.claude / ~/.codex) [-InstallRtk (legacy install only)]. Read-only central preview: global check|install|remove|backup -Delivery central-v1 -Harness codex|claude|both [-Component all|rules|skills] [-Skills <product-ids>] [-PersonalSkills <ids>] [-PersonalRules <shared,claude,codex>] (comma lists or arrays); install/remove/backup require -WhatIf. Initial skills install preview requires -Skills. Codex skills share ~/.agents/skills regardless of -CodexHome. No central write effects or project migration are implemented; legacy schema1 writes refuse schema2 records.')
     validate = @('Test-SwProject', 'project', 'Static workspace contract check: validate [-Path] [-CheckLinks (local Markdown links, docs/ included)]')
     doctor   = @('Test-SwDoctor', 'project', 'Read-only setup check for a contributor: doctor [-User <name>] [-CodexHome <dir>]')
     context  = @('Get-SwContext', 'project', 'Read-only context/evidence report, not an approval: context [-Task <id>] [-StateFile <rel.md>] [-StateSection <heading>]')
@@ -46,5 +46,9 @@ if ($Command -in 'help', '-h', '--help', '/?' -or -not $commands.Contains($Comma
 
 $fn = $commands[$Command][0]
 if (-not (Get-Command $fn -ErrorAction SilentlyContinue)) { Write-Output "'$Command' is a kit command; run it from your SuperWorkspace clone."; exit 2 }
-& $fn @Arguments
-if ($Command -in 'validate', 'doctor', 'context', 'global') { exit $LASTEXITCODE }
+try { & $fn @Arguments }
+catch [System.Management.Automation.ParameterBindingException] {
+    if ($Command -ne 'global') { throw }
+    Write-Output "Usage: $($_.Exception.Message)"; exit 2
+}
+if ($Command -in 'init', 'update', 'validate', 'doctor', 'context', 'global') { exit $LASTEXITCODE }

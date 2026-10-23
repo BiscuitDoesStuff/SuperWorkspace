@@ -1,0 +1,398 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="A visual roadmap for public skills, plugins and MCP selection, central delivery, open choices and acceptance milestones.">
+  <title>Capabilities and central delivery - SuperWorkspace roadmap</title>
+  <style>
+    :root { color-scheme: light dark; --ink: #202735; --soft: #626c7b; --surface: #f5f7fa; --line: #dce2ea; --violet: #7046ae; --teal: #176e66; }
+    @media (prefers-color-scheme: dark) { :root { --ink: #e9edf5; --soft: #a7b2c4; --surface: #202733; --line: #3a4557; --violet: #c4a4ff; --teal: #80d7c5; } }
+    :root { --roadmap-muted: color-mix(in srgb, var(--foreground, var(--ink)) 70%, var(--background, Canvas)); }
+    * { box-sizing: border-box; }
+    html, body { background: transparent; }
+    body { margin: 0; color: var(--foreground, var(--ink)); font: 15px/1.55 var(--font-sans, "Segoe UI", system-ui, sans-serif); }
+    main { width: 100%; max-width: 1120px; margin: 0 auto; }
+    h1, h2, h3, h4, p { margin: 0; }
+    h1 { font-size: clamp(27px, 4.7vw, 39px); line-height: 1.13; letter-spacing: -.035em; font-weight: 720; }
+    h2 { font-size: 20px; letter-spacing: -.02em; }
+    h3 { font-size: 16px; }
+    h4 { margin-top: 15px; font-size: 13px; }
+    p + p { margin-top: 10px; }
+    a { color: var(--foreground, var(--ink)); text-decoration-color: var(--accent, var(--violet)); text-underline-offset: 3px; overflow-wrap: anywhere; }
+    code { font: .91em var(--font-mono, Consolas, monospace); overflow-wrap: anywhere; }
+    .eyebrow { color: var(--roadmap-muted); font-size: 11px; letter-spacing: .13em; text-transform: uppercase; margin-bottom: 10px; }
+    .intro { max-width: 790px; margin-top: 13px; color: var(--roadmap-muted); }
+    .scope { display: inline-block; margin-top: 14px; color: var(--foreground, var(--ink)); font-size: 12px; border-left: 3px solid var(--accent, var(--violet)); padding-left: 10px; }
+    .foundation { display: flex; align-items: baseline; flex-wrap: wrap; gap: 8px 15px; padding: 16px; margin: 24px 0; border-radius: var(--radius, 10px); background: var(--card, var(--surface)); }
+    .foundation strong { font-size: 12px; }
+    .foundation span { font-size: 12px; color: var(--roadmap-muted); }
+    .foundation a { margin-left: auto; font-size: 12px; }
+    .rail { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); margin: 0 0 27px; }
+    .step { position: relative; padding-right: 12px; }
+    .step::before { content: ""; position: absolute; top: 14px; left: 31px; right: 0; height: 1px; background: var(--border, var(--line)); }
+    .step:last-child::before { display: none; }
+    .step b { position: relative; display: grid; place-items: center; width: 29px; height: 29px; border: 1px solid var(--border, var(--line)); border-radius: 50%; font-size: 12px; background: var(--background, Canvas); }
+    .step[aria-current] b { background: var(--primary, var(--ink)); color: var(--primary-foreground, var(--surface)); border-color: transparent; }
+    .step strong { display: block; margin-top: 9px; font-size: 13px; }
+    .step small { display: block; margin-top: 3px; color: var(--roadmap-muted); font-size: 11px; }
+    .toolbar { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; border-top: 1px solid var(--border, var(--line)); padding: 19px 0; }
+    .filters { display: flex; gap: 5px; flex-wrap: wrap; }
+    button { cursor: pointer; font: inherit; font-size: 12px; border: 1px solid var(--border, var(--line)); border-radius: 7px; color: inherit; background: transparent; padding: 7px 11px; }
+    button[aria-pressed="true"] { background: var(--primary, var(--ink)); color: var(--primary-foreground, var(--surface)); border-color: transparent; }
+    button:hover { border-color: var(--ring, var(--violet)); }
+    :focus-visible { outline: 2px solid var(--ring, var(--violet)); outline-offset: 4px; }
+    summary:focus-visible { outline-offset: -4px; border-radius: var(--radius, 10px); }
+    .hint, .count { color: var(--roadmap-muted); font-size: 11px; }
+    .board { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); align-items: start; gap: 24px; }
+    .board.filtered { grid-template-columns: minmax(0, 1fr); }
+    .lane[hidden] { display: none; }
+    .lane-heading { display: flex; gap: 10px; align-items: center; margin-bottom: 5px; }
+    .dot { width: 9px; height: 9px; border-radius: 50%; flex: 0 0 auto; background: var(--violet); }
+    .delivery .dot { background: var(--teal); }
+    .capabilities { grid-column: 1 / -1; }
+    .capabilities .dot { background: var(--foreground, var(--ink)); }
+    .selection-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; align-items: start; }
+    .selection-grid details.item { margin-bottom: 0; }
+    #p1 { grid-column: 1 / -1; }
+    .skill-columns { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 18px; margin-top: 17px; }
+    .skill-columns h3 { font-size: 13px; padding-top: 9px; border-top: 2px solid var(--border, var(--line)); }
+    .skill-columns .keep h3 { border-color: var(--teal); }
+    .skill-columns .revise h3 { border-color: var(--violet); }
+    .skill-columns ul { list-style: none; padding: 0; margin-top: 12px; }
+    .skill-columns li + li { margin-top: 12px; }
+    .skill-columns code { font-size: 11px; font-weight: 650; }
+    .skill-columns li span { display: block; margin-top: 2px; color: var(--roadmap-muted); font-size: 11px; }
+    .gap-review { margin-top: 20px; padding: 16px; border-radius: var(--radius, 10px); background: var(--card, var(--surface)); }
+    .gap-review h3 { font-size: 13px; }
+    .gap-review p { margin-top: 7px; }
+    .selection-note { margin-bottom: 15px; font-size: 12px; color: var(--roadmap-muted); }
+    .execution-map { margin: 0 0 23px; }
+    .execution-map summary { padding: 13px 16px; }
+    .execution-map summary strong { font-size: 14px; }
+    .execution-map ol { margin: 12px 0 0; padding-left: 19px; }
+    .execution-map li + li { margin-top: 7px; }
+    .lane-description { margin-bottom: 15px; color: var(--roadmap-muted); font-size: 12px; }
+    details.item { margin-bottom: 11px; border: 1px solid var(--border, var(--line)); border-radius: var(--radius, 10px); overflow: clip; }
+    details.item.start { border-top: 3px solid var(--violet); }
+    .delivery details.item.start { border-top-color: var(--teal); }
+    summary { list-style: none; cursor: pointer; padding: 16px; position: relative; }
+    summary::-webkit-details-marker { display: none; }
+    summary::after { content: "+"; position: absolute; top: 13px; right: 16px; font-size: 19px; color: var(--roadmap-muted); }
+    details[open] > summary::after { content: "−"; }
+    .meta { display: flex; align-items: center; gap: 7px; flex-wrap: wrap; margin-bottom: 9px; padding-right: 18px; font-size: 10px; }
+    .id { color: var(--foreground, var(--ink)); font-weight: 750; letter-spacing: .04em; }
+    .badge { padding: 2px 7px; border-radius: 5px; background: var(--secondary, var(--surface)); color: var(--secondary-foreground, var(--soft)); }
+    .stage { color: var(--roadmap-muted); margin-left: auto; }
+    summary strong { display: block; font-size: 15px; line-height: 1.3; padding-right: 11px; }
+    .teaser { display: block; margin-top: 7px; color: var(--roadmap-muted); font-size: 12px; }
+    .needs { display: block; margin-top: 10px; font-size: 10px; color: var(--roadmap-muted); }
+    .detail { padding: 0 16px 17px; font-size: 12px; }
+    .detail ul { padding-left: 18px; margin: 7px 0 0; }
+    .detail li + li { margin-top: 6px; }
+    .deps { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 13px; }
+    .deps a { font-size: 10px; padding: 3px 7px; border: 1px solid var(--border, var(--line)); border-radius: 5px; text-decoration: none; }
+    .conditional-label { margin: 25px 0 10px; color: var(--roadmap-muted); font-size: 11px; text-transform: uppercase; letter-spacing: .09em; }
+    .maintenance { margin-top: 26px; padding: 19px 0; border-top: 1px solid var(--border, var(--line)); }
+    .maintenance p { margin-top: 8px; color: var(--roadmap-muted); font-size: 12px; }
+    .sources { display: flex; gap: 9px 18px; flex-wrap: wrap; margin-top: 14px; font-size: 12px; }
+    footer { margin-top: 20px; padding: 16px 0 8px; border-top: 1px solid var(--border, var(--line)); font-size: 11px; color: var(--roadmap-muted); }
+    @media (max-width: 540px) {
+      .board { grid-template-columns: minmax(0, 1fr); gap: 25px; }
+      .selection-grid { grid-template-columns: minmax(0, 1fr); }
+      .skill-columns { grid-template-columns: minmax(0, 1fr); }
+      .rail { gap: 5px; }
+      .step { padding-right: 5px; }
+      .step small { font-size: 10px; }
+      .foundation a { margin-left: 0; }
+    }
+    @media print {
+      html { color-scheme: light; }
+      body { color: #202735; font-size: 11px; }
+      .toolbar, .hint { display: none; }
+      .board, .board.filtered { display: block; }
+      .selection-grid { display: block; }
+      .selection-grid details.item { margin-bottom: 11px; }
+      .lane[hidden] { display: block; }
+      .lane { margin-top: 22px; }
+      details.item { break-inside: avoid; border-color: #c5cbd4; }
+      a { color: inherit; }
+      summary::after { display: none; }
+    }
+  </style>
+</head>
+<body>
+<main>
+  <header>
+    <p class="eyebrow">SuperWorkspace / next delivery plan / 19 Oct 2026 UTC</p>
+    <h1>Capabilities &amp; central delivery</h1>
+    <p class="intro">A general foundation with research and software development equally included by default. Choose the public capabilities, then deliver the selected skills and rules from one product source and one local personal tier.</p>
+    <p class="scope">E3 schema and read-only synthetic preview verified and privately integrated. G1 source review covers 31 individual ECC/Hermes skills; next select drafts and fixtures for five proposed outcomes. Catalogue, delivery effects and adoption remain later decisions.</p>
+  </header>
+
+  <div class="foundation" aria-label="Completed foundations as of 19 October 2026 UTC">
+    <strong>Already in place</strong>
+    <span>Global A7 baselines</span><span>Windows PowerShell 5.1 + 7</span><span>Six audit fixes</span><span>E3 read-only previews</span>
+    <a href="workspace-state.md#startup">Current evidence ↗</a>
+  </div>
+
+  <nav class="rail" aria-label="Proposed milestone sequence">
+    <div class="step" aria-current="step"><b>1</b><strong>Shape</strong><small>P1–P3 · C1 · C2 · M1<br>Decide alongside design</small></div>
+    <div class="step"><b>2</b><strong>Build</strong><small>M2 · M3 · M4<br>After contracts</small></div>
+    <div class="step"><b>3</b><strong>Verify</strong><small>M5<br>Evidence + review</small></div>
+    <div class="step"><b>4</b><strong>Adopt</strong><small>M6<br>Chosen targets</small></div>
+  </nav>
+
+  <details class="execution-map" id="execution-map">
+    <summary><strong>Execution sequence · E0–E9</strong><span class="teaser">E0/E1, G1 source review and E3 read-only preflight complete. Next select E2 drafts/fixtures; E4–E6 effects remain gated.</span></summary>
+    <div class="detail">
+      <ol><li><strong>E0 + E1 · Inspect and design:</strong> review exact candidate sources/licenses, define comparison cases, settle source paths, rule composition and project coexistence. These produce the decisions needed for coding.</li><li><strong>E2 · Revise and compare skills:</strong> use the selected cases and run budget, then select the actual catalogue. Nine remains a provisional baseline.</li><li><strong>E3–E5 · Build delivery:</strong> reuse global ownership/preflight, add individual links, then wire Claude imports and Codex blocks. Serialize shared module/test writers.</li><li><strong>E6 · Migrate:</strong> explicitly transition approved projects from generated copies, preserve edited/unowned content and explain partial results.</li><li><strong>E7 + E8 · Verify and integrate:</strong> bounded native acceptance, both-shell tests, generated parity, independent review and current-revision CI gates.</li><li><strong>E9 · Adopt:</strong> preview and verify named real targets; public publication has its own selected scope.</li></ol>
+      <p style="margin-top:12px">The detailed plan and execution evidence live in a local task record. This page stays a planning projection. Model trials, real-home effects and new integrations require their selected scope; unavailable native checks remain open.</p>
+      <p>Current checkpoint: 31 individual ECC/Hermes entries inspected; the revised G1 proposal covers writing, cited document reasoning, synthesis, local analysis and frontend design. Select drafts/fixtures before model comparisons and catalogue choices. E3 passed both-shell synthetic tests and independent review and is privately integrated. It creates no real links or rules; native loading and later effects remain unverified.</p>
+      <p class="deps"><a href="#p1">P1 catalogue</a><a href="#c1">C1 sources</a><a href="#c2">C2 composition</a><a href="#m1">M1 contract</a></p>
+    </div>
+  </details>
+
+  <div class="toolbar">
+    <div class="filters" role="group" aria-label="Show a workstream">
+      <button type="button" data-view="all" aria-pressed="true">All tracks</button>
+      <button type="button" data-view="capabilities" aria-pressed="false">Public set</button>
+      <button type="button" data-view="choices" aria-pressed="false">Choices</button>
+      <button type="button" data-view="delivery" aria-pressed="false">Delivery</button>
+    </div>
+    <span class="count" role="status" aria-live="polite">14 items · expand for acceptance</span>
+  </div>
+
+  <div class="board" id="roadmap">
+    <section class="lane capabilities" data-lane="capabilities" aria-labelledby="capabilities-title">
+      <div class="lane-heading"><span class="dot" aria-hidden="true"></span><h2 id="capabilities-title">Public capability selection</h2></div>
+      <p class="lane-description">Assess skills individually before choosing the catalogue. Continue C1/C2/M1 design alongside this review; final M2 selection waits for P1.</p>
+      <p class="selection-note">Choose separately: included in the public repository · selected for installation · enabled in a harness. <a href="research/16-public-capabilities.md">Evidence, full catalogue and remaining questions ↗</a></p>
+      <div class="selection-grid">
+        <details class="item start" id="p1" open>
+          <summary><span class="meta"><span class="id">P1</span><span class="badge">Source review ready</span></span><strong>Choose outcomes before the catalogue</strong><span class="teaser">31 ECC/Hermes skills reviewed individually. Add writing and cited document reasoning to the outcome proposal.</span><span class="needs">Recommendations only · required before final M2 selection and M5 acceptance</span></summary>
+          <div class="detail">
+            <p>The prior ten-default proposal was not selected. Keep all 11 existing sources as distribution candidates; make agent-documentation optional and strengthen research beyond outside-page collection. Source review supports these choices; task benefit is unmeasured.</p>
+            <div class="skill-columns" aria-label="Individual skill recommendations">
+              <section class="keep" aria-labelledby="keep-title">
+                <h3 id="keep-title">4 · Keep common</h3>
+                <ul>
+                  <li><code>resume</code><span>Reconcile authority and effects, then continue approved work.</span></li>
+                  <li><code>handoff</code><span>Transfer exact artifacts, evidence and the next action.</span></li>
+                  <li><code>minimal-change</code><span>Find reuse and bound an authorized implementation.</span></li>
+                  <li><code>structured-debugging</code><span>Reproduce, test hypotheses and verify a supported cause.</span></li>
+                </ul>
+              </section>
+              <section class="revise" aria-labelledby="revise-title">
+                <h3 id="revise-title">5 · Revise before common</h3>
+                <ul>
+                  <li><code>work</code><span>Reuse approval; make checks and delegation proportional.</span></li>
+                  <li><code>status</code><span>Inspect the named task first; keep reporting read-only.</span></li>
+                  <li><code>review</code><span>Verify command identity and native overlap, including the documented alias risk.</span></li>
+                  <li><code>validate</code><span>Choose meaningful scope-based checks; reuse same-revision evidence.</span></li>
+                  <li><code>research</code><span>Add local synthesis, source families and gap-led web research; then make common.</span></li>
+                </ul>
+              </section>
+              <section aria-labelledby="optional-title">
+                <h3 id="optional-title">2 · Optional</h3>
+                <ul>
+                  <li><code>agent-documentation</code><span>Agent instructions and skill maintenance; outside the proposed common set.</span></li>
+                  <li><code>unreal-validation</code><span>Engine-specific discovery, coordinated builds and test evidence.</span></li>
+                </ul>
+                <p class="hint">Keep status, resume and handoff distinct. Share recovery fields under their canonical owner.</p>
+              </section>
+            </div>
+            <section class="gap-review" aria-labelledby="gap-title">
+              <h3 id="gap-title">Before final selection · assess five outcome gaps</h3>
+              <ul><li><strong>General writing:</strong> audience, structure and requested voice; preserve meaning, source support and uncertainty across genres.</li><li><strong>Cited document reasoning:</strong> versions, locators, modality and unresolved owners/dates; extracted proposals grant no external write authority.</li><li><strong>Evidence synthesis:</strong> adapt the inspected Framework Method within research; trace passages, source families, conflicts and gaps.</li><li><strong>Local quantitative analysis:</strong> assess a compact procedure on grain, units, denominators, joins and reproduction.</li><li><strong>Frontend design:</strong> compare brief-first design on existing components, responsiveness and accessibility; token specifications are a distinct optional task.</li></ul>
+              <p>Most inspected development methods fit existing procedures. Browser acceptance first extends validate; format production, codebase orientation, security, bounded spikes and source packs remain optional candidates. The source review found scoped Hermes document-format MIT licenses, plus preservation/tool/rights limits. No source was imported or benefit measured.</p>
+              <p>The earlier fourteen case pairs and 28-run ceiling were not selected. Revise the finite G1 proposal for these findings before drafting or model comparisons. Source recommendations and bundling are not public-use or efficacy evidence.</p>
+            </section>
+            <h4>Resolved when · E0 + E2</h4><ul><li>The owner selects per-skill dispositions after the priority gap comparisons; nine is an interim baseline, not a count target.</li><li>Revisions, optional selection routes, migration/caller changes and invocation policy are bounded. Research is common without forcing the research profile.</li><li>Native command mapping, notices and positive/negative acceptance cases are assessed. Availability grants no extra action authority.</li></ul>
+            <p style="margin-top:12px"><a href="research/16-public-capabilities.md#individual-existing-skills">11 existing assessments ↗</a> · <a href="research/16-public-capabilities.md#individual-new-skill-candidates">12 candidate outcomes ↗</a> · <a href="research/16-public-capabilities.md#individual-public-source-review">31 public-source assessments ↗</a></p>
+            <p class="deps"><a href="#m2">M2 selected skills</a><a href="#m5">M5 acceptance</a></p>
+          </div>
+        </details>
+        <details class="item" id="p2">
+          <summary><span class="meta"><span class="id">P2</span><span class="badge">Proposed</span></span><strong>Select plugin policy and exceptions</strong><span class="teaser">Recommend no bundled or pre-enabled external plugin; assess specific gaps individually.</span><span class="needs">Independent of plain skill/rule delivery</span></summary>
+          <div class="detail">
+            <p>Broad method bundles overlap with the core. Newer local Claude docs add native overlap but do not establish T3 compatibility. The dated Codex cache-preservation concern remains unresolved.</p>
+            <h4>Resolved when</h4><ul><li>The owner selects no external default or names a bounded alternative to evaluate.</li><li>Any exception has exact-version licensing, behavior, update/removal and preservation evidence.</li><li>A documented native capability is distinguished from a tested public integration.</li></ul>
+            <p class="deps"><a href="#c4">C4 if entries are needed</a><a href="#m5">M5 acceptance</a></p>
+          </div>
+        </details>
+        <details class="item" id="p3">
+          <summary><span class="meta"><span class="id">P3</span><span class="badge">Proposed</span></span><strong>Select MCP defaults and first pilot</strong><span class="teaser">Recommend no preconfigured servers. Compare documentation, browser and GitHub candidates only against real gaps.</span><span class="needs">Triggers C4 only if a concrete integration is selected</span></summary>
+          <div class="detail">
+            <h4>Resolved when</h4><ul><li>The owner selects an empty default or a specific pilot with a task, budget and data scope.</li><li>Existing T3/harness tools and CLI baselines are compared before adding an integration.</li><li>Auth, destinations, versions, terms, tool scope, cost and owned-entry recovery are specified for any selected server.</li></ul>
+            <p>Candidate listings are research leads, not shipped or supported integrations. Web checks are needed only for material gaps in a selected candidate.</p>
+            <p class="deps"><a href="#c4">C4 conditional config</a><a href="#m5">M5 acceptance</a></p>
+          </div>
+        </details>
+      </div>
+    </section>
+    <section class="lane choices" data-lane="choices" aria-labelledby="choices-title">
+      <div class="lane-heading"><span class="dot" aria-hidden="true"></span><h2 id="choices-title">Implementation choices</h2></div>
+      <p class="lane-description">Open questions, decision outputs and what each unlocks.</p>
+
+      <details class="item start" id="c1">
+        <summary><span class="meta"><span class="id">C1</span><span class="badge">Contract accepted</span><span class="stage">Shape</span></span><strong>Choose stable source and rule paths</strong><span class="teaser">Direct product references, personal skills and three optional personal rule files selected.</span><span class="needs">E3 approved; effects remain later packages</span></summary>
+        <div class="detail">
+          <p>The accepted contract uses the invoked checkout's existing sources, <code>~/.sw/skills</code> and optional <code>~/.sw/rules/{shared,claude,codex}.md</code>, with no rule mirror. Missing/moved sources fail visibly; no automatic fetch, retarget or copy fallback. Implementation still needs verification.</p>
+          <h4>Resolved when</h4><ul><li>The selected paths and ownership are recorded in D10, with reasons and rejected alternatives.</li><li>Source movement or absence, custom Claude homes and Codex's shared home have explicit expected outcomes.</li><li>The choice yields concrete migration and recovery cases for M1.</li></ul>
+          <p class="deps"><a href="#m1">M1 contract</a><a href="#m2">M2 skills</a><a href="#m3">M3 rules</a></p>
+        </div>
+      </details>
+
+      <details class="item start" id="c2">
+        <summary><span class="meta"><span class="id">C2</span><span class="badge">Contract accepted</span><span class="stage">Shape</span></span><strong>Choose how personal additions compose</strong><span class="teaser">Product → personal shared → harness addition selected in one owned native block.</span><span class="needs">E3 approved; rule effects remain E5</span></summary>
+        <div class="detail">
+          <p>The accepted contract uses Claude imports and Codex composed text, keeping personal additions opt-in. It covers escaped spaces, nested-import refusal, Codex override masking and source-drift differences. Text order does not guarantee model enforcement; native acceptance remains later work.</p>
+          <h4>Resolved when</h4><ul><li>Shared and per-harness ordering, ownership and removal behavior are specified.</li><li>The personal tier remains local without Git; edited or unverified installed content is preserved.</li><li>Examples cover no additions, one harness's additions and changed central content.</li></ul>
+          <p class="deps"><a href="#m1">M1 contract</a><a href="#m3">M3 rules</a></p>
+        </div>
+      </details>
+
+      <details class="item" id="c3">
+        <summary><span class="meta"><span class="id">C3</span><span class="badge">Open</span><span class="stage">Before routing claims</span></span><strong>Select a tested CLIProxyAPI pin</strong><span class="teaser">Choose the version, compatibility evidence and re-pin trigger.</span><span class="needs">Needed for tested routing guidance; basic skill/rule delivery can proceed</span></summary>
+        <div class="detail">
+          <p>Topic 15 inspected a dated version; that is not a current tested product pin. CLIProxyAPI remains routing only, without rule injection or a management page.</p>
+          <h4>Resolved when</h4><ul><li>A named version and representative T3/Claude/Codex check are recorded with dates and limits.</li><li>The owner selects a practical recheck trigger or cadence; no scheduler is implied.</li><li>Routing claims in M5/M6 match the version actually exercised.</li></ul>
+          <p class="deps"><a href="#m5">M5 verification</a><a href="#m6">M6 adoption</a></p>
+        </div>
+      </details>
+
+      <p class="conditional-label">Conditional choices · no need to block the first slice</p>
+
+      <details class="item" id="c4">
+        <summary><span class="meta"><span class="id">C4</span><span class="badge">When needed</span></span><strong>Define owned MCP/hooks entries</strong><span class="teaser">Only after a concrete capability calls for generated configuration.</span><span class="needs">Separate optional package; not a dependency of M2 or M3</span></summary>
+        <div class="detail">
+          <p>P2/P3 trigger this only if a selected capability needs entries. Verify current harness support before choosing JSON/TOML entry shapes. Codex's canonical configuration form remains open. This roadmap does not assume a hook API or add servers.</p>
+          <h4>Resolved when triggered</h4><ul><li>A selected capability names the required native entries and destinations.</li><li>Ownership, round-trip preservation, baselines, removal and recovery are specified.</li><li>The resulting package has its own approval and compatibility checks.</li></ul>
+        </div>
+      </details>
+
+      <details class="item" id="c5">
+        <summary><span class="meta"><span class="id">C5</span><span class="badge">Before routing guidance</span></span><strong>Resolve the provider-terms evidence gap</strong><span class="teaser">Check the proposed credential/routing guidance before publishing it.</span><span class="needs">Conditional on publishing proxy/provider guidance, not local skill linking</span></summary>
+        <div class="detail">
+          <p>Topic 15 did not assess terms for subscription credentials routed through a proxy. Keep that unknown distinct from technical compatibility.</p>
+          <h4>Resolved when triggered</h4><ul><li>Current primary sources and the intended guidance are assessed in an approved research scope.</li><li>The publication decision records remaining uncertainty and any necessary limits.</li></ul>
+          <p class="deps"><a href="#m6">M6 publication boundary</a></p>
+        </div>
+      </details>
+    </section>
+
+    <section class="lane delivery" data-lane="delivery" aria-labelledby="delivery-title">
+      <div class="lane-heading"><span class="dot" aria-hidden="true"></span><h2 id="delivery-title">Central delivery</h2></div>
+      <p class="lane-description">Proposed packages, ordered by the outcomes they depend on.</p>
+
+      <details class="item start" id="m1">
+        <summary><span class="meta"><span class="id">M1</span><span class="badge">Read-only verified</span><span class="stage">E1 + E3</span></span><strong>Define the delivery and ownership contract</strong><span class="teaser">Strict schemas and pure preview verified; private integration complete.</span><span class="needs">E4–E6 effects remain gated</span></summary>
+        <div class="detail">
+          <p>The accepted G2 contract defines typed block/link entries, explicit central scope, interrupted-operation recovery and a project <code>skillDelivery</code> mode. Implemented E3 reads and normalizes the existing record in memory and produces read-only plans. Record writes, links, rule wiring, project mode and recovery effects remain later packages.</p>
+          <h4>Verified slice</h4><ul><li>Both shells passed 556 tests, with one existing file-symlink privilege skip each; all 78 E3 cases passed. Fresh profiles, regeneration parity and independent review passed.</li><li>Preflight protects unselected canonical containers plus recorded and desired sources; valid sibling paths remain allowed. Scope claims remain distinct from selections.</li><li>Private integration used the standing local gate because hosted jobs never started. Native loading, migration, races and real effects remain unverified.</li></ul>
+          <p class="deps"><a href="#c1">C1 source paths</a><a href="#c2">C2 additions</a></p>
+        </div>
+      </details>
+
+      <details class="item" id="m2">
+        <summary><span class="meta"><span class="id">M2</span><span class="badge">Proposed</span><span class="stage">E4 · Build</span></span><strong>Deliver skills through individual links</strong><span class="teaser">One central source; native discovery in both supported harnesses.</span><span class="needs">Requires M1 + C1 + selected P1 catalogue · shared-file writes serialized with M3</span></summary>
+        <div class="detail">
+          <p>Link each selected skill into Codex's <code>~/.agents/skills</code> and each selected Claude profile's <code>skills</code> folder.</p>
+          <h4>Done when</h4><ul><li>Targets are verified; real-folder collisions and duplicate names across tiers are refused, without a copy fallback.</li><li>Preview has no effects; repeat application is stable; removal touches only proven owned links, never their sources.</li><li>Disposable Windows fixtures exercise both supported shells and preserve unrelated content.</li></ul>
+          <p class="deps"><a href="#m1">M1 contract</a><a href="#c1">C1 source paths</a><a href="#p1">P1 skill set</a></p>
+        </div>
+      </details>
+
+      <details class="item" id="m3">
+        <summary><span class="meta"><span class="id">M3</span><span class="badge">Proposed</span><span class="stage">E5 · Build</span></span><strong>Deliver rules through native wiring</strong><span class="teaser">Claude imports; Codex managed block; shared core plus selected additions.</span><span class="needs">Requires M1 + C1 + C2 · serialize with M2 in the current module</span></summary>
+        <div class="detail">
+          <p>Implement the chosen rule paths and composition. Preserve local text and baseline every newly delivered artefact without a force bypass.</p>
+          <h4>Done when</h4><ul><li>The same central rules and selected additions reach the intended native files in the specified order.</li><li>Edited, malformed or unverified installed content is retained/refused according to the approved contract.</li><li>Preview, repeat application, update and removal preserve unrelated content on both shells.</li></ul>
+          <p class="deps"><a href="#m1">M1 contract</a><a href="#c1">C1 source paths</a><a href="#c2">C2 additions</a></p>
+        </div>
+      </details>
+
+      <details class="item" id="m4">
+        <summary><span class="meta"><span class="id">M4</span><span class="badge">Proposed</span><span class="stage">E6 · Migrate</span></span><strong>Complete migration and diagnostics</strong><span class="teaser">Transition approved projects from generated copies; explain ownership and partial results.</span><span class="needs">Requires the M1 contract and implemented M2 + M3 behavior</span></summary>
+        <div class="detail">
+          <p>Integrate the existing global rules baseline with the new delivery paths. Treat topic 15's old ordering/legacy-report questions as items to reconcile with today's code, not automatically unfinished work.</p>
+          <h4>Done when</h4><ul><li>Existing installs and named projects have an explicit, previewable migration with recoverable prior content; edited/unowned project copies block ambiguous conversion.</li><li>Checks distinguish current, stale, missing, edited/unverified and conflicting artefacts; failures propagate to the caller.</li><li>Interrupted/partial operations preserve correct ownership evidence and have a documented recovery procedure. Legacy projects retain their selected route.</li></ul>
+          <p class="deps"><a href="#m1">M1 contract</a><a href="#m2">M2 skills</a><a href="#m3">M3 rules</a></p>
+        </div>
+      </details>
+
+      <details class="item" id="m5">
+        <summary><span class="meta"><span class="id">M5</span><span class="badge">Proposed</span><span class="stage">E7 + E8 · Verify</span></span><strong>Prove behavior and obtain review</strong><span class="teaser">Automated preservation checks plus bounded native-loading acceptance.</span><span class="needs">Requires M2 + M3 + M4 · C3 for routing compatibility claims</span></summary>
+        <div class="detail">
+          <h4>Done when</h4><ul><li>Focused and full tests pass on Windows PowerShell 5.1 and PowerShell 7; applicable generated parity, validation and diff checks pass.</li><li>Disposable native sessions verify rule imports outside the profile, skill discovery/invocation and the selected personal additions.</li><li>Independent review and exact-revision evidence distinguish automated checks, manual acceptance, skipped cases and remaining limits.</li></ul>
+          <p>No existing audit result substitutes for these new delivery checks. Live probes need selected scope, targets and budget. Compare each changed P1 outcome with/without its skill across general, research and software cases, including negative triggers. Add only the exact P2/P3 integrations selected for the release; an empty integration default needs no server installation.</p>
+          <p class="deps"><a href="#m2">M2 skills</a><a href="#m3">M3 rules</a><a href="#m4">M4 migration</a><a href="#c3">C3 routing pin</a></p>
+        </div>
+      </details>
+
+      <details class="item" id="m6">
+        <summary><span class="meta"><span class="id">M6</span><span class="badge">Proposed</span><span class="stage">E9 · Adopt</span></span><strong>Adopt on explicitly selected targets</strong><span class="teaser">Preview, apply, verify, then record the observed installed state.</span><span class="needs">Requires M5 + owner-selected rollout scope</span></summary>
+        <div class="detail">
+          <h4>Done when</h4><ul><li>The reviewed package is integrated, and each real install or migration has a named approved target and recoverable prior content.</li><li>The actual native result is checked and recorded in current state/task evidence.</li><li>Any public publication is separately selected; routing guidance first resolves the relevant C3/C5 gaps.</li></ul>
+          <p class="deps"><a href="#m5">M5 acceptance</a><a href="#c3">C3 routing pin</a><a href="#c5">C5 guidance evidence</a></p>
+        </div>
+      </details>
+    </section>
+  </div>
+
+  <section class="maintenance" aria-labelledby="maintain-title">
+    <h2 id="maintain-title">Keep this useful over time</h2>
+    <p>Open a card for its decision output or acceptance criteria. Follow a dependency chip to reveal its card, even across filters. IDs stay stable when the order changes. This page works offline and expands all cards when printed.</p>
+    <p>After a decision or accepted package: update the canonical register/state and task evidence first, then revise this view's status, dependencies and date. Record the reason for a changed sequence in that task. Browser controls only change the view; they never mark work complete.</p>
+    <div class="sources"><a href="workspace-outline.md#1-approved-direction">Design decisions: D10 / D11</a><a href="workspace-state.md#startup">Implemented state / authorization</a><a href="research/15-product-direction.md#4-architecture">Architecture evidence</a><a href="research/15-product-direction.md#8-open-questions">Dated open questions</a></div>
+  </section>
+  <footer>Planning view v7 · 19 Oct 2026 UTC. E3 read-only synthetic preview verified and privately integrated; G1 individual-source findings ready. Catalogue, skill drafts/model comparisons, delivery effects and adoption remain unselected. General foundation; research and software development co-default. Sequence changes with findings. MCP/hooks and routing guidance are conditional; the general project-generator managed-block / <code>-Adopt</code> gap stays outside scope. Current state and Git resolve implementation history.</footer>
+  <noscript><p>All milestones and choices remain readable without JavaScript. Filters, dependency reveal and automatic print expansion require JavaScript.</p></noscript>
+</main>
+<script>
+(() => {
+  const board = document.querySelector('.board');
+  const buttons = [...document.querySelectorAll('[data-view]')];
+  const lanes = [...document.querySelectorAll('[data-lane]')];
+  const items = [...document.querySelectorAll('details.item')];
+  const expandable = [...document.querySelectorAll('details')];
+  const count = document.querySelector('.count');
+  let currentView = 'all';
+  function show(view) {
+    currentView = view;
+    buttons.forEach(button => button.setAttribute('aria-pressed', String(button.dataset.view === view)));
+    lanes.forEach(lane => { lane.hidden = view !== 'all' && lane.dataset.lane !== view; });
+    board.classList.toggle('filtered', view !== 'all');
+    const visible = items.filter(item => !item.closest('[data-lane]').hidden).length;
+    count.textContent = visible + ' items · expand for acceptance';
+  }
+  buttons.forEach(button => button.addEventListener('click', () => show(button.dataset.view)));
+  document.querySelectorAll('a[href^="#"]').forEach(link => {
+    link.addEventListener('click', event => {
+      const target = document.getElementById(link.getAttribute('href').slice(1));
+      if (!target || !target.matches('details.item')) return;
+      event.preventDefault();
+      if (target.closest('[data-lane]').hidden) show('all');
+      target.open = true;
+      target.querySelector('summary').focus({ preventScroll: true });
+      target.scrollIntoView({ block: 'center', behavior: 'auto' });
+    });
+  });
+  let printSnapshot;
+  window.addEventListener('beforeprint', () => {
+    if (printSnapshot) return;
+    printSnapshot = { view: currentView, open: expandable.map(item => item.open) };
+    show('all');
+    expandable.forEach(item => { item.open = true; });
+  });
+  window.addEventListener('afterprint', () => {
+    if (!printSnapshot) return;
+    expandable.forEach((item, index) => { item.open = printSnapshot.open[index]; });
+    show(printSnapshot.view);
+    printSnapshot = undefined;
+  });
+})();
+</script>
+</body>
+</html>

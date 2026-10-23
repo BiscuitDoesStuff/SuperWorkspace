@@ -2,6 +2,607 @@
 # Pester 5+ suite for the SuperWorkspace kit. All scratch projects live under $TestDrive;
 # the real user profile (~/.claude, ~/.codex, ~/AGENTS.md) is never touched.
 
+Describe 'E3 central delivery (synthetic homes, read-only)' {
+    BeforeAll {
+        $script:E3SavedProviderHomes = @{ CLAUDE_CONFIG_DIR=$env:CLAUDE_CONFIG_DIR; CODEX_HOME=$env:CODEX_HOME }
+        function New-CentralRecord {
+            $hash = 'a' * 64
+            $artifactHome = Join-Path $global:SwCentralHome '.agents'
+            $source = Join-Path $RepoRoot 'project/base/.agents/skills/work'
+            [ordered]@{ schema = 2; kitVersion = 'test'; kitCommit = $null; productRoot = $RepoRoot; personalRoot = (Join-Path $global:SwCentralHome '.sw'); homes = [ordered]@{
+                $artifactHome = [ordered]@{ kind = 'claude+codex+codex-skills'; delivery = [ordered]@{ claude = 'central-v1'; codex = 'rules'; 'codex-skills' = 'central-v1' }; selection = [ordered]@{
+                    claude = [ordered]@{ productSkills = @('work'); personalSkills = @(); personalRules = @() }
+                    codex = [ordered]@{ productSkills = @(); personalSkills = @(); personalRules = @() }
+                    'codex-skills' = [ordered]@{ productSkills = @('work'); personalSkills = @(); personalRules = @() }
+                }; entries = [ordered]@{
+                    'AGENTS.md#global' = [ordered]@{ kind = 'rules-block'; sourceMode = 'literal'; bodySha256 = $hash; hashFormat = 'a7-lf-utf8'; inputs = @() }
+                    'skills/work' = [ordered]@{ kind = 'skill-link'; scopeOwners = @('claude', 'codex-skills'); sourceTier = 'product'; sourceId = 'work'; sourcePath = $source; linkType = 'junction'; normalizedTarget = $source; rawReparseTarget = $source }
+                } }
+            } }
+        }
+        function Save-CentralRecord($Record) { Write-SwFile (Join-Path $global:SwCentralHome '.sw/global.json') (ConvertTo-SwJson $Record) }
+        function Read-CentralRecord {
+            InModuleScope Sw.Kit { Read-SwCentralRecord (Join-Path $global:SwCentralHome '.sw/global.json') $script:Kit (Join-Path $global:SwCentralHome '.sw') }
+        }
+        function Central-Plan([hashtable]$Options) { InModuleScope Sw.Kit -Parameters @{ Options = $Options } { param($Options) Get-SwCentralPlan @Options } }
+        function Central-Tree {
+            @(Get-ChildItem -LiteralPath $global:SwCentralHome -Recurse -Force | Sort-Object FullName | ForEach-Object {
+                "$($_.FullName)|$(if ($_.PSIsContainer) { 'dir' } else { (Get-FileHash -LiteralPath $_.FullName).Hash })"
+            }) -join "`n"
+        }
+    }
+    BeforeEach {
+        Remove-Item Env:CLAUDE_CONFIG_DIR, Env:CODEX_HOME -ErrorAction Ignore
+        $global:SwCentralHome = Join-Path $TestDrive "central$(New-Id)"
+        New-Item -ItemType Directory -Path $global:SwCentralHome | Out-Null
+        Mock -ModuleName Sw.Kit Get-SwUserHome { $global:SwCentralHome }
+        Mock -ModuleName Sw.Kit Get-SwToolProbe { throw 'native probe forbidden in central preview' }
+        Mock -ModuleName Sw.Kit Get-SwToolVersion { throw 'native probe forbidden in central preview' }
+        Mock -ModuleName Sw.Kit Get-SwGhAuth { throw 'auth forbidden in central preview' }
+        Mock -ModuleName Sw.Kit Invoke-SwNative { throw 'native command forbidden in central preview' }
+    }
+    AfterAll {
+        Remove-Variable SwCentralHome -Scope Global -ErrorAction Ignore
+        Remove-Item Env:CLAUDE_CONFIG_DIR, Env:CODEX_HOME -ErrorAction Ignore
+        foreach ($key in $script:E3SavedProviderHomes.Keys) { if ($null -ne $script:E3SavedProviderHomes[$key]) { Set-Item "Env:$key" $script:E3SavedProviderHomes[$key] } }
+    }
+
+    It 'validates mixed scopes and retains exact legacy hashes without reading unrelated homes' {
+        $r = New-CentralRecord; Save-CentralRecord $r
+        (Read-CentralRecord).homes[(Join-Path $global:SwCentralHome '.agents')].kind | Should -Be 'claude+codex+codex-skills'
+        $r = [ordered]@{ schema = 1; kitVersion = 'old'; kitCommit = $null; homes = [ordered]@{
+            (Join-Path $TestDrive 'unrelated') = [ordered]@{ kind = 'claude+codex'; entries = [ordered]@{ 'CLAUDE.md#global' = ('a' * 64); 'AGENTS.md#global' = ('b' * 64) } }
+        } }
+        Save-CentralRecord $r; $before = Central-Tree; $n = Read-CentralRecord
+        $n.schema | Should -Be 2
+        $n.homes[(Join-Path $TestDrive 'unrelated')].entries['CLAUDE.md#global'].bodySha256 | Should -Be ('a' * 64)
+        $n.homes[(Join-Path $TestDrive 'unrelated')].entries['AGENTS.md#global'].inputs.Count | Should -Be 0
+        $n.homes[(Join-Path $TestDrive 'unrelated')].delivery.codex | Should -Be 'rules'
+        Central-Tree | Should -Be $before
+    }
+
+    It 'rejects schema2 <Case>' -ForEach @(
+        @{ Case = 'unknown key'; Edit = { param($r,$h) $r['extra'] = 1 } }
+        @{ Case = 'wrong schema type'; Edit = { param($r,$h) $r.schema = '2' } }
+        @{ Case = 'unknown schema'; Edit = { param($r,$h) $r.schema = 3 } }
+        @{ Case = 'relative root'; Edit = { param($r,$h) $r.productRoot = 'relative' } }
+        @{ Case = 'wrong personal root'; Edit = { param($r,$h) $r.personalRoot = $TestDrive } }
+        @{ Case = 'network root'; Edit = { param($r,$h) $r.productRoot = '\\server\share' } }
+        @{ Case = 'nonnormalized root'; Edit = { param($r,$h) $r.productRoot += '\..\Workspace' } }
+        @{ Case = 'kind order'; Edit = { param($r,$h) $h.kind = 'codex+claude+codex-skills' } }
+        @{ Case = 'unknown scope'; Edit = { param($r,$h) $h.delivery['other'] = 'central-v1' } }
+        @{ Case = 'missing selection scope'; Edit = { param($r,$h) $h.selection.Remove('claude') } }
+        @{ Case = 'wrong delivery type'; Edit = { param($r,$h) $h.delivery.claude = @('central-v1') } }
+        @{ Case = 'selection type'; Edit = { param($r,$h) $h.selection.claude.productSkills = 'work' } }
+        @{ Case = 'selection collision'; Edit = { param($r,$h) $h.selection.claude.personalSkills = @('work') } }
+        @{ Case = 'legacy nonempty selection'; Edit = { param($r,$h) $h.selection.codex.personalRules = @('shared') } }
+        @{ Case = 'wrong hash domain'; Edit = { param($r,$h) $h.entries['AGENTS.md#global'].hashFormat = 'raw' } }
+        @{ Case = 'wrong hash'; Edit = { param($r,$h) $h.entries['AGENTS.md#global'].bodySha256 = 'xyz' } }
+        @{ Case = 'unknown entry key'; Edit = { param($r,$h) $h.entries['AGENTS.md#global']['extra'] = 1 } }
+        @{ Case = 'array rule kind'; Edit = { param($r,$h) $h.entries['AGENTS.md#global'].kind = @('rules-block') } }
+        @{ Case = 'array source mode'; Edit = { param($r,$h) $h.entries['AGENTS.md#global'].sourceMode = @('literal') } }
+        @{ Case = 'array hash format'; Edit = { param($r,$h) $h.entries['AGENTS.md#global'].hashFormat = @('a7-lf-utf8') } }
+        @{ Case = 'input unknown key'; Edit = { param($r,$h) $h.delivery.codex = 'central-v1'; $h.entries['AGENTS.md#global'].inputs = @([ordered]@{ tier='product'; path=(Join-Path $r.productRoot 'global/rules.md'); sha256=('a'*64); extra=1 }) } }
+        @{ Case = 'input hash'; Edit = { param($r,$h) $h.delivery.codex = 'central-v1'; $h.entries['AGENTS.md#global'].inputs = @([ordered]@{ tier='product'; path=(Join-Path $r.productRoot 'global/rules.md'); sha256='xyz' }) } }
+        @{ Case = 'input order'; Edit = { param($r,$h) $h.delivery.codex = 'central-v1'; $h.entries['AGENTS.md#global'].inputs = @([ordered]@{ tier='personal'; path=(Join-Path $r.personalRoot 'rules/shared.md'); sha256=('a'*64) }) } }
+        @{ Case = 'empty owners'; Edit = { param($r,$h) $h.entries['skills/work'].scopeOwners = @() } }
+        @{ Case = 'duplicate owners'; Edit = { param($r,$h) $h.entries['skills/work'].scopeOwners = @('claude','claude') } }
+        @{ Case = 'invalid owner'; Edit = { param($r,$h) $h.entries['skills/work'].scopeOwners = @('codex') } }
+        @{ Case = 'source id mismatch'; Edit = { param($r,$h) $h.entries['skills/work'].sourceId = 'review' } }
+        @{ Case = 'array link type'; Edit = { param($r,$h) $h.entries['skills/work'].linkType = @('junction') } }
+        @{ Case = 'array source tier'; Edit = { param($r,$h) $h.entries['skills/work'].sourceTier = @('product') } }
+        @{ Case = 'target mismatch'; Edit = { param($r,$h) $h.entries['skills/work'].normalizedTarget = $TestDrive } }
+        @{ Case = 'wrong raw target'; Edit = { param($r,$h) $h.entries['skills/work'].rawReparseTarget = $TestDrive } }
+        @{ Case = 'wrong shared home'; Edit = { param($r,$h) $r.homes = [ordered]@{ (Join-Path $TestDrive 'wrong') = $h } } }
+        @{ Case = 'empty home'; Edit = { param($r,$h) $h.entries = [ordered]@{} } }
+    ) {
+        $r = New-CentralRecord; & $Edit $r $r.homes[(Join-Path $global:SwCentralHome '.agents')]; Save-CentralRecord $r
+        { Read-CentralRecord } | Should -Throw '*Invalid global*record*'
+    }
+
+    It 'rejects duplicate and case-colliding raw JSON keys before conversion' -ForEach @('"schema": 2,', '"Schema": 2,', '"\u0073chema": 2,') {
+        $text = (ConvertTo-SwJson (New-CentralRecord)).Replace('"schema": 2,', ('"schema": 2,' + $_))
+        Write-SwFile (Join-Path $global:SwCentralHome '.sw/global.json') $text
+        { Read-CentralRecord } | Should -Throw '*Invalid global*record*'
+    }
+
+    It 'keeps the schema1 validator strict before normalization' {
+        Write-SwFile (Join-Path $global:SwCentralHome '.sw/global.json') '{"schema":1,"kitVersion":"old","kitCommit":null,"homes":{},"extra":true}'
+        { Read-CentralRecord } | Should -Throw '*Invalid global baseline record*'
+    }
+
+    It 'normalizes the single acquired schema1 snapshot even if the file changes after acquisition' {
+        $dir = Join-Path $TestDrive 'unrelated'
+        $path = Join-Path $global:SwCentralHome '.sw/global.json'
+        $hash = '0123456789abcdef' * 4
+        Save-CentralRecord ([ordered]@{ schema=1; kitVersion='old'; kitCommit='original-commit'; homes=[ordered]@{
+            $dir=[ordered]@{ kind='codex'; entries=[ordered]@{ 'AGENTS.md#global'=$hash } }
+        } })
+        Mock -ModuleName Sw.Kit Read-SwText {
+            $text = [IO.File]::ReadAllText($Path)
+            # Simulate replacement after acquisition; a second read would see invalid JSON.
+            [IO.File]::WriteAllText($Path, 'not json')
+            $text
+        } -ParameterFilter { $Path -eq (Join-Path $global:SwCentralHome '.sw/global.json') }
+        $n = Read-CentralRecord
+        $expected = [ordered]@{ schema=2; kitVersion='old'; kitCommit='original-commit'; productRoot=$RepoRoot; personalRoot=(Join-Path $global:SwCentralHome '.sw'); homes=[ordered]@{
+            $dir=[ordered]@{ kind='codex'; delivery=[ordered]@{ codex='rules' }; selection=[ordered]@{
+                codex=[ordered]@{ productSkills=@(); personalSkills=@(); personalRules=@() }
+            }; entries=[ordered]@{
+                'AGENTS.md#global'=[ordered]@{ kind='rules-block'; sourceMode='literal'; bodySha256=$hash; hashFormat='a7-lf-utf8'; inputs=@() }
+            } }
+        } }
+        ConvertTo-SwJson $n | Should -BeExactly (ConvertTo-SwJson $expected)
+        Should -Invoke -ModuleName Sw.Kit Read-SwText -Exactly -Times 1 -ParameterFilter { $Path -eq (Join-Path $global:SwCentralHome '.sw/global.json') }
+        [IO.File]::ReadAllText($path) | Should -BeExactly 'not json'
+        Test-Path -LiteralPath $dir | Should -BeFalse
+    }
+
+    It 'does not invent source drift history for a normalized schema1 block' {
+        $dir = Join-Path $global:SwCentralHome '.codex'
+        $body = Read-SwText (Join-Path $RepoRoot 'global/rules.md')
+        Write-SwFile (Join-Path $dir 'AGENTS.md') (Set-SwBlock '' 'global' $body)
+        $hash = InModuleScope Sw.Kit -Parameters @{ B=$body } { param($B) Get-SwHash (Get-SwGlobalBody $B) }
+        Save-CentralRecord ([ordered]@{ schema=1; kitVersion='old'; kitCommit=$null; homes=[ordered]@{ $dir=[ordered]@{ kind='codex'; entries=[ordered]@{ 'AGENTS.md#global'=$hash } } } })
+        $p = Central-Plan @{ Action='check'; Harness='codex'; Component='rules' }
+        $p.Rows[0].Current | Should -Be 'current'
+        $p.Rows[0].SourceDrift | Should -BeNullOrEmpty
+        $p.Record.homes[$dir].entries['AGENTS.md#global'].inputs.Count | Should -Be 0
+    }
+
+    It 'rejects network home paths before the legacy ambiguity check can probe them' {
+        InModuleScope Sw.Kit {
+            Mock Get-SwHomeList { throw 'must not probe network path' }
+            { Get-SwCentralHomeList 'Codex' @('\\server\share;C:\local') 'CODEX_HOME' 'C:\default' } | Should -Throw '*network/device*'
+            Should -Invoke Get-SwHomeList -Times 0
+        }
+    }
+
+    It 'plans per-home rules and exactly one shared Codex skill independently of CODEX_HOME' {
+        $a = Join-Path $global:SwCentralHome 'codex a'; $b = Join-Path $global:SwCentralHome 'codex b'
+        New-Item -ItemType Directory -Path $a,$b | Out-Null
+        $before = Central-Tree
+        $p = Central-Plan @{ Action='install'; Harness='codex'; Skills=@('work'); CodexHome=@($a,$b) }
+        @($p.Rows | Where-Object Kind -EQ 'rules-block').Count | Should -Be 2
+        $links = @($p.Rows | Where-Object Kind -EQ 'skill-link'); $links.Count | Should -Be 1
+        $links[0].Target | Should -Be (Join-Path $global:SwCentralHome '.agents/skills/work')
+        $links[0].BlastRadius | Should -Match 'shared Codex user scope'
+        $p.Record.homes.Count | Should -Be 0
+        Central-Tree | Should -Be $before
+    }
+
+    It 'requires initial explicit product selection and never selects the whole catalogue' {
+        { Central-Plan @{ Action='install'; Harness='codex'; Component='skills' } } | Should -Throw '*explicit*Skills*'
+        $p = Central-Plan @{ Action='check'; Harness='codex'; Component='skills' }
+        @($p.Rows).Count | Should -Be 0
+        $p.Diagnostics -join ' ' | Should -Match 'no recorded selection'
+    }
+
+    It 'deduplicates aliased leaves and retains out-of-selection ownership claims' {
+        $artifactHome = Join-Path $global:SwCentralHome '.agents'; New-Item -ItemType Directory -Path $artifactHome | Out-Null
+        $p = Central-Plan @{ Action='install'; Harness='both'; Component='skills'; ClaudeConfigDir=@($artifactHome); Skills=@('work') }
+        $p.Rows.Count | Should -Be 1
+        $p.Rows[0].Scopes | Should -Be @('claude','codex-skills')
+        Save-CentralRecord (New-CentralRecord)
+        Mock -ModuleName Sw.Kit Get-SwCentralLinkObservation { [pscustomobject]@{ State='current'; Error=$null } }
+        $p = Central-Plan @{ Action='install'; Harness='both'; Component='skills'; ClaudeConfigDir=@($artifactHome); Skills=@() }
+        $p.Rows[0].Action | Should -Be 'retain-owned'
+        $p.Rows[0].ScopeOwners | Should -Be @('claude','codex-skills')
+        $p.Record.homes[$artifactHome].selection.claude.productSkills | Should -Be @('work') -Because 'planning never mutates the input record'
+    }
+
+    It 'plans scoped detach, repeat no-op and last-owner physical removal without source traversal' {
+        $artifactHome = Join-Path $global:SwCentralHome '.agents'; New-Item -ItemType Directory -Path $artifactHome | Out-Null
+        $r = New-CentralRecord; Save-CentralRecord $r
+        Mock -ModuleName Sw.Kit Get-SwCentralLinkObservation { [pscustomobject]@{ State='current'; Error=$null } }
+        Mock -ModuleName Sw.Kit Get-SwCentralSkillSource { throw 'remove must not inspect skill source' }
+        $p = Central-Plan @{ Action='remove'; Harness='claude'; Component='skills'; ClaudeConfigDir=@($artifactHome) }
+        $p.Rows[0].Action | Should -Be 'detach-owner'
+        $p.Rows[0].DesiredOwners | Should -Be @('codex-skills')
+        $r.homes[$artifactHome].entries['skills/work'].scopeOwners = @('codex-skills')
+        $r.homes[$artifactHome].delivery.Remove('claude'); $r.homes[$artifactHome].selection.Remove('claude'); $r.homes[$artifactHome].kind = 'codex+codex-skills'
+        Save-CentralRecord $r
+        (Central-Plan @{ Action='remove'; Harness='claude'; Component='skills'; ClaudeConfigDir=@($artifactHome) }).Rows.Count | Should -Be 0
+        (Central-Plan @{ Action='remove'; Harness='codex'; Component='skills' }).Rows[0].Action | Should -Be 'remove-link'
+    }
+
+    It 'the pure decision refuses retarget of an untargeted owner and unowned or tampered leaves' {
+        InModuleScope Sw.Kit {
+            $a = [pscustomobject]@{ Artifact='skills/work'; Kind='skill-link'; SourceTier='product'; Source='C:\new\work'; TargetHome='C:\home'; Target='C:\home\skills\work'; Current='current'; Desired=$true; Scopes=@('claude'); ScopeOwners=@('claude','codex-skills'); Ownership='record'; Refusal=$null; BlastRadius='shared'; SourceChanged=$true; SourceDrift=$false }
+            (Get-SwCentralDecision $a 'install').Refusal | Should -Match 'every owning scope'
+            $a.Current = 'missing-link'
+            (Get-SwCentralDecision $a 'install').State | Should -Be 'FAILED'
+            $a.Current = 'current'
+            $a.Scopes = @('claude','codex-skills')
+            (Get-SwCentralDecision $a 'install').Action | Should -Be 'retarget-link'
+            $a.Current = 'unowned-link'
+            (Get-SwCentralDecision $a 'check').State | Should -Be 'FAILED'
+            $a.Current = 'tampered'
+            (Get-SwCentralDecision $a 'remove').Action | Should -Be 'refuse'
+        }
+    }
+
+    It 'validates selected source IDs, frontmatter, collisions and missing inputs' {
+        { Central-Plan @{ Action='install'; Harness='codex'; Component='skills'; Skills=@('../work') } } | Should -Throw
+        { Central-Plan @{ Action='install'; Harness='codex'; Component='skills'; Skills=@('work','Work') } } | Should -Throw
+        { Central-Plan @{ Action='install'; Harness='codex'; Component='skills'; Skills=@('work'); PersonalSkills=@('work') } } | Should -Throw '*collision*'
+        { Central-Plan @{ Action='install'; Harness='codex'; Component='skills'; Skills=@('missing-skill') } } | Should -Throw '*source*'
+        Write-SwFile (Join-Path $global:SwCentralHome '.sw/skills/mine/SKILL.md') "---`nname: wrong`ndescription: test`n---`nbody`n"
+        { Central-Plan @{ Action='install'; Harness='codex'; Component='skills'; Skills=@(); PersonalSkills=@('mine') } } | Should -Throw '*name*'
+        { Central-Plan @{ Action='check'; Harness='codex'; Component='rules'; PersonalRules=@('shared') } } | Should -Throw '*source missing*'
+        $before = Central-Tree
+        Invoke-SwGlobal install -Delivery central-v1 -Harness codex -WhatIf | Out-Null
+        $global:LASTEXITCODE | Should -Be 2
+        Invoke-SwGlobal install -Delivery central-v1 -Harness codex -Component skills -Skills 'work,,resume' -WhatIf | Out-Null
+        $global:LASTEXITCODE | Should -Be 2
+        Central-Tree | Should -Be $before
+    }
+
+    It 'an initial personal-only preview uses an explicit empty product list and the existing Unreal specialist path' {
+        Write-SwFile (Join-Path $global:SwCentralHome '.sw/skills/mine/SKILL.md') "---`nname: mine`ndescription: test`n---`nbody`n"
+        $p = Central-Plan @{ Action='install'; Harness='codex'; Component='skills'; Skills=@(); PersonalSkills=@('mine') }
+        $p.Rows[0].Source | Should -Be (Join-Path $global:SwCentralHome '.sw/skills/mine')
+        $p = Central-Plan @{ Action='install'; Harness='codex'; Component='skills'; Skills=@('unreal-validation') }
+        $p.Rows[0].Source | Should -Be (Join-Path $RepoRoot 'project/profiles/unreal/files/.agents/skills/unreal-validation')
+    }
+
+    It 'limits every component and never resolves an unrelated provider home' {
+        $env:CLAUDE_CONFIG_DIR = 'relative-and-invalid'
+        $env:CODEX_HOME = 'also-invalid'
+        $p = Central-Plan @{ Action='install'; Harness='codex'; Component='skills'; Skills=@('work'); CodexHome=@('ignored-for-skills') }
+        $p.Rows.Count | Should -Be 1
+        $p.Rows[0].Kind | Should -Be 'skill-link'
+        { Central-Plan @{ Action='check'; Harness='codex'; Component='rules' } } | Should -Throw '*absolute path*'
+        Remove-Item Env:CODEX_HOME -ErrorAction Ignore
+        (Central-Plan @{ Action='check'; Harness='codex'; Component='rules' }).Rows.Kind | Should -Be @('rules-block')
+        Remove-Item Env:CLAUDE_CONFIG_DIR -ErrorAction Ignore
+    }
+
+    It 'composes rules in order with raw hashes and escaped-space Claude imports' {
+        Write-SwFile (Join-Path $global:SwCentralHome '.sw/rules/shared.md') "shared`n"
+        Write-SwFile (Join-Path $global:SwCentralHome '.sw/rules/claude.md') "claude extra`n"
+        Write-SwFile (Join-Path $global:SwCentralHome '.sw/rules/codex.md') "codex extra`n"
+        $p = Central-Plan @{ Action='install'; Harness='both'; Component='rules'; PersonalRules=@('shared','claude','codex') }
+        $c = @($p.Rows | Where-Object Artifact -EQ 'CLAUDE.md#global')[0]
+        $c.Body | Should -Match '(?m)^@.*global/rules\.md$'
+        $c.Body | Should -Not -Match 'claude extra'
+        $c.Inputs.Count | Should -Be 3
+        $x = @($p.Rows | Where-Object Artifact -EQ 'AGENTS.md#global')[0]
+        $x.Body | Should -Match '(?s)shared\n+codex extra'
+        $x.KnownBytes | Should -BeGreaterThan 0
+        InModuleScope Sw.Kit { ConvertTo-SwCentralImport 'C:\Product Root\rules.md' } | Should -Be '@C:/Product\ Root/rules.md'
+        foreach ($path in @('C:\bad@path\rules.md','C:\bad`path\rules.md',"C:\bad`npath\rules.md",'C:\bad"path\rules.md')) {
+            { InModuleScope Sw.Kit -Parameters @{ P=$path } { param($P) ConvertTo-SwCentralImport $P } } | Should -Throw '*import*'
+        }
+    }
+
+    It 'refuses rule targets that alias personal rule sources or fall inside selected skill sources' {
+        $rulesHome = Join-Path $global:SwCentralHome '.sw/rules'
+        Write-SwFile (Join-Path $rulesHome 'claude.md') "personal rule source`n"
+        $before = Central-Tree
+        $p = Central-Plan @{ Action='install'; Harness='claude'; Component='rules'; ClaudeConfigDir=@($rulesHome); PersonalRules=@('claude') }
+        $p.ExitCode | Should -Be 1
+        $p.Rows[0].Refusal | Should -Match 'source.*target overlap'
+        $p.Rows[0].Action | Should -Be 'refuse'
+        Central-Tree | Should -Be $before
+        $sourceHome = Join-Path $global:SwCentralHome '.sw/skills/mine'
+        Write-SwFile (Join-Path $sourceHome 'SKILL.md') "---`nname: mine`ndescription: test`n---`nbody`n"
+        $p = Central-Plan @{ Action='install'; Harness='claude'; ClaudeConfigDir=@($sourceHome); Skills=@(); PersonalSkills=@('mine') }
+        @($p.Rows | Where-Object Kind -EQ 'rules-block')[0].Refusal | Should -Match 'source.*target overlap'
+        $p.ExitCode | Should -Be 1
+    }
+
+    It 'protects unselected canonical <Case> sources without catalogue discovery' -ForEach @(
+        @{ Case='product'; RootKind='current'; Relative='project/base/.agents/skills/resume'; Component='all'; Enclosing=$false }
+        @{ Case='personal'; RootKind='personal'; Relative='skills/resume'; Component='all'; Enclosing=$false }
+        @{ Case='Unreal profile'; RootKind='current'; Relative='project/profiles/unreal/files/.agents/skills/unreal-validation'; Component='all'; Enclosing=$false }
+        @{ Case='recorded product'; RootKind='recorded'; Relative='project/base/.agents/skills/resume'; Component='all'; Enclosing=$false }
+        @{ Case='recorded Unreal profile'; RootKind='recorded'; Relative='project/profiles/unreal/files/.agents/skills/unreal-validation'; Component='all'; Enclosing=$false }
+        @{ Case='product in rules-only preview'; RootKind='current'; Relative='project/base/.agents/skills/resume'; Component='rules'; Enclosing=$false }
+        @{ Case='recorded root enclosed by a native link'; RootKind='recorded'; Relative=''; Component='all'; Enclosing=$true }
+    ) {
+        $kit = Join-Path $global:SwCentralHome 'kit'
+        Write-SwFile (Join-Path $kit 'VERSION') '0.4.0-dev'
+        Write-SwFile (Join-Path $kit 'global/rules.md') 'product rules'
+        Write-SwFile (Join-Path $kit 'project/base/.agents/skills/work/SKILL.md') (@('---','name: work','description: test','---','body') -join [char]10)
+        $native = Join-Path $global:SwCentralHome 'native'
+        $oldRoot = if ($Enclosing) { Join-Path $native 'skills/work' } else { Join-Path $global:SwCentralHome 'old-kit' }
+        if ($RootKind -eq 'recorded') {
+            $r = New-CentralRecord; $r.productRoot = $oldRoot
+            $entry = $r.homes[(Join-Path $global:SwCentralHome '.agents')].entries['skills/work']
+            $entry.sourcePath = Join-Path $oldRoot 'project/base/.agents/skills/work'
+            $entry.normalizedTarget = $entry.sourcePath; $entry.rawReparseTarget = $entry.sourcePath
+            Save-CentralRecord $r
+        }
+        if (-not $Enclosing) {
+            $root = switch ($RootKind) { current { $kit } personal { Join-Path $global:SwCentralHome '.sw' } recorded { $oldRoot } }
+            $native = Join-Path $root $Relative
+        }
+        New-Item -ItemType Directory -Path $native | Out-Null
+        $before = Central-Tree
+        $options = @{ Action='install'; Harness='claude'; Component=$Component; ClaudeConfigDir=@($native) }
+        if ($Component -eq 'all') { $options.Skills = @('work') }
+        $p = InModuleScope Sw.Kit -Parameters @{ Kit=$kit; Options=$options } {
+            param($Kit, $Options)
+            $previous = $script:Kit
+            try { $script:Kit = $Kit; Get-SwCentralPlan @Options } finally { $script:Kit = $previous }
+        }
+        $p.ExitCode | Should -Be 1
+        $targets = if ($Enclosing) { @($oldRoot) } else { @($p.Rows.Target) }
+        foreach ($target in $targets) {
+            $row = @($p.Rows | Where-Object Target -EQ $target)[0]
+            $row.Action | Should -Be 'refuse'
+            $row.Refusal | Should -Match 'source.*target overlap'
+        }
+        Central-Tree | Should -Be $before
+    }
+
+    It '<Operation> protects unselected personal sources without opening or traversing them' -ForEach @(
+        @{ Operation='remove' }, @{ Operation='backup' }
+    ) {
+        $native = Join-Path $global:SwCentralHome '.sw/skills/resume'
+        New-Item -ItemType Directory -Path $native | Out-Null
+        Mock -ModuleName Sw.Kit Get-SwCentralSkillSource { throw 'must not read skill sources' }
+        Mock -ModuleName Sw.Kit Get-SwCentralRules { throw 'must not read rule sources' }
+        Mock -ModuleName Sw.Kit Get-SwPhysicalFiles { throw 'must not enumerate sources' }
+        $before = Central-Tree
+        $p = Central-Plan @{ Action=$Operation; Harness='claude'; Component='rules'; ClaudeConfigDir=@($native) }
+        $p.ExitCode | Should -Be 1
+        $p.Rows[0].Refusal | Should -Match 'source.*target overlap'
+        Central-Tree | Should -Be $before
+        Should -Invoke -ModuleName Sw.Kit Get-SwCentralSkillSource -Times 0
+        Should -Invoke -ModuleName Sw.Kit Get-SwCentralRules -Times 0
+        Should -Invoke -ModuleName Sw.Kit Get-SwPhysicalFiles -Times 0
+    }
+
+    It 'allows a legitimate home beside a canonical source container' {
+        $native = Join-Path $global:SwCentralHome '.sw/skills-neighbor/claude'
+        New-Item -ItemType Directory -Path $native | Out-Null
+        $before = Central-Tree
+        $p = Central-Plan @{ Action='install'; Harness='claude'; Skills=@('work'); ClaudeConfigDir=@($native) }
+        $p.ExitCode | Should -Be 0
+        @($p.Rows | Where-Object Action -EQ 'refuse').Count | Should -Be 0
+        Central-Tree | Should -Be $before
+    }
+
+    It 'protects requested recorded skill sources during a product-root retarget' {
+        $r = New-CentralRecord
+        $r.productRoot = Join-Path $global:SwCentralHome 'old-kit'
+        $oldSource = Join-Path $r.productRoot 'project/base/.agents/skills/work'
+        New-Item -ItemType Directory -Path $oldSource | Out-Null
+        $h = $r.homes[(Join-Path $global:SwCentralHome '.agents')]
+        $h.kind = 'codex-skills'
+        foreach ($scope in @('claude', 'codex')) { $h.delivery.Remove($scope); $h.selection.Remove($scope) }
+        $h.entries.Remove('AGENTS.md#global')
+        $entry = $h.entries['skills/work']
+        $entry.scopeOwners = @('codex-skills')
+        $entry.sourcePath = $oldSource; $entry.normalizedTarget = $oldSource; $entry.rawReparseTarget = $oldSource
+        Save-CentralRecord $r
+        Mock -ModuleName Sw.Kit Get-SwCentralLinkObservation {
+            param($Path, $Entry)
+            [pscustomobject]@{ State=$(if ($Entry) { 'current' } else { 'missing-link' }); Error=$null }
+        }
+        $before = Central-Tree
+        $p = Central-Plan @{ Action='install'; Harness='both'; Skills=@('work'); ClaudeConfigDir=@($oldSource) }
+        $p.ExitCode | Should -Be 1
+        foreach ($target in @((Join-Path $oldSource 'CLAUDE.md'), (Join-Path $oldSource 'skills/work'))) {
+            $row = @($p.Rows | Where-Object Target -EQ $target)[0]
+            $row.Action | Should -Be 'refuse'
+            $row.Refusal | Should -Match 'source.*target overlap'
+        }
+        $p.Record.homes[(Join-Path $global:SwCentralHome '.agents')].entries['skills/work'].sourcePath | Should -Be $oldSource
+        Central-Tree | Should -Be $before
+    }
+
+    It 'protects requested recorded rule inputs during a product-root retarget' {
+        $claudeHome = Join-Path $global:SwCentralHome 'claude'
+        $codexHome = Join-Path $global:SwCentralHome 'codex'
+        New-Item -ItemType Directory -Path $claudeHome,$codexHome | Out-Null
+        $r = New-CentralRecord
+        $r.productRoot = Join-Path $claudeHome 'skills/work'
+        $oldInput = Join-Path $r.productRoot 'global/rules.md'
+        $r.homes = [ordered]@{ $codexHome = [ordered]@{
+            kind='codex'; delivery=[ordered]@{ codex='central-v1' }
+            selection=[ordered]@{ codex=[ordered]@{ productSkills=@(); personalSkills=@(); personalRules=@() } }
+            entries=[ordered]@{ 'AGENTS.md#global'=[ordered]@{
+                kind='rules-block'; sourceMode='literal'; bodySha256=('a'*64); hashFormat='a7-lf-utf8'
+                inputs=@([ordered]@{ tier='product'; path=$oldInput; sha256=('b'*64) })
+            } }
+        } }
+        Save-CentralRecord $r
+        $before = Central-Tree
+        $p = Central-Plan @{ Action='install'; Harness='both'; Skills=@('work'); ClaudeConfigDir=@($claudeHome); CodexHome=@($codexHome) }
+        $p.ExitCode | Should -Be 1
+        $row = @($p.Rows | Where-Object Target -EQ $r.productRoot)[0]
+        $row.Action | Should -Be 'refuse'
+        $row.Refusal | Should -Match 'source.*target overlap'
+        $p.Record.homes[$codexHome].entries['AGENTS.md#global'].inputs[0].path | Should -Be $oldInput
+        Central-Tree | Should -Be $before
+    }
+
+    It 'rejects personal nested imports and diagnoses override masking without changing either file' {
+        Write-SwFile (Join-Path $global:SwCentralHome '.sw/rules/shared.md') "@C:/elsewhere.md`n"
+        { Central-Plan @{ Action='install'; Harness='codex'; Component='rules'; PersonalRules=@('shared') } } | Should -Throw '*nested import*'
+        Write-SwFile (Join-Path $global:SwCentralHome '.codex/AGENTS.override.md') 'override'
+        $before = Central-Tree
+        $p = Central-Plan @{ Action='check'; Harness='codex'; Component='rules' }
+        $p.ExitCode | Should -Be 1
+        $p.Rows[0].Refusal | Should -Match 'AGENTS.override.md'
+        Central-Tree | Should -Be $before
+    }
+
+    It 'rejects quoted-space, extensionless and inline personal imports' -ForEach @('@"C:/has space/rules.md"', '@README', 'text @../more.md') {
+        Write-SwFile (Join-Path $global:SwCentralHome '.sw/rules/shared.md') $_
+        { Central-Plan @{ Action='check'; Harness='claude'; Component='rules'; PersonalRules=@('shared') } } | Should -Throw '*nested import*'
+    }
+
+    It 'reuses only recorded target-specific selections and refuses aliased source conflicts' {
+        $r = New-CentralRecord; $a = Join-Path $global:SwCentralHome '.agents'; $b = Join-Path $global:SwCentralHome 'second claude'
+        New-Item -ItemType Directory -Path $a,$b | Out-Null
+        $source = Join-Path $RepoRoot 'project/base/.agents/skills/resume'
+        $r.homes[$b] = [ordered]@{ kind='claude'; delivery=[ordered]@{ claude='central-v1' }; selection=[ordered]@{
+            claude=[ordered]@{ productSkills=@('resume'); personalSkills=@(); personalRules=@() }
+        }; entries=[ordered]@{ 'skills/resume'=[ordered]@{ kind='skill-link'; scopeOwners=@('claude'); sourceTier='product'; sourceId='resume'; sourcePath=$source; linkType='junction'; normalizedTarget=$source; rawReparseTarget=$source } } }
+        Save-CentralRecord $r
+        Mock -ModuleName Sw.Kit Get-SwCentralLinkObservation { [pscustomobject]@{ State='current'; Error=$null } }
+        $p = Central-Plan @{ Action='check'; Harness='claude'; Component='skills'; ClaudeConfigDir=@($a,$b) }
+        $p.Rows.Artifact | Should -Be @('skills/work','skills/resume')
+        Write-SwFile (Join-Path $global:SwCentralHome '.sw/skills/work/SKILL.md') "---`nname: work`ndescription: personal test`n---`nbody`n"
+        $r.homes[$a].selection['codex-skills'].productSkills=@(); $r.homes[$a].selection['codex-skills'].personalSkills=@('work'); Save-CentralRecord $r
+        $p = Central-Plan @{ Action='install'; Harness='both'; Component='skills'; ClaudeConfigDir=@($a) }
+        $p.Rows.Count | Should -Be 1; $p.ExitCode | Should -Be 1
+        $p.Rows[0].Refusal | Should -Match 'Conflicting sources'
+    }
+
+    It 'uses exact leaf metadata independently of live source edits or source existence' {
+        $r = New-CentralRecord; $entry = $r.homes[(Join-Path $global:SwCentralHome '.agents')].entries['skills/work']
+        $leaf = Join-Path $global:SwCentralHome '.agents/skills/work'
+        InModuleScope Sw.Kit -Parameters @{ E=$entry; P=$leaf } {
+            param($E,$P)
+            Mock Get-Item { [pscustomobject]@{ Attributes=([IO.FileAttributes]::Directory -bor [IO.FileAttributes]::ReparsePoint); LinkType='Junction'; Target=@($E.rawReparseTarget) } }
+            Mock Get-SwPhysicalFiles { throw 'must not traverse leaf or source' }
+            (Get-SwCentralLinkObservation $P $E).State | Should -Be 'current'
+            (Get-SwCentralLinkObservation $P $null).State | Should -Be 'unowned-link'
+            Mock Get-Item { [pscustomobject]@{ Attributes=[IO.FileAttributes]::ReparsePoint; LinkType='Junction'; Target=@('C:\changed\work') } }
+            (Get-SwCentralLinkObservation $P $E).State | Should -Be 'tampered'
+            Mock Get-Item { [pscustomobject]@{ Attributes=[IO.FileAttributes]::ReparsePoint; LinkType='SymbolicLink'; Target=@($E.rawReparseTarget) } }
+            (Get-SwCentralLinkObservation $P $E).State | Should -Be 'tampered'
+            Mock Get-Item { [pscustomobject]@{ Attributes=[IO.FileAttributes]::Directory } }
+            (Get-SwCentralLinkObservation $P $E).State | Should -Be 'foreign-type'
+            Should -Invoke Get-SwPhysicalFiles -Times 0
+        }
+    }
+
+    It 'rejects participating linked ancestors and nested source links without changing broad guards' {
+        Write-SwFile (Join-Path $global:SwCentralHome '.sw/skills/mine/SKILL.md') "---`nname: mine`ndescription: test`n---`nbody`n"
+        Mock -ModuleName Sw.Kit Get-SwPhysicalFiles { throw 'Participating path traverses a link or junction: nested' }
+        { Central-Plan @{ Action='install'; Harness='codex'; Component='skills'; Skills=@(); PersonalSkills=@('mine') } } | Should -Throw '*link or junction*'
+        InModuleScope Sw.Kit -Parameters @{ P=(Join-Path $global:SwCentralHome '.agents/skills/work') } {
+            param($P)
+            Mock Assert-SwPhysicalPath { throw 'Participating path traverses a link or junction: ancestor' }
+            Mock Get-Item { throw 'must not inspect a leaf below an unsafe ancestor' }
+            (Get-SwCentralLinkObservation $P $null).State | Should -Be 'foreign-type'
+            Should -Invoke Get-Item -Times 0
+        }
+    }
+
+    It 'backup preview never reads rule or skill source contents' {
+        Save-CentralRecord (New-CentralRecord)
+        Mock -ModuleName Sw.Kit Get-SwCentralSkillSource { throw 'backup must not read skill sources' }
+        Mock -ModuleName Sw.Kit Get-SwCentralRules { throw 'backup must not read rule sources' }
+        Mock -ModuleName Sw.Kit Get-SwCentralLinkObservation { [pscustomobject]@{ State='current'; Error=$null } }
+        $p = Central-Plan @{ Action='backup'; Harness='codex' }
+        @($p.Rows | Where-Object Kind -EQ 'skill-link').Count | Should -Be 1
+        $p.Diagnostics -join ' ' | Should -Match 'Record snapshot:'
+        $p.Rows.Action | Should -Not -Contain 'create-link'
+    }
+
+    It 'a source-root retarget needs every owning physical-home scope in the same preview' {
+        $a = Join-Path $global:SwCentralHome '.agents'; New-Item -ItemType Directory -Path $a | Out-Null
+        $r = New-CentralRecord; $r.productRoot = Join-Path $TestDrive 'moved-old-kit'
+        $source = Join-Path $r.productRoot 'project/base/.agents/skills/work'
+        $r.homes[$a].entries['skills/work'].sourcePath = $source
+        $r.homes[$a].entries['skills/work'].normalizedTarget = $source
+        $r.homes[$a].entries['skills/work'].rawReparseTarget = $source
+        Save-CentralRecord $r; $before = Central-Tree
+        Mock -ModuleName Sw.Kit Get-SwCentralLinkObservation { [pscustomobject]@{ State='current'; Error=$null } }
+        $p = Central-Plan @{ Action='install'; Harness='claude'; Component='skills'; ClaudeConfigDir=@($a) }
+        $p.ExitCode | Should -Be 1
+        $p.Rows[0].Refusal | Should -Match 'every owning scope'
+        $p = Central-Plan @{ Action='install'; Harness='both'; Component='skills'; ClaudeConfigDir=@($a) }
+        $p.Rows[0].Action | Should -Be 'retarget-link'
+        Central-Tree | Should -Be $before
+    }
+
+    It 'preserves BOM and CRLF rule bytes throughout preview, including warnings and source failures' {
+        $file = Join-Path $global:SwCentralHome '.codex/AGENTS.md'
+        Write-SwFile $file ''
+        $bytes = @([Text.Encoding]::UTF8.GetPreamble()) + @([Text.Encoding]::UTF8.GetBytes("outside`r`n<!-- sw:begin global -->`r`nuser edit`r`n<!-- sw:end global -->`r`ntail`r`n"))
+        [IO.File]::WriteAllBytes($file, [byte[]]$bytes)
+        $before = Central-Tree
+        Invoke-SwGlobal install -Delivery central-v1 -Harness codex -Component rules -WhatIf | Out-Null
+        $global:LASTEXITCODE | Should -Be 0
+        Invoke-SwGlobal check -Delivery central-v1 -Harness codex -Component rules -PersonalRules shared | Out-Null
+        $global:LASTEXITCODE | Should -Be 1
+        Central-Tree | Should -Be $before
+        [IO.File]::ReadAllBytes($file) | Should -Be $bytes
+    }
+
+    It 'detects raw rule-source drift separately from an unchanged installed A7 body' {
+        $path = Join-Path $global:SwCentralHome '.sw/rules/shared.md'
+        Write-SwFile $path "personal`n"
+        $p = Central-Plan @{ Action='install'; Harness='codex'; Component='rules'; PersonalRules=@('shared') }
+        $row = $p.Rows[0]; $h = Join-Path $global:SwCentralHome '.codex'
+        Write-SwFile (Join-Path $h 'AGENTS.md') (Set-SwBlock '' 'global' $row.Body)
+        $r = New-CentralRecord
+        $r.homes[$h] = [ordered]@{ kind='codex'; delivery=[ordered]@{ codex='central-v1' }; selection=[ordered]@{
+            codex=[ordered]@{ productSkills=@(); personalSkills=@(); personalRules=@('shared') }
+        }; entries=[ordered]@{ 'AGENTS.md#global'=[ordered]@{ kind='rules-block'; sourceMode='literal'; bodySha256=(Get-SwHash $row.Body); hashFormat='a7-lf-utf8'; inputs=$row.Inputs } } }
+        Save-CentralRecord $r
+        [IO.File]::WriteAllBytes($path, [Text.Encoding]::UTF8.GetBytes("personal`r`n"))
+        $p = Central-Plan @{ Action='check'; Harness='codex'; Component='rules' }
+        $p.Rows[0].Current | Should -Be 'current'
+        $p.Rows[0].SourceDrift | Should -BeTrue
+        $p.ExitCode | Should -Be 0
+        Write-SwFile $path "updated`n"
+        $p = Central-Plan @{ Action='install'; Harness='codex'; Component='rules' }
+        $p.Rows[0].Current | Should -Be 'stale'; $p.Rows[0].Action | Should -Be 'replace-block'
+        Write-SwFile (Join-Path $h 'AGENTS.md') "<!-- sw:begin global -->`nedited`n<!-- sw:end global -->`n"
+        $p = Central-Plan @{ Action='check'; Harness='codex'; Component='rules' }
+        $p.Rows[0].Current | Should -Be 'edited'; $p.ExitCode | Should -Be 0
+    }
+
+    It 'preserves distinct A7 states and edited/unverified warning exit semantics' {
+        $h = Join-Path $global:SwCentralHome '.codex'
+        $p = Central-Plan @{ Action='check'; Harness='codex'; Component='rules' }
+        $p.Rows[0].Current | Should -Be 'missing-file'
+        Write-SwFile (Join-Path $h 'AGENTS.md') "mine`n"
+        (Central-Plan @{ Action='check'; Harness='codex'; Component='rules' }).Rows[0].Current | Should -Be 'missing-block'
+        Write-SwFile (Join-Path $h 'AGENTS.md') "<!-- sw:begin global -->`nmy body`n<!-- sw:end global -->`n"
+        $p = Central-Plan @{ Action='check'; Harness='codex'; Component='rules' }
+        $p.Rows[0].Current | Should -Be 'unverified'; $p.ExitCode | Should -Be 0
+        Write-SwFile (Join-Path $h 'AGENTS.md') '<!-- sw:begin global -->'
+        (Central-Plan @{ Action='check'; Harness='codex'; Component='rules' }).ExitCode | Should -Be 1
+    }
+
+    It 'central check and every WhatIf action create no artifacts or native probes' {
+        $before = Central-Tree
+        foreach ($action in 'install','check','backup','remove') {
+            Invoke-SwGlobal $action -Delivery central-v1 -Harness codex -Skills work -WhatIf:($action -ne 'check') | Out-Null
+            $global:LASTEXITCODE | Should -Be 0
+        }
+        Central-Tree | Should -Be $before
+        Should -Invoke -ModuleName Sw.Kit Get-SwToolProbe -Times 0
+        Should -Invoke -ModuleName Sw.Kit Invoke-SwNative -Times 0
+    }
+
+    It 'unsupported central writes and usage errors stop before even resolving user homes' {
+        Mock -ModuleName Sw.Kit Get-SwUserHome { throw 'home discovery must not run' }
+        foreach ($action in 'install','remove','backup') {
+            (Invoke-SwGlobal $action -Delivery central-v1 -Harness both) -join ' ' | Should -Match 'not implemented'
+            $global:LASTEXITCODE | Should -Be 1
+        }
+        Invoke-SwGlobal check -Delivery central-v1 | Out-Null; $global:LASTEXITCODE | Should -Be 2
+        Invoke-SwGlobal remove | Out-Null; $global:LASTEXITCODE | Should -Be 2
+        Invoke-SwGlobal check -Harness codex | Out-Null; $global:LASTEXITCODE | Should -Be 2
+        Should -Invoke -ModuleName Sw.Kit Get-SwUserHome -Times 0
+    }
+
+    It 'legacy install refuses schema2 without downgrading or creating backups' {
+        Save-CentralRecord (New-CentralRecord); $before = Central-Tree
+        { Install-SwGlobal } | Should -Throw '*central-v1*'
+        Central-Tree | Should -Be $before
+        { InModuleScope Sw.Kit { Read-SwGlobalBaseline (Join-Path $global:SwCentralHome '.sw/global.json') } } | Should -Throw '*Invalid global baseline record*'
+    }
+
+    It 'CLI binding failures use usage exit2 before home access' {
+        foreach ($arguments in @(@('global','check','-Delivery','unknown'), @('global','check','-UnknownFlag'), @('global','remove'), @('global','check','-Delivery','central-v1'))) {
+            & $Shell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $RepoRoot 'sw.ps1') @arguments 2>&1 | Out-Null
+            $LASTEXITCODE | Should -Be 2
+        }
+    }
+}
+
 BeforeAll {
     $script:RepoRoot = Split-Path $PSScriptRoot -Parent
     # Child CLI runs use the shell running the suite: Windows PowerShell 5.1 or PowerShell 7.
@@ -60,11 +661,17 @@ public sealed class SwAuditPromptHost : PSHost {
     private readonly Guid id = Guid.NewGuid();
     private readonly AuditUI ui;
     public int Denied { get { return ui.Denied; } }
-    public SwAuditPromptHost(PSHost parent, string deny) { ui = new AuditUI(parent.UI, deny, null, null, null); }
+    public SwAuditPromptHost(PSHost parent, string deny) { ui = new AuditUI(parent.UI, deny, null, null, null, null, null); }
     // Appends editText to editPath once, while the first prompt matching editOn is open (a user editing mid-prompt);
     // an empty editText creates a directory at editPath instead.
-    public SwAuditPromptHost(PSHost parent, string deny, string editOn, string editPath, string editText) { ui = new AuditUI(parent.UI, deny, editOn, editPath, editText); }
+    public SwAuditPromptHost(PSHost parent, string deny, string editOn, string editPath, string editText) { ui = new AuditUI(parent.UI, deny, editOn, editPath, editText, null, null); }
+    // Explicit fixture-only transitions. The caller supplies a verified TestDrive child as fixtureRoot.
+    public SwAuditPromptHost(PSHost parent, string deny, string editOn, string editPath, string editText, string editMode, string fixtureRoot) { ui = new AuditUI(parent.UI, deny, editOn, editPath, editText, editMode, fixtureRoot); }
     public int Edited { get { return ui.Edited; } }
+    public string[] Prompts { get { return ui.Prompts.ToArray(); } }
+    public string EditedPrompt { get { return ui.EditedPrompt; } }
+    public byte[] BeforeEdit { get { return ui.BeforeEdit; } }
+    public byte[] AfterEdit { get { return ui.AfterEdit; } }
     public override Guid InstanceId { get { return id; } }
     public override string Name { get { return "Audit prompt fixture"; } }
     public override Version Version { get { return new Version(1,0); } }
@@ -77,12 +684,43 @@ public sealed class SwAuditPromptHost : PSHost {
     public override void NotifyBeginApplication() { }
     public override void NotifyEndApplication() { }
     private sealed class AuditUI : PSHostUserInterface {
-        private readonly PSHostUserInterface parent; private readonly string deny, editOn, editPath, editText;
+        private readonly PSHostUserInterface parent; private readonly string deny, editOn, editPath, editText, editMode, fixtureRoot;
         public int Denied, Edited;
-        public AuditUI(PSHostUserInterface parent, string deny, string editOn, string editPath, string editText) { this.parent = parent; this.deny = deny; this.editOn = editOn; this.editPath = editPath; this.editText = editText; }
+        public readonly List<string> Prompts = new List<string>();
+        public string EditedPrompt;
+        public byte[] BeforeEdit, AfterEdit;
+        public AuditUI(PSHostUserInterface parent, string deny, string editOn, string editPath, string editText, string editMode, string fixtureRoot) { this.parent = parent; this.deny = deny; this.editOn = editOn; this.editPath = editPath; this.editText = editText; this.editMode = editMode; this.fixtureRoot = fixtureRoot; }
+        private void AssertFixturePath(string path) {
+            string root = Path.GetFullPath(fixtureRoot).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar) + Path.DirectorySeparatorChar;
+            string full = Path.GetFullPath(path);
+            if (!full.StartsWith(root, StringComparison.OrdinalIgnoreCase)) throw new InvalidOperationException("Edit outside fixture root");
+            for (string p = full; p != null; p = Path.GetDirectoryName(p)) {
+                if ((File.Exists(p) || Directory.Exists(p)) && (File.GetAttributes(p) & FileAttributes.ReparsePoint) != 0) throw new InvalidOperationException("Linked fixture path");
+            }
+        }
         public override PSHostRawUserInterface RawUI { get { return parent.RawUI; } }
         public override int PromptForChoice(string caption, string message, Collection<ChoiceDescription> choices, int def) {
-            if (editOn != null && Edited == 0 && Regex.IsMatch(message, editOn)) { if (editText.Length == 0) Directory.CreateDirectory(editPath); else File.AppendAllText(editPath, editText); Edited++; }
+            Prompts.Add(message);
+            if (editOn != null && Edited == 0 && Regex.IsMatch(message, editOn)) {
+                if (editMode != null) AssertFixturePath(editPath);
+                BeforeEdit = File.Exists(editPath) ? File.ReadAllBytes(editPath) : null;
+                switch (editMode) {
+                    case "create":
+                        using (FileStream f = new FileStream(editPath, FileMode.CreateNew, FileAccess.Write)) { byte[] b = System.Text.Encoding.UTF8.GetBytes(editText); f.Write(b, 0, b.Length); }
+                        break;
+                    case "remove":
+                        if (!File.Exists(editPath)) throw new InvalidOperationException("Missing fixture to remove");
+                        File.Delete(editPath); break;
+                    case "move": AssertFixturePath(editText); File.Move(editPath, editText); break;
+                    case "append": File.AppendAllText(editPath, editText); break;
+                    case null:
+                        if (editText.Length == 0) Directory.CreateDirectory(editPath); else File.AppendAllText(editPath, editText);
+                        break;
+                    default: throw new InvalidOperationException("Unknown fixture edit mode");
+                }
+                AfterEdit = File.Exists(editPath) ? File.ReadAllBytes(editPath) : null;
+                EditedPrompt = message; Edited++;
+            }
             string answer = Regex.IsMatch(message, deny) ? "No" : "Yes";
             if (answer == "No") Denied++;
             for (int i=0; i<choices.Count; i++) if (choices[i].Label.Replace("&", "") == answer) return i;
@@ -1648,6 +2286,338 @@ Describe 'Validation-first lifecycle' {
 Describe 'Comms' {
     BeforeEach { $dir = New-SwProject "comms$(New-Id)" generic }
 
+    BeforeAll {
+        function Get-CommsTree([string]$Root) {
+            # Include directories and links, but never enumerate a junction target.
+            $queue = [Collections.Generic.Queue[string]]::new(); $queue.Enqueue($Root)
+            $rows = @(while ($queue.Count) {
+                foreach ($item in Get-ChildItem -LiteralPath $queue.Dequeue() -Force) {
+                    if ($item.Name -eq '.git') { continue }
+                    $kind = if ($item.Attributes -band [IO.FileAttributes]::ReparsePoint) { 'link' }
+                        elseif ($item.PSIsContainer) { $queue.Enqueue($item.FullName); 'dir' }
+                        else { (Get-FileHash -LiteralPath $item.FullName).Hash }
+                    "$($item.FullName.Substring($Root.Length)):$kind"
+                }
+            })
+            ($rows | Sort-Object) -join "`n"
+        }
+    }
+
+    Context 'Workspace audit: archival paths and authors' -Tag WorkspaceAudit1 {
+        It 'F1 refuses <Action> with linked <LinkRel> before any move' -ForEach @(
+            @{ Action = 'close'; LinkRel = 'archive' },
+            @{ Action = 'close'; LinkRel = 'archive/T1' },
+            @{ Action = 'close'; LinkRel = 'tasks/T1' },
+            @{ Action = 'close'; LinkRel = 'tasks' },
+            @{ Action = 'archive'; LinkRel = 'archive' },
+            @{ Action = 'archive'; LinkRel = 'archive/inbox' },
+            @{ Action = 'archive'; LinkRel = 'inbox/alice' },
+            @{ Action = 'archive'; LinkRel = 'inbox' }
+        ) {
+            Write-SwFile (Join-Path $dir '.sw/comms/tasks/T1/event.md') 'event evidence'
+            Write-SwFile (Join-Path $dir '.sw/comms/tasks/T1/nested/data.bin') 'non-Markdown evidence'
+            Write-SwFile (Join-Path $dir '.sw/comms/inbox/alice/message.md') 'message evidence'
+            $outside = Join-Path $TestDrive "outside$(New-Id)"
+            Write-SwFile (Join-Path $outside 'sentinel.bin') 'external sentinel'
+            $link = Join-Path $dir ".sw/comms/$LinkRel"; $target = Join-Path $outside 'linked'
+            if (Test-Path -LiteralPath $link) { Move-Item -LiteralPath $link -Destination $target }
+            else { New-Item -ItemType Directory -Path $target | Out-Null }
+            New-Item -ItemType Directory -Path (Split-Path $link) -Force | Out-Null
+            New-Item -ItemType Junction -Path $link -Target $target | Out-Null
+            try {
+                $before = Get-CommsTree $dir; $externalBefore = Get-CommsTree $outside
+                $failure = $null
+                try { Invoke-SwComms $Action -Task T1 -Outcome shipped -User alice -Message message.md -Path $dir | Out-Null }
+                catch { $failure = $_ }
+                $after = Get-CommsTree $dir; $externalAfter = Get-CommsTree $outside
+                $externalAfter | Should -Be $externalBefore
+                $after | Should -Be $before
+                $failure | Should -Not -BeNullOrEmpty
+                $failure.Exception.Message | Should -BeLike '*link or junction*'
+            } finally {
+                # A broken close may have moved the source junction. Remove only the link itself.
+                foreach ($candidate in $link, (Join-Path $dir '.sw/comms/archive/T1/events')) {
+                    if ((Test-Path -LiteralPath $candidate) -and ((Get-Item -LiteralPath $candidate -Force).Attributes -band [IO.FileAttributes]::ReparsePoint)) {
+                        [IO.Directory]::Delete($candidate)
+                    }
+                }
+            }
+        }
+
+        It 'F2 closes with explicit <Identity> in a multi-contributor project' -ForEach @(
+            @{ Identity = 'From'; AuthorArgs = @{ From = 'alpha' } },
+            @{ Identity = 'User'; AuthorArgs = @{ User = 'alpha' } },
+            @{ Identity = 'From over User'; AuthorArgs = @{ From = 'alpha'; User = 'beta' } }
+        ) {
+            Add-SwUser alpha -Path $dir | Out-Null; Add-SwUser beta -Path $dir | Out-Null
+            Invoke-SwComms event -Task T1 -From beta -Body 'retained event' -Path $dir | Out-Null
+            $event = @(Get-ChildItem (Join-Path $dir '.sw/comms/tasks/T1') -File)[0]
+            $eventText = Read-SwText $event.FullName
+            Invoke-SwComms close -Task T1 -Outcome 'shipped with evidence' -Path $dir @AuthorArgs | Out-Null
+            Test-Path (Join-Path $dir '.sw/comms/tasks/T1') | Should -BeFalse
+            $summary = Read-SwText (Join-Path $dir '.sw/comms/archive/T1/SUMMARY.md')
+            $summary | Should -Match 'shipped with evidence'
+            $summary | Should -Match ' by alpha at '
+            $summary | Should -Match '\*\*Events:\*\* 1,'
+            Read-SwText (Join-Path $dir ".sw/comms/archive/T1/events/$($event.Name)") | Should -Be $eventText
+        }
+
+        It 'F2 ambiguous fallback refuses without moving records and solo fallback still closes' {
+            Add-SwUser alpha -Path $dir | Out-Null; Add-SwUser beta -Path $dir | Out-Null
+            Invoke-SwComms event -Task T1 -From alpha -Path $dir | Out-Null
+            $before = Get-CommsTree $dir
+            { Invoke-SwComms close -Task T1 -Outcome shipped -Path $dir } | Should -Throw '*identity is ambiguous*'
+            Get-CommsTree $dir | Should -Be $before
+            $config = Get-SwConfig $dir; $config['users'] = @('alpha')
+            Write-SwFile (Join-Path $dir '.sw/config.json') (ConvertTo-SwJson $config)
+            Invoke-SwComms close -Task T1 -Outcome shipped -Path $dir | Out-Null
+            Read-SwText (Join-Path $dir '.sw/comms/archive/T1/SUMMARY.md') | Should -Match ' by alpha at '
+        }
+
+        It 'F1 ordinary close and inbox archive preserve evidence and WhatIf has no effects' {
+            Write-SwFile (Join-Path $dir '.sw/comms/tasks/T1/event.md') 'event evidence'
+            Write-SwFile (Join-Path $dir '.sw/comms/tasks/T1/nested/data.bin') 'non-Markdown evidence'
+            Write-SwFile (Join-Path $dir '.sw/comms/inbox/alice/message.md') 'message evidence'
+            $before = Get-CommsTree $dir
+            Invoke-SwComms close -Task T1 -Outcome shipped -Path $dir -WhatIf *> $null
+            Invoke-SwComms archive -User alice -Message message.md -Path $dir -WhatIf *> $null
+            Get-CommsTree $dir | Should -Be $before
+            Invoke-SwComms close -Task T1 -Outcome shipped -Path $dir | Out-Null
+            Read-SwText (Join-Path $dir '.sw/comms/archive/T1/events/event.md') | Should -Be 'event evidence'
+            Read-SwText (Join-Path $dir '.sw/comms/archive/T1/events/nested/data.bin') | Should -Be 'non-Markdown evidence'
+            Read-SwText (Join-Path $dir '.sw/comms/archive/T1/SUMMARY.md') | Should -Match '\*\*Events:\*\* 1,'
+            Invoke-SwComms archive -User alice -Message message.md -Path $dir | Out-Null
+            Read-SwText (Join-Path $dir '.sw/comms/archive/inbox/alice/message.md') | Should -Be 'message evidence'
+            Test-Path (Join-Path $dir '.sw/comms/inbox/alice/message.md') | Should -BeFalse
+        }
+    }
+
+    Context 'Effect receipts: <Action>' -ForEach @(
+        @{ Action = 'send'; Options = @{ To = 'alice'; From = 'bob'; Subject = 'receipt'; Body = 'new message' } }
+        @{ Action = 'event'; Options = @{ Task = 'T1'; From = 'bob'; Body = 'new event' } }
+        @{ Action = 'archive'; Options = @{ User = 'alice'; Message = 'message.md' } }
+        @{ Action = 'close'; Options = @{ Task = 'T1'; From = 'bob'; Outcome = 'shipped' } }
+    ) {
+        BeforeEach {
+            Write-SwFile (Join-Path $dir '.sw/comms/tasks/T1/event.md') 'event evidence'
+            Write-SwFile (Join-Path $dir '.sw/comms/tasks/T1/nested/data.bin') 'non-Markdown evidence'
+            Write-SwFile (Join-Path $dir '.sw/comms/inbox/alice/message.md') 'message evidence'
+            Mock -ModuleName Sw.Project Get-SwUtc { '2000-01-01T000000Z' }
+            $receipt = 'Message written:|Event written:|Archived:|Closed '
+        }
+
+        It 'WhatIf preserves the entire fixture and previews without a completion receipt; CLI exits zero' {
+            $before = Get-CommsTree $dir
+            $output = @(Invoke-SwComms $Action -Path $dir @Options -WhatIf)
+            Get-CommsTree $dir | Should -Be $before
+            $cliArgs = @('comms', $Action, '-Path', $dir, '-WhatIf')
+            foreach ($key in $Options.Keys) { $cliArgs += @("-$key", [string]$Options[$key]) }
+            $cliOutput = & $script:Shell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $dir '.sw/sw.ps1') @cliArgs
+            $LASTEXITCODE | Should -Be 0
+            Get-CommsTree $dir | Should -Be $before
+            ($cliOutput -join "`n") | Should -Match 'What if:'
+            ($output -join "`n") | Should -Not -Match $receipt
+            ($cliOutput -join "`n") | Should -Not -Match $receipt
+        }
+
+        It 'an explicit in-memory decline preserves the entire fixture without a completion receipt or error' {
+            $before = Get-CommsTree $dir
+            $fixtureHost = [SwAuditPromptHost]::new($Host, '.*')
+            $space = [Management.Automation.Runspaces.RunspaceFactory]::CreateRunspace($fixtureHost)
+            $space.Open(); $ps = [Management.Automation.PowerShell]::Create(); $ps.Runspace = $space
+            try {
+                $null = $ps.AddScript({
+                    param($Module, $Root, $Action, $Options)
+                    Import-Module $Module -Force -DisableNameChecking
+                    Invoke-SwComms $Action -Path $Root @Options -Confirm -ErrorAction Stop
+                }.ToString()).AddArgument((Join-Path $RepoRoot 'lib/Sw.Project.psm1')).AddArgument($dir).AddArgument($Action).AddArgument($Options)
+                $output = @($ps.Invoke())
+                $ps.HadErrors | Should -BeFalse
+                $ps.InvocationStateInfo.State.ToString() | Should -Be 'Completed'
+                $fixtureHost.Denied | Should -Be 1
+                Get-CommsTree $dir | Should -Be $before
+                ($output -join "`n") | Should -Not -Match $receipt
+            } finally { $ps.Dispose(); $space.Dispose() }
+        }
+
+        It 'success reports the actual exclusive file or completed archive and preserves prior evidence' {
+            if ($Action -in 'send', 'event') {
+                $rel = if ($Action -eq 'send') { '.sw/comms/inbox/alice' } else { '.sw/comms/tasks/T1' }
+                $recordDir = Join-Path $dir $rel
+                Invoke-SwComms $Action -Path $dir @Options | Out-Null
+                $oldFiles = @(Get-ChildItem -LiteralPath $recordDir -File)
+                $before = Get-CommsTree $recordDir
+                $output = @(Invoke-SwComms $Action -Path $dir @Options)
+                $newFiles = @(Get-ChildItem -LiteralPath $recordDir -File | Where-Object FullName -NotIn $oldFiles.FullName)
+                $newFiles.Count | Should -Be 1
+                $newFiles[0].Name | Should -Match '-2\.md$'
+                Read-SwText $newFiles[0].FullName | Should -Match ([regex]::Escape($Options.Body))
+                $newRow = "\$($newFiles[0].Name):$((Get-FileHash -LiteralPath $newFiles[0].FullName).Hash)"
+                ((Get-CommsTree $recordDir) -split "`n" | Where-Object { $_ -ne $newRow }) -join "`n" | Should -Be $before
+                $actualPath = Get-SwRelativePath $dir $newFiles[0].FullName
+                $expected = if ($Action -eq 'send') { "Message written: $actualPath (local until a human pushes it)." }
+                    else { "Event written: $actualPath. Fill the <placeholders> before handing off." }
+                $output | Should -Be @($expected)
+            } elseif ($Action -eq 'archive') {
+                $output = @(Invoke-SwComms $Action -Path $dir @Options)
+                $output | Should -Be @('Archived: message.md')
+                Test-Path (Join-Path $dir '.sw/comms/inbox/alice/message.md') | Should -BeFalse
+                Read-SwText (Join-Path $dir '.sw/comms/archive/inbox/alice/message.md') | Should -Be 'message evidence'
+                Read-SwText (Join-Path $dir '.sw/comms/tasks/T1/nested/data.bin') | Should -Be 'non-Markdown evidence'
+            } else {
+                $before = Get-CommsTree (Join-Path $dir '.sw/comms/tasks/T1')
+                $output = @(Invoke-SwComms $Action -Path $dir @Options)
+                $output | Should -Be @('Closed T1 -> .sw/comms/archive/T1/SUMMARY.md')
+                Test-Path (Join-Path $dir '.sw/comms/tasks/T1') | Should -BeFalse
+                Get-CommsTree (Join-Path $dir '.sw/comms/archive/T1/events') | Should -Be $before
+                Read-SwText (Join-Path $dir '.sw/comms/archive/T1/SUMMARY.md') | Should -Match '\*\*Outcome:\*\* shipped'
+                Read-SwText (Join-Path $dir '.sw/comms/inbox/alice/message.md') | Should -Be 'message evidence'
+            }
+            Test-Path (Join-Path $dir '.sw/backup') | Should -BeFalse
+        }
+
+        It 'an injected write or nonterminating move failure cannot claim completion, even with ErrorAction Continue' {
+            $before = Get-CommsTree $dir
+            if ($Action -in 'send', 'event') {
+                Mock -ModuleName Sw.Project Write-SwBytesNew { throw [IO.IOException]::new('injected record write failure') }
+            } else {
+                Mock -ModuleName Sw.Project Move-Item {
+                    # Forward the common parameters: Pester's mock body does not inherit the proxy's ErrorAction.
+                    # A missing fixture source produces a real provider error without moving any evidence.
+                    $moveArgs = @{} + $PesterBoundParameters
+                    $moveArgs['LiteralPath'] = "$LiteralPath.missing"
+                    Microsoft.PowerShell.Management\Move-Item @moveArgs
+                }
+            }
+            $observed = [Collections.Generic.List[object]]::new(); $failure = $null
+            try { Invoke-SwComms $Action -Path $dir @Options -ErrorAction Continue 2>&1 | ForEach-Object { $observed.Add($_) } }
+            catch { $failure = $_ }
+            ($observed -join "`n") | Should -Not -Match $receipt
+            $failure | Should -Not -BeNullOrEmpty
+            if ($Action -in 'send', 'event') {
+                $failure.Exception | Should -BeOfType ([IO.IOException])
+                $failure.Exception.Message | Should -Be 'injected record write failure'
+                Get-CommsTree $dir | Should -Be $before
+                Should -Invoke -ModuleName Sw.Project Write-SwBytesNew -Times 1 -Exactly
+            } else {
+                $failure.CategoryInfo.Category | Should -Be 'InvalidOperation' -Because "the provider error should surface unchanged ($failure)"
+                $failure.FullyQualifiedErrorId | Should -Be 'InvalidOperation,Microsoft.PowerShell.Commands.MoveItemCommand'
+                Should -Invoke -ModuleName Sw.Project Move-Item -Times 1 -Exactly
+                # Directory creation precedes the failed move; the original evidence stays put.
+                Read-SwText (Join-Path $dir '.sw/comms/inbox/alice/message.md') | Should -Be 'message evidence'
+                Read-SwText (Join-Path $dir '.sw/comms/tasks/T1/event.md') | Should -Be 'event evidence'
+                Read-SwText (Join-Path $dir '.sw/comms/tasks/T1/nested/data.bin') | Should -Be 'non-Markdown evidence'
+                $partialDir = if ($Action -eq 'archive') { '.sw/comms/archive/inbox/alice' } else { '.sw/comms/archive/T1' }
+                Test-Path (Join-Path $dir $partialDir) -PathType Container | Should -BeTrue
+                @(Get-ChildItem -LiteralPath (Join-Path $dir $partialDir) -Force).Count | Should -Be 0
+            }
+        }
+    }
+
+    It 'outer <Action> approval covers nested <NestedOperation> without another confirmation' -ForEach @(
+        @{ Action = 'archive'; NestedOperation = 'move'; Deny = 'Move (File|Directory)' }
+        @{ Action = 'close'; NestedOperation = 'move'; Deny = 'Move (File|Directory)' }
+        @{ Action = 'archive'; NestedOperation = 'directory creation'; Deny = 'Create Directory' }
+        @{ Action = 'close'; NestedOperation = 'directory creation'; Deny = 'Create Directory' }
+    ) {
+        Write-SwFile (Join-Path $dir '.sw/comms/tasks/T1/event.md') 'event evidence'
+        Write-SwFile (Join-Path $dir '.sw/comms/tasks/T1/nested/data.bin') 'non-Markdown evidence'
+        Write-SwFile (Join-Path $dir '.sw/comms/inbox/alice/message.md') 'message evidence'
+        $before = Get-CommsTree (Join-Path $dir '.sw/comms/tasks/T1')
+        $approvalPath = Join-Path $TestDrive "approval$(New-Id).txt"
+        $fixtureHost = [SwAuditPromptHost]::new($Host, $Deny, 'operation "archive(?: task)?"', $approvalPath, 'outer approved')
+        $space = [Management.Automation.Runspaces.RunspaceFactory]::CreateRunspace($fixtureHost)
+        $space.Open(); $ps = [Management.Automation.PowerShell]::Create(); $ps.Runspace = $space
+        try {
+            $null = $ps.AddScript({
+                param($Module, $Root, $Action)
+                Import-Module $Module -Force -DisableNameChecking
+                Invoke-SwComms $Action -Path $Root -Task T1 -From bob -Outcome shipped -User alice -Message message.md -Confirm -ErrorAction Stop
+            }.ToString()).AddArgument((Join-Path $RepoRoot 'lib/Sw.Project.psm1')).AddArgument($dir).AddArgument($Action)
+            $output = @(); $invokeFailure = $null
+            try { $output = @($ps.Invoke()) } catch { $invokeFailure = $_ }
+            $sourceRel = if ($Action -eq 'archive') { '.sw/comms/inbox/alice/message.md' } else { '.sw/comms/tasks/T1' }
+            $archiveRel = if ($Action -eq 'archive') { '.sw/comms/archive/inbox/alice/message.md' } else { '.sw/comms/archive/T1/events' }
+            $state = "outer prompts=$($fixtureHost.Edited); nested declines=$($fixtureHost.Denied); source exists=$(Test-Path (Join-Path $dir $sourceRel)); archive exists=$(Test-Path (Join-Path $dir $archiveRel)); summary exists=$(Test-Path (Join-Path $dir '.sw/comms/archive/T1/SUMMARY.md')); errors=$($ps.Streams.Error -join '; '); output=$($output -join '; ')"
+            $fixtureHost.Edited | Should -Be 1 -Because $state
+            Read-SwText $approvalPath | Should -Be 'outer approved'
+            $ps.HadErrors | Should -BeFalse -Because $state
+            $invokeFailure | Should -BeNullOrEmpty
+            $ps.InvocationStateInfo.State.ToString() | Should -Be 'Completed'
+            if ($Action -eq 'archive') {
+                Test-Path (Join-Path $dir '.sw/comms/inbox/alice/message.md') | Should -BeFalse -Because $state
+                Read-SwText (Join-Path $dir '.sw/comms/archive/inbox/alice/message.md') | Should -Be 'message evidence'
+                Get-CommsTree (Join-Path $dir '.sw/comms/tasks/T1') | Should -Be $before
+                $output | Should -Be @('Archived: message.md')
+            } else {
+                Test-Path (Join-Path $dir '.sw/comms/tasks/T1') | Should -BeFalse -Because $state
+                Get-CommsTree (Join-Path $dir '.sw/comms/archive/T1/events') | Should -Be $before
+                Read-SwText (Join-Path $dir '.sw/comms/archive/T1/SUMMARY.md') | Should -Match '\*\*Outcome:\*\* shipped'
+                Read-SwText (Join-Path $dir '.sw/comms/inbox/alice/message.md') | Should -Be 'message evidence'
+                $output | Should -Be @('Closed T1 -> .sw/comms/archive/T1/SUMMARY.md')
+            }
+            $fixtureHost.Denied | Should -Be 0 -Because 'the outer approval covers directory creation and the actual move'
+            Test-Path (Join-Path $dir '.sw/backup') | Should -BeFalse
+        } finally { $ps.Dispose(); $space.Dispose() }
+    }
+
+    It 'a real summary sharing failure after the close move retains all archived evidence and emits no completion' {
+        Write-SwFile (Join-Path $dir '.sw/comms/tasks/T1/event.md') 'event evidence'
+        Write-SwFile (Join-Path $dir '.sw/comms/tasks/T1/nested/data.bin') 'non-Markdown evidence'
+        $before = Get-CommsTree (Join-Path $dir '.sw/comms/tasks/T1')
+        $lockState = @{ Handle = $null; MoveCalls = 0 }
+        $ps = [Management.Automation.PowerShell]::Create()
+        try {
+            $null = $ps.AddScript({
+                param($Module, $Root, $State)
+                Import-Module $Module -Force -DisableNameChecking
+                & (Get-Module Sw.Project) {
+                    param($State)
+                    $script:SummaryLockState = $State
+                    function script:Move-Item {
+                        [CmdletBinding(SupportsShouldProcess)]
+                        param([string]$LiteralPath, [string]$Destination)
+                        # Complete the real move, then lock a fixture summary before the real writer runs.
+                        Microsoft.PowerShell.Management\Move-Item @PSBoundParameters
+                        $script:SummaryLockState.MoveCalls++
+                        $summaryPath = Join-Path (Split-Path $Destination -Parent) 'SUMMARY.md'
+                        $stream = [IO.File]::Open($summaryPath, [IO.FileMode]::CreateNew, [IO.FileAccess]::ReadWrite, [IO.FileShare]::None)
+                        $script:SummaryLockState.Handle = $stream
+                        $bytes = [Text.Encoding]::UTF8.GetBytes('locked summary fixture')
+                        $stream.Write($bytes, 0, $bytes.Length)
+                        $stream.Flush()
+                    }
+                } $State
+                # No enclosing try here: a caller's try would itself catch statement-terminating .NET errors.
+                Invoke-SwComms close -Task T1 -From bob -Outcome shipped -Path $Root -Confirm:$false -ErrorAction Continue
+                'returned from close'
+            }.ToString()).AddArgument((Join-Path $RepoRoot 'lib/Sw.Project.psm1')).AddArgument($dir).AddArgument($lockState)
+            $observed = @(); $failure = $null
+            try { $observed = @($ps.Invoke()) } catch { $failure = $_ }
+            if ($lockState.Handle) { $lockState.Handle.Dispose(); $lockState.Handle = $null }
+            $lockState.MoveCalls | Should -Be 1
+            Test-Path (Join-Path $dir '.sw/comms/tasks/T1') | Should -BeFalse
+            Get-CommsTree (Join-Path $dir '.sw/comms/archive/T1/events') | Should -Be $before
+            Read-SwText (Join-Path $dir '.sw/comms/archive/T1/SUMMARY.md') | Should -Be 'locked summary fixture'
+            $ps.HadErrors | Should -BeTrue
+            # Invoke exposes nonterminating records in Streams.Error, terminating ones in the failed state.
+            $errors = @($ps.Streams.Error)
+            if ($ps.InvocationStateInfo.Reason) { $errors += $ps.InvocationStateInfo.Reason.ErrorRecord }
+            $errors.Count | Should -Be 1
+            $exception = if ($ps.InvocationStateInfo.Reason) { $ps.InvocationStateInfo.Reason } else { $errors[0].Exception }
+            while ($exception.InnerException -and $exception -isnot [IO.IOException]) { $exception = $exception.InnerException }
+            $exception | Should -BeOfType ([IO.IOException])
+            $errors[0].CategoryInfo.Category | Should -Be 'NotSpecified'
+            ($errors[0].FullyQualifiedErrorId -split ',')[0] | Should -Be 'IOException'
+            ($observed -join "`n") | Should -Not -Match 'Closed ' -Because 'the real move completed, archived tree bytes matched, and the locked summary sentinel survived'
+            $ps.InvocationStateInfo.State.ToString() | Should -Be 'Failed'
+            $failure | Should -Not -BeNullOrEmpty -Because 'the real writer error must stop close even under ErrorAction Continue'
+        } finally {
+            if ($lockState.Handle) { $lockState.Handle.Dispose() }
+            $ps.Dispose()
+        }
+    }
+
     It 'send creates an inbox message containing the subject' {
         Invoke-SwComms send -To alice -Subject 'Hello world' -Body 'content' -Path $dir | Out-Null
         $msg = @(Get-ChildItem (Join-Path $dir '.sw/comms/inbox/alice') -Filter *.md)
@@ -2401,6 +3371,49 @@ Describe 'Global setup (synthetic home)' {
         }
     }
 
+    Context 'Workspace audit: requested RTK result' -Tag WorkspaceAudit1 {
+        BeforeEach {
+            Mock -ModuleName Sw.Kit Get-SwToolVersion { $null }
+            Mock -ModuleName Sw.Kit Get-SwToolProbe {
+                if ($Name -eq 'rtk') { [pscustomobject]@{ Name = $Name; State = 'missing'; Version = $null; ExitCode = $null } }
+                else { [pscustomobject]@{ Name = $Name; State = 'ok'; Version = [version]'9.9.9'; ExitCode = 0 } }
+            }
+            InModuleScope Sw.Kit {
+                $script:SwAuditWingetCalls = 0; $script:SwAuditWingetExit = 0
+                function script:winget {
+                    $script:SwAuditWingetCalls++
+                    $script:SwAuditWingetArgs = $args -join ' '
+                    & $env:ComSpec /d /c "exit $script:SwAuditWingetExit"
+                }
+            }
+        }
+        AfterEach {
+            InModuleScope Sw.Kit {
+                function script:winget { throw 'unexpected winget run' }
+                Remove-Variable SwAuditWingetCalls, SwAuditWingetExit, SwAuditWingetArgs -Scope Script -ErrorAction Ignore
+            }
+        }
+
+        It 'F4 <Case> survives subsequent global diagnostics' -ForEach @(
+            @{ Case = 'requested native failure'; Request = $true; NativeExit = 17; Expected = 1; Preview = $false; Calls = 1 },
+            @{ Case = 'requested native success'; Request = $true; NativeExit = 0; Expected = 0; Preview = $false; Calls = 1 },
+            @{ Case = 'optional missing RTK'; Request = $false; NativeExit = 17; Expected = 0; Preview = $false; Calls = 0 },
+            @{ Case = 'WhatIf request'; Request = $true; NativeExit = 17; Expected = 0; Preview = $true; Calls = 0 }
+        ) {
+            $h = New-Home; $before = Get-Tree $h -Dirs
+            InModuleScope Sw.Kit -Parameters @{ Code = $NativeExit } { param($Code) $script:SwAuditWingetExit = $Code }
+            $out = (Install-SwGlobal -InstallRtk:$Request -WhatIf:$Preview) -join "`n"
+            $code = $global:LASTEXITCODE
+            (InModuleScope Sw.Kit { $script:SwAuditWingetCalls }) | Should -Be $Calls
+            if ($Calls) {
+                (InModuleScope Sw.Kit { $script:SwAuditWingetArgs }) | Should -Be 'install --id rtk-ai.rtk --exact --accept-source-agreements --accept-package-agreements'
+            }
+            $out | Should -Match '(?m)^rtk\s+WARN\s+not found'
+            if ($Preview) { Get-Tree $h -Dirs | Should -Be $before }
+            $code | Should -Be $Expected
+        }
+    }
+
     Context 'baselines: an edited or unprovable installed block is never overwritten (A7)' {
         BeforeAll {
             $script:RulesPath = Join-Path $RepoRoot 'global/rules.md'
@@ -2593,9 +3606,14 @@ Describe 'Global setup (synthetic home)' {
         It 'an invalid record (<Name>) stops install before any write; check reports FAILED and writes nothing' -ForEach @(
             @{ Name = 'not JSON'; Json = 'not json' }
             @{ Name = 'schema 2'; Json = '{"schema":2,"kitVersion":"x","kitCommit":null,"homes":{}}' }
+            @{ Name = 'string schema'; Json = '{"schema":"1","kitVersion":"x","kitCommit":null,"homes":{}}' }
+            @{ Name = 'decimal schema'; Json = '{"schema":1.0,"kitVersion":"x","kitCommit":null,"homes":{}}' }
+            @{ Name = 'case-variant schema key'; Json = '{"Schema":1,"kitVersion":"x","kitCommit":null,"homes":{}}' }
+            @{ Name = 'case-colliding schema key'; Json = '{"schema":1,"Schema":1,"kitVersion":"x","kitCommit":null,"homes":{}}' }
             @{ Name = 'missing key'; Json = '{"schema":1,"homes":{}}' }
             @{ Name = 'unknown key'; Json = '{"schema":1,"kitVersion":"x","kitCommit":null,"homes":{},"extra":1}' }
             @{ Name = 'non-hex hash'; Json = '{"schema":1,"kitVersion":"x","kitCommit":null,"homes":{HOME:{"kind":"claude","entries":{"CLAUDE.md#global":"XYZ"}}}}' }
+            @{ Name = 'uppercase hash'; Json = '{"schema":1,"kitVersion":"x","kitCommit":null,"homes":{HOME:{"kind":"claude","entries":{"CLAUDE.md#global":"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"}}}}' }
             @{ Name = 'unknown entry'; Json = '{"schema":1,"kitVersion":"x","kitCommit":null,"homes":{HOME:{"kind":"claude","entries":{"settings.json":"HASH"}}}}' }
             @{ Name = 'kind mismatch'; Json = '{"schema":1,"kitVersion":"x","kitCommit":null,"homes":{HOME:{"kind":"codex","entries":{"CLAUDE.md#global":"HASH"}}}}' }
             @{ Name = 'relative home'; Json = '{"schema":1,"kitVersion":"x","kitCommit":null,"homes":{"rel/home":{"kind":"claude","entries":{"CLAUDE.md#global":"HASH"}}}}' }
@@ -2620,6 +3638,10 @@ Describe 'Global setup (synthetic home)' {
             $json = $Json.Replace('HOME', ($c | ConvertTo-Json)).Replace('UPPER', ($c.ToUpperInvariant() | ConvertTo-Json)).Replace('HASH', $RulesHash)
             Write-SwFile (Join-Path $h '.sw/global.json') $json
             $before = Get-Tree $h -Dirs
+            { InModuleScope Sw.Kit -Parameters @{ P=(Join-Path $h '.sw/global.json'); Personal=(Join-Path $h '.sw') } {
+                param($P, $Personal) Read-SwCentralRecord $P $script:Kit $Personal
+            } } | Should -Throw '*Invalid global*record*'
+            Get-Tree $h -Dirs | Should -Be $before
             { Install-SwGlobal } | Should -Throw '*Invalid global baseline record*'
             Get-Tree $h -Dirs | Should -Be $before
             $out = (Test-SwGlobal) -join "`n"
@@ -3757,6 +4779,37 @@ Describe 'Audit repair regressions' {
         }
     }
 
+    It 'F3 CLI <Operation> <Mode> returns the operation result' -Tag WorkspaceAudit1 -ForEach @(
+        @{ Operation = 'init'; Mode = 'declined' },
+        @{ Operation = 'update'; Mode = 'declined' },
+        @{ Operation = 'init'; Mode = 'success' },
+        @{ Operation = 'update'; Mode = 'success' },
+        @{ Operation = 'init'; Mode = 'preview' },
+        @{ Operation = 'update'; Mode = 'preview' }
+    ) {
+        $dir = if ($Operation -eq 'init') { Join-Path $TestDrive "cli$(New-Id)" } else { New-SwProject "cli$(New-Id)" }
+        $before = if (Test-Path -LiteralPath $dir) { Audit-Tree $dir } else { 'absent' }
+        $cliArgs = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', (Join-Path $RepoRoot 'sw.ps1'), $Operation, $dir)
+        # A changed configuration reaches the required-effect consent boundary on update.
+        if ($Operation -eq 'update') { $cliArgs += @('-Records', 'tracked') }
+        if ($Mode -eq 'declined') { $cliArgs += '-Confirm' }
+        if ($Mode -eq 'preview') { $cliArgs += '-WhatIf' }
+        $out = ('n' | & $script:Shell @cliArgs 2>&1) -join "`n"
+        $code = $LASTEXITCODE
+        if ($Mode -eq 'success') {
+            $code | Should -Be 0
+            Test-Path (Join-Path $dir '.sw/manifest.json') | Should -BeTrue
+            if ($Operation -eq 'update') { (Get-SwConfig $dir)['records'] | Should -Be 'tracked' }
+        } else {
+            $after = if (Test-Path -LiteralPath $dir) { Audit-Tree $dir } else { 'absent' }
+            $after | Should -Be $before
+            if ($Mode -eq 'declined') {
+                $out | Should -Match 'PARTIAL: configuration declined; no (initialization|update) effects performed'
+                $code | Should -Be 1
+            } else { $code | Should -Be 0 }
+        }
+    }
+
     It 'rejects manifest claim <Claim> before any effect' -ForEach @(
         @{ Claim = '../outside.md' }, @{ Claim = '/outside.md' }, @{ Claim = 'C:/outside.md' },
         @{ Claim = '.sw/../outside.md' }, @{ Claim = '.sw//workspace.md' }, @{ Claim = '.sw/workspace.md:stream' },
@@ -3918,6 +4971,323 @@ Describe 'Audit repair regressions' {
         if ($DocsIgnored) {
             @([regex]::Matches($on, "(?m)^    paths-ignore: \['docs/\*\*'\]\n")).Count | Should -Be 2
         } else { $yaml | Should -Not -Match 'paths-ignore' }
+    }
+}
+
+Describe 'D1b C1/C2 prompt-time edit protection (selected contract, evidence only)' {
+    BeforeAll {
+        function Invoke-D1bFixture([string]$Case) {
+            # Reuse the isolated kit-copy and fresh PSHost/runspace patterns above. No init, git, home,
+            # adapter or tool operation is needed: seed an explicit project with ordinary Sync instead.
+            $fixture = Join-Path $TestDrive "d1b$(New-Id)"
+            $kit = Join-Path $fixture 'kit'; $root = Join-Path $fixture 'project'
+            New-Item -ItemType Directory -Path $kit,$root | Out-Null
+            Assert-SwPhysicalPath $fixture
+            $drivePrefix = [IO.Path]::GetFullPath($TestDrive).TrimEnd('\','/') + [IO.Path]::DirectorySeparatorChar
+            if (-not ([IO.Path]::GetFullPath($fixture)).StartsWith($drivePrefix, [StringComparison]::OrdinalIgnoreCase)) { throw 'Fixture outside TestDrive' }
+            foreach ($rel in 'project', 'lib', 'sw.ps1', 'VERSION', 'LICENSE', 'THIRD_PARTY_NOTICES.md') {
+                Copy-Item -LiteralPath (Join-Path $RepoRoot $rel) -Destination (Join-Path $kit $rel) -Recurse
+            }
+            $shared = $Case -eq 'C2 host text changes'
+            $migration = $Case -eq 'C1 migration source changes'
+            $legacy = '.opencode/skills/minimal-change/d1b-target.txt'
+            $relative = if ($shared) { 'AGENTS.md' } elseif ($migration) { '.agents/skills/minimal-change/d1b-target.txt' } else { 'd1b-target.txt' }
+            $action = if ($migration) { "move from $legacy" } elseif ($shared) { 'set managed block' } elseif ($Case -eq 'C1 absent becomes present') { 'add' }
+                elseif ($Case -eq 'C1 remove action') { 'remove (dropped from kit)' } elseif ($Case -eq 'C1 adopt target') { 'adopt' } else { 'update' }
+            $mode = switch ($Case) {
+                'C1 absent becomes present' { 'create' }
+                'C1 present disappears' { 'remove' }
+                'C1 present moves' { 'move' }
+                default { 'append' }
+            }
+            $target = Join-Path $root $(if ($migration) { $legacy } else { $relative }); $moved = Join-Path $root 'd1b-moved.txt'
+            $editText = if ($mode -eq 'move') { $moved } else { 'LATE' }
+            $editOn = [regex]::Escape(('operation "{0}" on target "{1}"' -f $action,$relative))
+            $fixtureHost = [SwAuditPromptHost]::new($Host, '(?!)', $editOn, $target, $editText, $mode, $root)
+            $space = [Management.Automation.Runspaces.RunspaceFactory]::CreateRunspace($fixtureHost)
+            $space.Open(); $ps = [Management.Automation.PowerShell]::Create(); $ps.Runspace = $space
+            try {
+                $null = $ps.AddScript({
+                    param($Kit, $Root, $Case, $Relative, $PromptHost)
+                    $ErrorActionPreference = 'Stop'
+                    Import-Module (Join-Path $Kit 'lib/Sw.Project.psm1') -Force -DisableNameChecking
+                    Import-Module (Join-Path $Kit 'lib/Sw.Kit.psm1') -Force -DisableNameChecking
+                    # Fresh runspaces do not inherit Pester mocks. Replace all home/tool reach in BOTH
+                    # module scopes; Get-SwKitCommit is metadata only and must not launch native git.
+                    foreach ($module in Get-Module Sw.Kit,Sw.Project) {
+                        & $module {
+                            $script:D1bReach = [Collections.Generic.List[string]]::new()
+                            function script:Get-SwUserHome { $script:D1bReach.Add('home'); throw 'D1b forbids home discovery' }
+                            function script:Get-SwToolProbe { $script:D1bReach.Add('probe'); throw 'D1b forbids tool probes' }
+                            function script:Get-SwToolVersion { $script:D1bReach.Add('version'); throw 'D1b forbids tool versions' }
+                            function script:Get-SwGhAuth { $script:D1bReach.Add('auth'); throw 'D1b forbids auth' }
+                            function script:Invoke-SwNative { $script:D1bReach.Add('native'); throw 'D1b forbids native commands' }
+                            function script:Invoke-SwProbe { $script:D1bReach.Add('process'); throw 'D1b forbids processes' }
+                            function script:winget { $script:D1bReach.Add('winget'); throw 'D1b forbids installs' }
+                            function script:git { $script:D1bReach.Add('git'); throw 'D1b forbids native git' }
+                            function script:Get-SwKitCommit { $null }
+                        }
+                    }
+                    function Snapshot([string]$Path) {
+                        $exists = Test-Path -LiteralPath $Path -PathType Leaf
+                        [pscustomobject]@{
+                            Exists = $exists
+                            RawBase64 = $(if ($exists) { [Convert]::ToBase64String([IO.File]::ReadAllBytes($Path)) } else { $null })
+                            RawHash = $(if ($exists) { Get-SwByteHash ([IO.File]::ReadAllBytes($Path)) } else { $null })
+                            LfHash = $(if ($exists) { Get-SwHash (Read-SwText $Path) } else { $null })
+                        }
+                    }
+                    function Tree {
+                        # Audit-Tree's byte-hash inventory, including directories and absent/moved transitions.
+                        $tree = [ordered]@{}
+                        foreach ($entry in Get-ChildItem -LiteralPath $Root -Recurse -Force | Sort-Object FullName) {
+                            $rel = (Get-SwRelativePath $Root $entry.FullName).Replace('\','/')
+                            $tree[$rel] = if ($entry.PSIsContainer) { 'directory' } else { Get-SwByteHash ([IO.File]::ReadAllBytes($entry.FullName)) }
+                        }
+                        $tree
+                    }
+                    $shared = $Case -eq 'C2 host text changes'
+                    $update = $Case -in 'C1 existing content','C2 host text changes'
+                    $caller = if ($update) { 'Update-SwProject -Capabilities research' } else { 'Sync-SwProject' }
+                    $source = Join-Path $Kit "project/base/$Relative"
+                    $earlier = '000-d1b-earlier.txt'; $earlierSource = Join-Path $Kit "project/base/$earlier"
+                    Write-SwFile $earlierSource "EARLIER`n"
+                    if ($shared) {
+                        Write-SwFile $source "# Synthetic host`n`n## Project identity`n`nfixture`n`n<!-- sw:begin core -->`nB`n<!-- sw:end core -->`n"
+                        Write-SwFile (Join-Path $Kit 'project/profiles/generic/AGENTS.section.md') "PROFILE`n"
+                        Write-SwFile (Join-Path $Kit 'project/capabilities/research/AGENTS.section.md') "RESEARCH`n"
+                    } elseif ($Case -notin 'C1 absent becomes present','C1 adopt target') { Write-SwFile $source "A`nline`n" }
+                    $config = [ordered]@{
+                        project='D1b'; profile='generic'; githubTier=0; github=$false; records='local'
+                        gitPolicy='workspace'; startupBudgetBytes=12100; users=@()
+                        selection=[ordered]@{ version=1; capabilities=@() }
+                    }
+                    $configPath = Join-Path $Root '.sw/config.json'
+                    Write-SwFile $configPath (ConvertTo-SwJson $config)
+                    Sync-SwProject -Root $Root -Config $config -Confirm:$false | Out-Null
+                    $seedExit = $global:LASTEXITCODE
+                    $target = Join-Path $Root $Relative; $moved = Join-Path $Root 'd1b-moved.txt'
+                    if (Test-Path -LiteralPath $moved) { throw 'Move sibling must be absent' }
+                    # BOM + CRLF differ from the LF/no-BOM ownership domain without changing classification.
+                    $bom = [Text.UTF8Encoding]::new($true)
+                    if ($shared) {
+                        [IO.File]::WriteAllText($target, ("H`r`n" + (Read-SwText $target).Replace("`n","`r`n")), $bom)
+                        Write-SwFile $source ((Read-SwText $source).Replace("`nB`n", "`nB2`n"))
+                    } elseif ($Case -ne 'C1 absent becomes present') {
+                        [IO.File]::WriteAllText($target, "A`r`nline`r`n", $bom)
+                        [IO.File]::WriteAllText($source, "A2`r`nline`r`n", $bom)
+                    } else { [IO.File]::WriteAllText($source, "A2`r`nline`r`n", $bom) }
+                    if ($Case -eq 'C1 remove action') {
+                        # Keep this exact path in the kit allowlist via an unselected profile, but drop its output.
+                        Move-Item -LiteralPath $source -Destination (Join-Path $Kit "project/profiles/unreal/files/$Relative")
+                    }
+                    $migration = $Case -eq 'C1 migration source changes'
+                    $destinationBefore = $null
+                    if ($migration) {
+                        $legacy = '.opencode/skills/minimal-change/d1b-target.txt'
+                        $legacyPath = Join-Path $Root $legacy
+                        New-Item -ItemType Directory -Path (Split-Path $legacyPath) -Force | Out-Null
+                        Move-Item -LiteralPath $target -Destination $legacyPath
+                        [IO.File]::AppendAllText($legacyPath, 'LOCAL')
+                        $recordPath = Join-Path $Root '.sw/manifest.json'
+                        $record = Read-SwJson $recordPath
+                        $record.files[$legacy] = $record.files[$Relative]; $record.files.Remove($Relative)
+                        Write-SwFile $recordPath (ConvertTo-SwJson $record)
+                        $destinationBefore = Snapshot $target
+                        $target = $legacyPath
+                    }
+                    Write-SwFile $earlierSource "EARLIER-2`n"
+                    $requested = Get-SwConfig $Root
+                    if ($update) { $requested['selection']['capabilities'] = @('research') }
+                    $manifestPath = Join-Path $Root '.sw/manifest.json'
+                    $before = Snapshot $target; $beforeMoved = Snapshot $moved
+                    $beforeEarlier = Snapshot (Join-Path $Root $earlier)
+                    $manifestBefore = Read-SwJson $manifestPath; $manifestBytesBefore = Snapshot $manifestPath
+                    $configBefore = Snapshot $configPath; $treeBefore = Tree
+                    # This is the real production preflight, with the valid requested selection, before any prompt.
+                    $adopt = $Case -eq 'C1 adopt target'
+                    $plan = @(Sync-SwProject -Root $Root -Config $requested -Adopt:$adopt -Preflight -Confirm:$false)
+                    $incoming = & (Get-Module Sw.Kit) {
+                        param($r,$c,$rel,$shared)
+                        $render = Get-SwRender $c
+                        if ($shared) { (Get-SwManagedContent $r $render).Blocks[$rel] } else { $render.Files[$rel] }
+                    } $Root $requested $Relative $shared
+                    $previewOutput = if ($update) {
+                        @(Update-SwProject -Path $Root -Capabilities research -WhatIf 6> $null)
+                    } else { @(Sync-SwProject -Root $Root -Config $requested -Adopt:$adopt -WhatIf 6> $null) }
+                    $previewExit = $global:LASTEXITCODE; $previewTree = Tree
+                    $previewEdits = $PromptHost.Edited; $previewPrompts = $PromptHost.Prompts.Count
+                    $actual = [Collections.Generic.List[object]]::new(); $caught = @()
+                    try {
+                        if ($update) {
+                            Update-SwProject -Path $Root -Capabilities research -Confirm | ForEach-Object { $actual.Add($_) }
+                        } else {
+                            Sync-SwProject -Root $Root -Config $requested -Adopt:$adopt -Confirm | ForEach-Object { $actual.Add($_) }
+                        }
+                    } catch { $caught = @([pscustomobject]@{ Category="$($_.CategoryInfo.Category)"; Id=$_.FullyQualifiedErrorId; Message=$_.Exception.Message }) }
+                    $actualExit = $global:LASTEXITCODE
+                    $after = Snapshot $target; $afterMoved = Snapshot $moved
+                    $manifestAfter = Read-SwJson $manifestPath; $treeAfter = Tree
+                    $changed = @(foreach ($key in @(@($treeBefore.Keys) + @($treeAfter.Keys)) | Sort-Object -Unique) {
+                        if ($treeBefore[$key] -cne $treeAfter[$key]) { [pscustomobject]@{ Path=$key; Before=$treeBefore[$key]; After=$treeAfter[$key] } }
+                    })
+                    $ownershipDelta = @(foreach ($key in @(@($manifestBefore.files.Keys) + @($manifestAfter.files.Keys)) | Sort-Object -Unique) {
+                        if ($manifestBefore.files[$key] -cne $manifestAfter.files[$key]) { [pscustomobject]@{ Path=$key; Before=$manifestBefore.files[$key]; After=$manifestAfter.files[$key] } }
+                    })
+                    [pscustomobject]@{
+                        Case=$Case; Caller=$caller; Root=$Root; Kit=$Kit
+                        ModulePaths=@(Get-Module Sw.Kit,Sw.Project | ForEach-Object Path)
+                        LoadedKitRoot=(& (Get-Module Sw.Kit) { $script:Kit })
+                        ForbiddenReach=@(foreach ($module in Get-Module Sw.Kit,Sw.Project) { & $module { $script:D1bReach.ToArray() } })
+                        SeedExit=$seedExit; Plan=$plan; Incoming=$incoming; IncomingHash=(Get-SwHash $incoming)
+                        Source=(Snapshot $source); Before=$before; After=$after; MovedBefore=$beforeMoved; MovedAfter=$afterMoved
+                        DestinationBefore=$destinationBefore; DestinationAfter=$(if ($migration) { Snapshot (Join-Path $Root $Relative) } else { $null })
+                        EarlierPath=$earlier; EarlierBefore=$beforeEarlier; EarlierAfter=(Snapshot (Join-Path $Root $earlier))
+                        ManifestBefore=$manifestBefore; ManifestAfter=$manifestAfter
+                        ManifestBytesBefore=$manifestBytesBefore; ManifestBytesAfter=(Snapshot $manifestPath); OwnershipDelta=$ownershipDelta
+                        ConfigBefore=$configBefore; ConfigAfter=(Snapshot $configPath)
+                        RequestedConfig=$requested; PersistedConfig=(Get-SwConfig $Root)
+                        TreeBefore=$treeBefore; TreeAfter=$treeAfter; TreeChanges=$changed
+                        PreviewExit=$previewExit; PreviewTree=$previewTree; PreviewEdits=$previewEdits; PreviewPrompts=$previewPrompts; PreviewOutput=$previewOutput
+                        InProcessLastExitCode=$actualExit; Output=$actual.ToArray(); Caught=$caught
+                    }
+                }.ToString()).AddArgument($kit).AddArgument($root).AddArgument($Case).AddArgument($relative).AddArgument($fixtureHost)
+                $values = @($ps.Invoke())
+                if ($values.Count -ne 1) { throw "D1b fixture setup failed: $($ps.Streams.Error -join '; ')" }
+                [pscustomobject]@{
+                    Data=$values[0]; Relative=$relative; ExpectedAction=$action; Mode=$mode
+                    Host=$fixtureHost; Warnings=@($ps.Streams.Warning | ForEach-Object Message)
+                    Errors=@($ps.Streams.Error | ForEach-Object { [pscustomobject]@{ Category="$($_.CategoryInfo.Category)"; Id=$_.FullyQualifiedErrorId; Message=$_.Exception.Message } })
+                }
+            } finally { $ps.Dispose(); $space.Dispose() }
+        }
+
+        function Assert-D1bContract([string]$Case) {
+            $r = Invoke-D1bFixture $Case; $d = $r.Data; $shared = $Case -eq 'C2 host text changes'
+            $planned = @($d.Plan | Where-Object Path -CEQ $r.Relative)
+            $expectedAction = if ($shared) { 'block' } elseif ($Case -eq 'C1 remove action') { 'remove' } else { $r.ExpectedAction }
+            $expectedBytes = if ($r.Mode -eq 'create') { [Text.Encoding]::UTF8.GetBytes('LATE') }
+                elseif ($r.Mode -eq 'append') { [byte[]]([Convert]::FromBase64String($d.Before.RawBase64) + [Text.Encoding]::UTF8.GetBytes('LATE')) }
+                else { $null }
+            $expectedRaw = if ($null -ne $expectedBytes) { [Convert]::ToBase64String($expectedBytes) } else { $null }
+            $hookBefore = if ($null -ne $r.Host.BeforeEdit) { [Convert]::ToBase64String($r.Host.BeforeEdit) } else { $null }
+            $hookAfter = if ($null -ne $r.Host.AfterEdit) { [Convert]::ToBase64String($r.Host.AfterEdit) } else { $null }
+            $violations = [Collections.Generic.List[string]]::new()
+            if ($d.After.RawBase64 -cne $expectedRaw -or $d.After.Exists -ne ($r.Mode -in 'append','create')) { $violations.Add('Current prompt-time bytes/existence were replaced or recreated') }
+            if ($r.Mode -eq 'move' -and (-not $d.MovedAfter.Exists -or $d.MovedAfter.RawBase64 -cne $d.Before.RawBase64)) { $violations.Add('Moved sibling bytes were not retained') }
+            if ($d.InProcessLastExitCode -ne 1) { $violations.Add('In-process LASTEXITCODE did not report incomplete work (1)') }
+            if (-not $shared -and $d.ManifestAfter.files[$r.Relative] -cne $d.ManifestBefore.files[$r.Relative]) { $violations.Add('Ownership advanced for the stale target') }
+            if ($d.ConfigAfter.RawBase64 -cne $d.ConfigBefore.RawBase64) { $violations.Add('Requested configuration advanced despite the stale target') }
+            if ($d.TreeAfter.Contains('.sw/backup')) { $violations.Add('An unselected adoption/recovery copy was created') }
+            $diagnostic = (@($d.Output | ForEach-Object { "$_" }) + $r.Warnings + @($r.Errors | ForEach-Object Message) + @($d.Caught | ForEach-Object Message)) -join "`n"
+            $staleNote = "$($r.Relative) changed while consent was pending and was left as found."
+            $returnedItem = @($d.Output | Where-Object { $_.PSObject.Properties['Action'] -and $_.Path -ceq $r.Relative })
+            if ($d.Caller -eq 'Sync-SwProject') {
+                if ($returnedItem.Count -ne 1 -or $returnedItem[0].Action -cne 'stale' -or $returnedItem[0].Note -cne $staleNote) { $violations.Add('No stale plan Action and path-specific Note were returned') }
+            } elseif ($diagnostic -cnotmatch ('(?m)^stale\s+' + [regex]::Escape($r.Relative) + '$') -or $diagnostic -cnotmatch [regex]::Escape($staleNote)) { $violations.Add('No formatted stale plan Action and path-specific Note were reported') }
+            if ($r.Warnings -cnotcontains 'PARTIAL: unresolved/declined effects retained in ownership; configuration and adapter continuation must stop.') { $violations.Add('No selected PARTIAL warning was reported') }
+            if ($diagnostic -notmatch [regex]::Escape($d.EarlierPath)) { $violations.Add('Earlier independent completed effect was not disclosed') }
+
+            # Emit all observations BEFORE asserting, so a red retention assertion cannot hide ownership,
+            # config, diagnostics, earlier completed effects, or a defective/unused hook.
+            $evidence = [ordered]@{
+                Case=$Case; Caller=$d.Caller; Target=$r.Relative; Plan=$planned; Incoming=$d.Incoming; IncomingHash=$d.IncomingHash; Source=$d.Source
+                Before=$d.Before; HookBeforeRaw=$hookBefore; HookAfterRaw=$hookAfter; After=$d.After; ExpectedRaw=$expectedRaw
+                MovedBefore=$d.MovedBefore; MovedAfter=$d.MovedAfter
+                HookCount=$r.Host.Edited; Denied=$r.Host.Denied; EditedPrompt=$r.Host.EditedPrompt; Prompts=$r.Host.Prompts
+                OwnershipBefore=$d.ManifestBefore.files[$r.Relative]; OwnershipAfter=$d.ManifestAfter.files[$r.Relative]; OwnershipDelta=$d.OwnershipDelta
+                ManifestRawHashBefore=$d.ManifestBytesBefore.RawHash; ManifestRawHashAfter=$d.ManifestBytesAfter.RawHash
+                RequestedConfig=$d.RequestedConfig; PersistedConfig=$d.PersistedConfig; ConfigBefore=$d.ConfigBefore; ConfigAfter=$d.ConfigAfter
+                EarlierPath=$d.EarlierPath; EarlierBefore=$d.EarlierBefore; EarlierAfter=$d.EarlierAfter
+                TreeHashBefore=(Get-SwHash (ConvertTo-SwJson $d.TreeBefore)); TreeHashAfter=(Get-SwHash (ConvertTo-SwJson $d.TreeAfter)); TreeChanges=$d.TreeChanges
+                PreviewExit=$d.PreviewExit; PreviewEdited=$d.PreviewEdits; PreviewPromptCount=$d.PreviewPrompts
+                PreviewTreeUnchanged=((ConvertTo-SwJson $d.TreeBefore) -ceq (ConvertTo-SwJson $d.PreviewTree))
+                Isolation=[ordered]@{ Root=$d.Root; Kit=$d.Kit; LoadedKitRoot=$d.LoadedKitRoot; ModulePaths=$d.ModulePaths; ForbiddenReach=$d.ForbiddenReach }
+                InProcessLastExitCode=$d.InProcessLastExitCode; Output=$d.Output; Warnings=$r.Warnings; Errors=$r.Errors; Caught=$d.Caught
+                ContractViolations=$violations.ToArray()
+            }
+            Write-Host ('D1B-EVIDENCE ' + ($evidence | ConvertTo-Json -Depth 30 -Compress))
+
+            # Fixture validity and the WhatIf control are independent of the selected red expectations.
+            $d.SeedExit | Should -Be 0
+            $d.ForbiddenReach.Count | Should -Be 0
+            $d.LoadedKitRoot | Should -BeExactly $d.Kit
+            foreach ($path in $d.ModulePaths) { $path.StartsWith($d.Kit + [IO.Path]::DirectorySeparatorChar, [StringComparison]::OrdinalIgnoreCase) | Should -BeTrue }
+            $planned.Count | Should -Be 1
+            $planned[0].Action | Should -BeExactly $expectedAction
+            $d.IncomingHash | Should -Not -Be $d.Before.LfHash
+            if ($Case -eq 'C1 remove action') { $planned[0].Hash | Should -BeNullOrEmpty; $d.Source.Exists | Should -BeFalse }
+            elseif ($shared) { $d.Incoming | Should -Match '<!-- sw:begin core -->\nB2\n<!-- sw:end core -->' }
+            else { $d.Incoming | Should -BeExactly "A2`nline`n"; $planned[0].Hash | Should -Be $d.IncomingHash }
+            $d.Before.Exists | Should -Be ($r.Mode -ne 'create')
+            $r.Host.Edited | Should -Be 1
+            $r.Host.Denied | Should -Be 0
+            @($r.Host.Prompts | Where-Object { $_ -eq $r.Host.EditedPrompt }).Count | Should -Be 1
+            $r.Host.EditedPrompt | Should -Match ([regex]::Escape(('operation "{0}" on target "{1}"' -f $r.ExpectedAction,$r.Relative)))
+            $earlierPrompt = @($r.Host.Prompts | Where-Object { $_ -match 'operation "update" on target "000-d1b-earlier\.txt"' })
+            $earlierPrompt.Count | Should -Be 1
+            [array]::IndexOf($r.Host.Prompts, $earlierPrompt[0]) | Should -BeLessThan ([array]::IndexOf($r.Host.Prompts, $r.Host.EditedPrompt))
+            $hookBefore | Should -BeExactly $d.Before.RawBase64
+            $hookAfter | Should -BeExactly $expectedRaw
+            $d.MovedBefore.Exists | Should -BeFalse
+            $d.PreviewExit | Should -Be 0
+            $d.PreviewEdits | Should -Be 0
+            $d.PreviewPrompts | Should -Be 0
+            ConvertTo-SwJson $d.PreviewTree | Should -BeExactly (ConvertTo-SwJson $d.TreeBefore)
+            $d.EarlierAfter.LfHash | Should -Be (Get-SwHash "EARLIER-2`n")
+            $d.ManifestAfter.files[$d.EarlierPath] | Should -Be $d.EarlierAfter.LfHash
+            if ($Case -eq 'C1 existing content') { $d.Before.RawHash | Should -Not -Be $d.Before.LfHash }
+            if ($r.Mode -eq 'move') { $d.MovedAfter.RawBase64 | Should -BeExactly $d.Before.RawBase64 }
+            # SELECTED expectation: never turn an observed failure into Skip/Pending or current-behavior success.
+            $violations.ToArray() | Should -BeNullOrEmpty -Because 'D1c must retain prompt-time changes and disclose incomplete work'
+        }
+    }
+
+    It 'C1 existing content' { Assert-D1bContract 'C1 existing content' }
+    It 'C1 absent becomes present' { Assert-D1bContract 'C1 absent becomes present' }
+    It 'C1 present disappears' { Assert-D1bContract 'C1 present disappears' }
+    It 'C1 present moves' { Assert-D1bContract 'C1 present moves' }
+    It 'C2 host text changes' { Assert-D1bContract 'C2 host text changes' }
+    It 'C1 remove action' { Assert-D1bContract 'C1 remove action' }
+    It 'C1 adopt target' { Assert-D1bContract 'C1 adopt target' }
+    It 'C1 migration source changes' {
+        $r = Invoke-D1bFixture 'C1 migration source changes'; $d = $r.Data
+        $legacy = '.opencode/skills/minimal-change/d1b-target.txt'
+        $item = @($d.Output | Where-Object { $_.PSObject.Properties['Action'] -and $_.Path -ceq $r.Relative })
+        $item.Count | Should -Be 1
+        $item[0].Action | Should -BeExactly 'stale'
+        $item[0].Note | Should -BeExactly "$legacy changed while consent was pending and was left as found."
+        $item[0].Note | Should -Not -Match 'moved from'
+        $d.Before.Exists | Should -BeTrue
+        $d.After.Exists | Should -BeTrue
+        $d.After.RawBase64 | Should -BeExactly ([Convert]::ToBase64String($r.Host.AfterEdit))
+        [Convert]::ToBase64String($r.Host.BeforeEdit) | Should -BeExactly $d.Before.RawBase64
+        $d.After.RawBase64 | Should -Not -Be $d.Before.RawBase64
+        $d.DestinationBefore.Exists | Should -BeFalse
+        $d.DestinationAfter.Exists | Should -BeFalse
+        foreach ($rel in $legacy,$r.Relative) { $d.ManifestAfter.files[$rel] | Should -BeExactly $d.ManifestBefore.files[$rel] }
+        $d.ManifestBefore.files.Contains($legacy) | Should -BeTrue
+        $d.ManifestAfter.files.Contains($r.Relative) | Should -BeFalse
+        $d.InProcessLastExitCode | Should -Be 1
+        $r.Warnings | Should -Contain 'PARTIAL: unresolved/declined effects retained in ownership; configuration and adapter continuation must stop.'
+        $d.ConfigAfter.RawBase64 | Should -BeExactly $d.ConfigBefore.RawBase64
+        $d.TreeAfter.Contains('.sw/backup') | Should -BeFalse
+        $d.SeedExit | Should -Be 0
+        $d.ForbiddenReach.Count | Should -Be 0
+        $d.LoadedKitRoot | Should -BeExactly $d.Kit
+        foreach ($path in $d.ModulePaths) { $path.StartsWith($d.Kit + [IO.Path]::DirectorySeparatorChar, [StringComparison]::OrdinalIgnoreCase) | Should -BeTrue }
+        $r.Errors | Should -BeNullOrEmpty
+        $d.Caught | Should -BeNullOrEmpty
+        $r.Host.Edited | Should -Be 1
+        $r.Host.Denied | Should -Be 0
+        $r.Host.EditedPrompt | Should -Match ([regex]::Escape(('operation "{0}" on target "{1}"' -f $r.ExpectedAction,$r.Relative)))
+        $d.PreviewExit | Should -Be 0
+        $d.PreviewEdits | Should -Be 0
+        $d.PreviewPrompts | Should -Be 0
+        ConvertTo-SwJson $d.PreviewTree | Should -BeExactly (ConvertTo-SwJson $d.TreeBefore)
+        $d.EarlierAfter.LfHash | Should -Be (Get-SwHash "EARLIER-2`n")
+        $d.ManifestAfter.files[$d.EarlierPath] | Should -Be $d.EarlierAfter.LfHash
+        @($d.Output | Where-Object { $_.PSObject.Properties['Action'] -and $_.Path -ceq $d.EarlierPath -and $_.Action -ceq 'update' }).Count | Should -Be 1
     }
 }
 

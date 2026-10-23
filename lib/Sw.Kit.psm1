@@ -224,10 +224,31 @@ function Assert-SwSelectionTransition([string]$Root, $Render) {
     }
 }
 
-function Get-SwManagedContent([string]$Root, $Render) {
+function Get-SwConsentObservation([string]$Path) {
+    $exists = Test-Path -LiteralPath $Path
+    [pscustomobject]@{ Exists = $exists; Bytes = $(if ($exists) { ,([IO.File]::ReadAllBytes($Path)) } else { $null }) }
+}
+
+function Test-SwConsentFreshness([string]$Root, [string[]]$Paths, $Observed, $Item) {
+    foreach ($rel in $Paths) {
+        $now = Get-SwConsentObservation (Resolve-SwManagedPath $Root $rel)
+        $before = $Observed[$rel]
+        if ($now.Exists -ne $before.Exists -or ($now.Exists -and
+            [Convert]::ToBase64String([byte[]]$now.Bytes) -cne [Convert]::ToBase64String([byte[]]$before.Bytes))) {
+            $Item.Action = 'stale'
+            $Item.Note = @($Item.Note, "$rel changed while consent was pending and was left as found.") -ne $null -join "`n  "
+            return $false
+        }
+    }
+    # This is a bounded reobservation, not a lock against changes between this check and the effect.
+    $true
+}
+
+function Get-SwManagedContent([string]$Root, $Render, $Observed = $null) {
     # Pure and validation-first: every managed-block replacement for files the project also owns, or a throw.
     # Nothing is written, so a malformed block or an unsafe LFS transition stops the operation before any change.
     $agentsPath = Join-Path $Root 'AGENTS.md'
+    if ($null -ne $Observed) { $Observed['AGENTS.md'] = Get-SwConsentObservation $agentsPath }
     $agents = if (Test-Path -LiteralPath $agentsPath) { Set-SwBlock (Read-SwText $agentsPath) 'core' $Render.AgentsCore } else { $Render.AgentsTemplate }
     $agents = Set-SwBlock $agents 'profile' $Render.AgentsProfile
     $agentsNote = $null
@@ -242,9 +263,11 @@ function Get-SwManagedContent([string]$Root, $Render) {
     }
     $blocks = [ordered]@{ 'AGENTS.md' = $agents }
     $gi = Join-Path $Root '.gitignore'
+    if ($null -ne $Observed) { $Observed['.gitignore'] = Get-SwConsentObservation $gi }
     $blocks['.gitignore'] = Set-SwBlock $(if (Test-Path -LiteralPath $gi) { Read-SwText $gi } else { '' }) 'superworkspace' $Render.GitIgnore 'hash'
     # .gitattributes is inspected even when the profile has no LFS rules, so a retained or malformed managed block is seen.
     $ga = Join-Path $Root '.gitattributes'
+    if ($null -ne $Observed) { $Observed['.gitattributes'] = Get-SwConsentObservation $ga }
     $gaText = if (Test-Path -LiteralPath $ga) { Read-SwText $ga } else { '' }
     $gaBegin = '# sw:begin superworkspace'; $gaEnd = '# sw:end superworkspace'
     Assert-SwBlockWellFormed $gaText 'superworkspace' $gaBegin $gaEnd
@@ -329,9 +352,12 @@ function Sync-SwProject {
     }
     # An edited file at a moved path moves with its edit: its manifest hash follows it to the new path.
     $movedFrom = @{}
+    $observed = @{}
     foreach ($m in $moved.GetEnumerator()) {
         $src = Join-Path $Root $m.Key
         if (-not $old.Contains($m.Key) -or $old.Contains($m.Value) -or $render.Files.Contains($m.Key) -or -not $render.Files.Contains($m.Value)) { continue }
+        $observed[$m.Key] = Get-SwConsentObservation $src
+        $observed[$m.Value] = Get-SwConsentObservation (Join-Path $Root $m.Value)
         if (-not (Test-Path -LiteralPath $src) -or (Test-Path -LiteralPath (Join-Path $Root $m.Value))) { continue }
         if ((Get-SwHash (Read-SwText $src)) -eq $old[$m.Key]) { continue }  # unedited: plain remove + add
         $movedFrom[$m.Value] = $m.Key
@@ -341,6 +367,7 @@ function Sync-SwProject {
     $plan = [Collections.Generic.List[object]]::new()
     foreach ($e in $render.Files.GetEnumerator()) {
         $target = Join-Path $Root $e.Key
+        if (-not $observed.ContainsKey($e.Key)) { $observed[$e.Key] = Get-SwConsentObservation $target }
         $current = if ($movedFrom.Contains($e.Key)) { Join-Path $Root $movedFrom[$e.Key] } else { $target }
         $newHash = Get-SwHash $e.Value
         $known = $old.Contains($e.Key)
@@ -361,6 +388,7 @@ function Sync-SwProject {
     foreach ($rel in @($old.Keys)) {
         if ($render.Files.Contains($rel)) { continue }
         $target = Join-Path $Root $rel
+        if (-not $observed.ContainsKey($rel)) { $observed[$rel] = Get-SwConsentObservation $target }
         # An edited retired output (OpenCode, roles, manager, merged skills): ownership is released once, the file stays,
         # and later updates do not report it as unresolved. A retired skill stays in a discovery directory, so it loads.
         $action = if (-not (Test-Path -LiteralPath $target)) { 'gone' } elseif ((Get-SwHash (Read-SwText $target)) -eq $old[$rel]) { 'remove' } elseif ($rel -cin $retired) { 'released' } else { 'orphan-kept' }
@@ -375,7 +403,7 @@ function Sync-SwProject {
     }
 
     # Validate the managed blocks before the first move, copy, removal or write.
-    $managed = Get-SwManagedContent $Root $render
+    $managed = Get-SwManagedContent $Root $render $observed
     $opId = Get-SwOperationId
     $backupRoot = Join-Path $Root ".sw/backup/$opId"
     if (@($plan | Where-Object { $_.Action -in 'adopt', 'skip-modified' }).Count) { Assert-SwPhysicalPath $backupRoot }
@@ -408,14 +436,20 @@ function Sync-SwProject {
         if ($movedFrom.Contains($p.Path)) {
             $sourceRel = $movedFrom[$p.Path]
             if (-not $PSCmdlet.ShouldProcess($p.Path, "move from $sourceRel")) { $p.Action = 'declined'; $partial = $true; continue }
+            $moveNote = $p.Note; $p.Note = $null
+            if (-not (Test-SwConsentFreshness $Root @($sourceRel, $p.Path) $observed $p)) { $partial = $true; continue }
             $source = Resolve-SwManagedPath $Root $sourceRel
             New-Item -ItemType Directory -Force (Split-Path $target) -Confirm:$false | Out-Null
             Move-Item -LiteralPath $source -Destination $target -Force -Confirm:$false
+            $p.Note = $moveNote
             $manifest.files.Remove($sourceRel); $manifest.files[$p.Path] = $old[$p.Path]
+            # A later replacement prompt must compare against the move we just completed.
+            $observed[$p.Path] = Get-SwConsentObservation $target
         }
         switch ($p.Action) {
             { $_ -in 'add', 'update', 'adopt' } {
                 if ($PSCmdlet.ShouldProcess($p.Path, $p.Action)) {
+                    if (-not (Test-SwConsentFreshness $Root @($p.Path) $observed $p)) { $partial = $true; break }
                     if ($p.Action -eq 'adopt') {
                         # A failed recovery copy throws here, before the replacement below.
                         if (-not $reserved) { $null = New-SwSnapshotDir $backupRoot; $reserved = $true }
@@ -443,7 +477,10 @@ function Sync-SwProject {
                 }
             }
             'remove' {
-                if ($PSCmdlet.ShouldProcess($p.Path, 'remove (dropped from kit)')) { $null = Resolve-SwManagedPath $Root $p.Path; Remove-Item -LiteralPath $target -Force -Confirm:$false; $manifest.files.Remove($p.Path) }
+                if ($PSCmdlet.ShouldProcess($p.Path, 'remove (dropped from kit)')) {
+                    if (-not (Test-SwConsentFreshness $Root @($p.Path) $observed $p)) { $partial = $true; break }
+                    $null = Resolve-SwManagedPath $Root $p.Path; Remove-Item -LiteralPath $target -Force -Confirm:$false; $manifest.files.Remove($p.Path)
+                }
                 else { $p.Action = 'declined'; $partial = $true }
             }
             { $_ -in 'gone', 'released' } { $manifest.files.Remove($p.Path) }
@@ -457,9 +494,13 @@ function Sync-SwProject {
     foreach ($b in $blocks.GetEnumerator()) {
         $t = Join-Path $Root $b.Key
         $same = (Test-Path -LiteralPath $t) -and (Read-SwText $t) -ceq $b.Value
-        $plan.Add([pscustomobject]@{ Path = $b.Key; Action = $(if ($same) { 'same' } else { 'block' }); Hash = $null; Note = $(if ($b.Key -eq 'AGENTS.md') { $agentsNote } else { $null }) })
+        $item = [pscustomobject]@{ Path = $b.Key; Action = $(if ($same) { 'same' } else { 'block' }); Hash = $null; Note = $(if ($b.Key -eq 'AGENTS.md') { $agentsNote } else { $null }) }
+        $plan.Add($item)
         if (-not $same) {
-            if ($PSCmdlet.ShouldProcess($b.Key, 'set managed block')) { $null = Resolve-SwManagedPath $Root $b.Key; Write-SwFile $t $b.Value }
+            if ($PSCmdlet.ShouldProcess($b.Key, 'set managed block')) {
+                if (-not (Test-SwConsentFreshness $Root @($b.Key) $observed $item)) { $partial = $true; continue }
+                $null = Resolve-SwManagedPath $Root $b.Key; Write-SwFile $t $b.Value
+            }
             else { $partial = $true }
         }
     }
@@ -744,7 +785,7 @@ function Assert-SwStrictJson([string]$Text) {
     function Read-Value {
         $t = Step
         if ($t -ceq '{') {
-            $names = [Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal)
+            $names = [Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
             $t = Step
             if ($t -ceq '}') { return }
             while ($true) {
@@ -774,6 +815,21 @@ function Assert-SwStrictJson([string]$Text) {
     if ($p.I -ne $p.T.Count) { throw 'not strict JSON: text after the value' }
 }
 
+function Assert-SwGlobalBaselineFields($r, [string]$Path) {
+    $bad = "Invalid global baseline record (nothing is written while it is invalid): $Path"
+    if ($r -isnot [Collections.IDictionary] -or @($r.Keys | Where-Object { $_ -cnotin 'schema', 'kitVersion', 'kitCommit', 'homes' }).Count -or $r.Count -ne 4 -or
+        $r['schema'] -isnot [long] -or $r['schema'] -ne 1 -or $r['homes'] -isnot [Collections.IDictionary] -or
+        $r['kitVersion'] -isnot [string] -or ($null -ne $r['kitCommit'] -and $r['kitCommit'] -isnot [string])) { throw $bad }
+    $seen = [Collections.Generic.HashSet[string]]::new((Get-SwPathComparer))
+    foreach ($dir in $r['homes'].Keys) {
+        $h = $r['homes'][$dir]
+        if (-not (Test-SwFullyQualified $dir) -or [IO.Path]::GetFullPath($dir).TrimEnd([char[]]@([char]92, [char]47)) -cne $dir -or -not $seen.Add($dir) -or
+            $h -isnot [Collections.IDictionary] -or $h.Count -ne 2 -or $h['entries'] -isnot [Collections.IDictionary] -or $h['entries'].Count -eq 0) { throw $bad }
+        foreach ($k in $h['entries'].Keys) { if ($k -cnotin $script:GlobalEntry.Values -or $h['entries'][$k] -isnot [string] -or $h['entries'][$k] -cnotmatch '^[0-9a-f]{64}$') { throw $bad } }
+        if ($h['kind'] -isnot [string] -or $h['kind'] -cne (Get-SwGlobalKind $h['entries'])) { throw $bad }
+    }
+}
+
 function Read-SwGlobalBaseline([string]$Path) {
     # ~/.sw/global.json: the hash of each global block as delivered, per home. Strict: anything unexpected throws, so
     # install writes nothing and check reports FAILED. No file means no baselines.
@@ -786,17 +842,155 @@ function Read-SwGlobalBaseline([string]$Path) {
         Assert-SwStrictJson $text
         ConvertFrom-SwJson $text
     } catch { throw "$bad ($($_.Exception.Message))" }
-    if ($r -isnot [Collections.IDictionary] -or @($r.Keys | Where-Object { $_ -cnotin 'schema', 'kitVersion', 'kitCommit', 'homes' }).Count -or $r.Count -ne 4 -or
-        $r['schema'] -isnot [long] -or $r['schema'] -ne 1 -or $r['homes'] -isnot [Collections.IDictionary] -or
-        $r['kitVersion'] -isnot [string] -or ($null -ne $r['kitCommit'] -and $r['kitCommit'] -isnot [string])) { throw $bad }
-    $seen = [Collections.Generic.HashSet[string]]::new((Get-SwPathComparer))
-    foreach ($dir in $r['homes'].Keys) {
-        $h = $r['homes'][$dir]
-        if (-not (Test-SwFullyQualified $dir) -or [IO.Path]::GetFullPath($dir).TrimEnd([char[]]@([char]92, [char]47)) -cne $dir -or -not $seen.Add($dir) -or
-            $h -isnot [Collections.IDictionary] -or $h.Count -ne 2 -or $h['entries'] -isnot [Collections.IDictionary] -or $h['entries'].Count -eq 0) { throw $bad }
-        foreach ($k in $h['entries'].Keys) { if ($k -cnotin $script:GlobalEntry.Values -or $h['entries'][$k] -isnot [string] -or $h['entries'][$k] -cnotmatch '^[0-9a-f]{64}$') { throw $bad } }
-        if ($h['kind'] -isnot [string] -or $h['kind'] -cne (Get-SwGlobalKind $h['entries'])) { throw $bad }
+    if ($r -is [Collections.IDictionary] -and $r['schema'] -eq 2) {
+        throw "$bad (schema2 is unsupported by legacy delivery; preview with '$($script:Kit)\sw.ps1' global check -Delivery central-v1 -Harness both)"
     }
+    Assert-SwGlobalBaselineFields $r $Path
+    $r
+}
+
+# Central delivery extends the A7 record in memory. The legacy reader/writer above deliberately remains schema1-only.
+# E3 has no record writer, link effects or migration. Unrelated recorded paths are validated as data, never visited.
+$script:CentralScopes = @('claude', 'codex', 'codex-skills')
+
+function Assert-SwCentralKeys($Value, [string[]]$Keys) {
+    if ($Value -isnot [Collections.IDictionary] -or $Value.Count -ne $Keys.Count -or @($Value.Keys | Where-Object { $_ -cnotin $Keys }).Count) {
+        throw "Unexpected object keys; expected $($Keys -join ', ')"
+    }
+}
+
+function Assert-SwCentralPath($Value) {
+    if ($Value -isnot [string] -or $Value -cnotmatch '^[A-Za-z]:\\' -or
+        [IO.Path]::GetFullPath($Value).TrimEnd('\') -cne $Value) { throw "Expected normalized absolute local path: '$Value'" }
+    Assert-SwRelativePath $Value.Substring(3).Replace('\', '/')
+}
+
+function Assert-SwCentralIds($Value, [string[]]$Allowed) {
+    if ($Value -isnot [array]) { throw 'Selection must be an array' }
+    $seen = [Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
+    foreach ($id in $Value) {
+        if ($id -isnot [string] -or $id -cnotmatch '^[a-z0-9]+(-[a-z0-9]+)*$' -or -not $seen.Add($id) -or ($Allowed -and $id -cnotin $Allowed)) {
+            throw [Management.Automation.PSArgumentException]::new("Invalid or duplicate selection ID: '$id'")
+        }
+    }
+}
+
+function Get-SwCentralSourcePath([string]$Tier, [string]$Id, [string]$ProductRoot, [string]$PersonalRoot) {
+    if ($Tier -eq 'personal') { return Join-Path $PersonalRoot "skills/$Id" }
+    if ($Id -eq 'unreal-validation') { return Join-Path $ProductRoot 'project/profiles/unreal/files/.agents/skills/unreal-validation' }
+    Join-Path $ProductRoot "project/base/.agents/skills/$Id"
+}
+
+function ConvertFrom-SwCentralReparseTarget([string]$Raw) {
+    $path = $Raw
+    foreach ($prefix in @('\??\', '\\?\')) { if ($path.StartsWith($prefix, [StringComparison]::Ordinal)) { $path = $path.Substring($prefix.Length); break } }
+    Assert-SwCentralPath $path
+    $path
+}
+
+function Read-SwCentralRecord([string]$Path, [string]$ProductRoot, [string]$PersonalRoot) {
+    Assert-SwPhysicalPath $Path
+    $empty = [ordered]@{ schema = [long]2; kitVersion = Get-SwKitVersion; kitCommit = $null; productRoot = $ProductRoot; personalRoot = $PersonalRoot; homes = [ordered]@{} }
+    if (-not (Test-Path -LiteralPath $Path)) { return $empty }
+    $bad = "Invalid global delivery record (nothing was written): $Path"
+    try {
+        if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) { throw 'not a file' }
+        $text = Read-SwText $Path
+        Assert-SwStrictJson $text
+        $r = ConvertFrom-SwJson $text
+    } catch { throw "$bad ($($_.Exception.Message))" }
+    if ($r -is [Collections.IDictionary] -and $r['schema'] -is [long] -and $r['schema'] -eq 1) {
+        # Validate the complete old schema FIRST; never rescue an invalid old record through normalization.
+        Assert-SwGlobalBaselineFields $r $Path
+        $old = $r
+        $empty.kitVersion = $old.kitVersion; $empty.kitCommit = $old.kitCommit
+        foreach ($dir in $old.homes.Keys) {
+            $h = $old.homes[$dir]
+            $n = [ordered]@{ kind = $h.kind; delivery = [ordered]@{}; selection = [ordered]@{}; entries = [ordered]@{} }
+            foreach ($scope in $h.kind.Split('+')) {
+                $n.delivery[$scope] = 'rules'
+                $n.selection[$scope] = [ordered]@{ productSkills = @(); personalSkills = @(); personalRules = @() }
+            }
+            foreach ($key in $h.entries.Keys) {
+                $n.entries[$key] = [ordered]@{ kind = 'rules-block'; sourceMode = 'literal'; bodySha256 = $h.entries[$key]; hashFormat = 'a7-lf-utf8'; inputs = @() }
+            }
+            $empty.homes[$dir] = $n
+        }
+        return $empty
+    }
+    try {
+        Assert-SwCentralKeys $r @('schema', 'kitVersion', 'kitCommit', 'productRoot', 'personalRoot', 'homes')
+        if ($r.schema -isnot [long] -or $r.schema -ne 2 -or $r.kitVersion -isnot [string] -or
+            ($null -ne $r.kitCommit -and $r.kitCommit -isnot [string]) -or $r.homes -isnot [Collections.IDictionary]) { throw 'Unsupported schema or field types' }
+        Assert-SwCentralPath $r.productRoot; Assert-SwCentralPath $r.personalRoot
+        if (-not (Get-SwPathComparer).Equals($r.personalRoot, $PersonalRoot)) { throw 'Personal root must be the user home/.sw containing this record' }
+        $seen = [Collections.Generic.HashSet[string]]::new((Get-SwPathComparer))
+        foreach ($dir in $r.homes.Keys) {
+            Assert-SwCentralPath $dir
+            if (-not $seen.Add($dir)) { throw 'Colliding homes' }
+            $h = $r.homes[$dir]
+            Assert-SwCentralKeys $h @('kind', 'delivery', 'selection', 'entries')
+            if ($h.delivery -isnot [Collections.IDictionary] -or -not $h.delivery.Count -or $h.entries -isnot [Collections.IDictionary] -or -not $h.entries.Count) { throw 'Empty or invalid home maps' }
+            $tags = @($script:CentralScopes | Where-Object { $_ -cin @($h.delivery.Keys) })
+            Assert-SwCentralKeys $h.delivery $tags; Assert-SwCentralKeys $h.selection $tags
+            if ($h.kind -isnot [string] -or $h.kind -cne ($tags -join '+')) { throw 'Home kind does not match canonical scopes' }
+            foreach ($scope in $tags) {
+                if ($h.delivery[$scope] -isnot [string] -or $h.delivery[$scope] -cnotin 'rules', 'central-v1' -or ($scope -eq 'codex-skills' -and $h.delivery[$scope] -cne 'central-v1')) { throw 'Invalid delivery scope' }
+                $s = $h.selection[$scope]
+                Assert-SwCentralKeys $s @('productSkills', 'personalSkills', 'personalRules')
+                Assert-SwCentralIds $s.productSkills; Assert-SwCentralIds $s.personalSkills
+                Assert-SwCentralIds $s.personalRules @('shared', 'claude', 'codex')
+                if (@($s.productSkills | Where-Object { $_ -iin $s.personalSkills }).Count) { throw 'Product/personal skill collision' }
+                if (($h.delivery[$scope] -eq 'rules' -and ($s.productSkills.Count + $s.personalSkills.Count + $s.personalRules.Count)) -or
+                    ($scope -eq 'codex' -and ($s.productSkills.Count + $s.personalSkills.Count)) -or
+                    ($scope -eq 'codex-skills' -and $s.personalRules.Count) -or
+                    @($s.personalRules | Where-Object { $_ -cnotin @('shared', $scope) }).Count) { throw 'Selection does not match scope' }
+            }
+            $entryScopes = [Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal)
+            foreach ($key in $h.entries.Keys) {
+                $e = $h.entries[$key]
+                if ($e -isnot [Collections.IDictionary]) { throw 'Invalid entry type' }
+                if ($key -cin $script:GlobalEntry.Values) {
+                    $scope = if ($key -ceq $script:GlobalEntry.claude) { 'claude' } else { 'codex' }
+                    if ($scope -cnotin $tags) { throw 'Rule entry has no scope' }
+                    $null = $entryScopes.Add($scope)
+                    Assert-SwCentralKeys $e @('kind', 'sourceMode', 'bodySha256', 'hashFormat', 'inputs')
+                    if ($e.kind -isnot [string] -or $e.kind -cne 'rules-block' -or $e.sourceMode -isnot [string] -or $e.sourceMode -cnotin 'literal', 'imports' -or
+                        ($scope -eq 'codex' -and $e.sourceMode -cne 'literal') -or
+                        ($h.delivery[$scope] -eq 'rules' -and ($e.sourceMode -cne 'literal' -or $e.inputs.Count)) -or
+                        $e.bodySha256 -isnot [string] -or $e.bodySha256 -cnotmatch '^[0-9a-f]{64}$' -or $e.hashFormat -isnot [string] -or $e.hashFormat -cne 'a7-lf-utf8' -or $e.inputs -isnot [array] -or
+                        ($e.sourceMode -eq 'imports' -and -not $e.inputs.Count) -or ($scope -eq 'claude' -and $e.inputs.Count -and $e.sourceMode -cne 'imports')) { throw 'Invalid rules-block fields' }
+                    $inputPaths = @((Join-Path $r.productRoot 'global/rules.md'), (Join-Path $r.personalRoot 'rules/shared.md'), (Join-Path $r.personalRoot "rules/$scope.md"))
+                    $lastIndex = -1
+                    foreach ($ruleInput in $e.inputs) {
+                        Assert-SwCentralKeys $ruleInput @('tier', 'path', 'sha256'); Assert-SwCentralPath $ruleInput.path
+                        $index = [Array]::IndexOf($inputPaths, $ruleInput.path)
+                        if ($index -le $lastIndex -or ($lastIndex -eq -1 -and $index -ne 0) -or $ruleInput.tier -isnot [string] -or $ruleInput.tier -cne $(if ($index -eq 0) { 'product' } else { 'personal' }) -or
+                            $ruleInput.sha256 -isnot [string] -or $ruleInput.sha256 -cnotmatch '^[0-9a-f]{64}$') { throw 'Invalid ordered rule input' }
+                        $lastIndex = $index
+                    }
+                } elseif ($key -cmatch '^skills/([a-z0-9]+(?:-[a-z0-9]+)*)$') {
+                    $id = $Matches[1]
+                    Assert-SwCentralKeys $e @('kind', 'scopeOwners', 'sourceTier', 'sourceId', 'sourcePath', 'linkType', 'normalizedTarget', 'rawReparseTarget')
+                    Assert-SwCentralIds $e.scopeOwners @('claude', 'codex-skills')
+                    $owners = @('claude', 'codex-skills' | Where-Object { $_ -cin $e.scopeOwners })
+                    if ($e.kind -isnot [string] -or $e.kind -cne 'skill-link' -or -not $owners.Count -or ($owners -join '+') -cne ($e.scopeOwners -join '+') -or
+                        $e.sourceTier -isnot [string] -or $e.sourceTier -cnotin 'product', 'personal' -or $e.sourceId -isnot [string] -or $e.sourceId -cne $id -or
+                        $e.linkType -isnot [string] -or $e.linkType -cne 'junction' -or $e.rawReparseTarget -isnot [string]) { throw 'Invalid skill-link fields' }
+                    foreach ($owner in $owners) {
+                        if ($owner -cnotin $tags -or $h.delivery[$owner] -cne 'central-v1') { throw 'Link owner has no central scope' }
+                        $null = $entryScopes.Add($owner)
+                    }
+                    if ('codex-skills' -cin $owners -and -not (Get-SwPathComparer).Equals($dir, (Join-Path (Split-Path $r.personalRoot -Parent) '.agents'))) { throw 'Codex skills must use the shared user home' }
+                    Assert-SwCentralPath $e.sourcePath; Assert-SwCentralPath $e.normalizedTarget
+                    if ($e.sourcePath -cne (Get-SwCentralSourcePath $e.sourceTier $id $r.productRoot $r.personalRoot) -or
+                        -not (Get-SwPathComparer).Equals($e.sourcePath, $e.normalizedTarget) -or
+                        -not (Get-SwPathComparer).Equals((ConvertFrom-SwCentralReparseTarget $e.rawReparseTarget), $e.normalizedTarget)) { throw 'Skill source/target mismatch' }
+                } else { throw "Unknown artifact: $key" }
+            }
+            foreach ($scope in $tags) { if (-not $entryScopes.Contains($scope)) { throw 'Home scope has no owned artifact' } }
+        }
+    } catch { throw "$bad ($($_.Exception.Message))" }
     $r
 }
 
@@ -999,16 +1193,20 @@ function Install-SwGlobal {
     } finally { if ($lock) { $lock.Dispose() } }
 
     # RTK is optional; the kit installs it only when asked to (-InstallRtk).
+    $rtkInstallFailed = $false
     $rtk = Get-SwToolVersion rtk
     if (-not $rtk -or $rtk -lt [version]'0.48.0') {
         if ($InstallRtk) {
-            if ($PSCmdlet.ShouldProcess('rtk-ai.rtk', 'winget install')) { & winget install --id rtk-ai.rtk --exact --accept-source-agreements --accept-package-agreements }
+            if ($PSCmdlet.ShouldProcess('rtk-ai.rtk', 'winget install')) {
+                & winget install --id rtk-ai.rtk --exact --accept-source-agreements --accept-package-agreements
+                $rtkInstallFailed = $LASTEXITCODE -ne 0
+            }
         } else { Write-Output 'rtk missing or older than 0.48 (optional; not installed). Install it yourself (winget install --id rtk-ai.rtk --exact), or re-run with -InstallRtk.' }
     }
     Test-SwGlobal -ClaudeConfigDir $ClaudeConfigDir -CodexHome $CodexHome
     if ($kept) { Write-Warning "PARTIAL: $kept edited, unverified, changed or read-only global rules block(s) kept; see the notes above." }
     if ($partial) { Write-Warning 'PARTIAL: a global rules block write was declined.' }
-    if ($kept -or $partial) { $global:LASTEXITCODE = 1 }
+    if ($kept -or $partial -or $rtkInstallFailed) { $global:LASTEXITCODE = 1 }
 }
 
 function Test-SwGlobal {
@@ -1068,10 +1266,332 @@ function Test-SwGlobal {
     $global:LASTEXITCODE = if (@($rows | Where-Object State -in 'MISSING', 'FAILED').Count) { 1 } else { 0 }
 }
 
+function Get-SwCentralSkillSource([string]$Tier, [string]$Id, [string]$ProductRoot, [string]$PersonalRoot) {
+    Assert-SwCentralIds @($Id)
+    $path = Get-SwCentralSourcePath $Tier $Id $ProductRoot $PersonalRoot
+    Assert-SwCentralPath $path; Assert-SwPhysicalPath $path
+    if (-not (Test-Path -LiteralPath $path -PathType Container)) { throw "Selected skill source missing: $Tier/$Id ($path)" }
+    if ((Get-Item -LiteralPath $path -Force).Name -cne $Id) { throw "Skill source directory name must exactly match ID '$Id': $path" }
+    Get-SwPhysicalFiles $path | Out-Null
+    $front = Read-SwFrontmatter (Join-Path $path 'SKILL.md') @('name', 'description', 'disable-model-invocation', 'user-invocable', 'argument-hint', 'allowed-tools')
+    if ($front['name'] -isnot [string] -or $front['name'] -cne $Id) { throw "Skill frontmatter name must exactly match '$Id': $path" }
+    [pscustomobject]@{ Tier = $Tier; Id = $Id; Path = $path }
+}
+
+function ConvertTo-SwCentralImport([string]$Path) {
+    # Deliberately bounded grammar; do not guess native quoting/recursive-import behavior.
+    if ($Path -match '[^\p{L}\p{M}\p{N} :\\/._-]') { throw "Unsupported Claude import path grammar: $Path" }
+    Assert-SwCentralPath $Path
+    '@' + $Path.Replace('\', '/').Replace(' ', '\ ')
+}
+
+function Get-SwCentralRules([string]$Scope, [string[]]$PersonalRules, [string]$ProductRoot, [string]$PersonalRoot) {
+    $paths = @([pscustomobject]@{ Tier='product'; Path=(Join-Path $ProductRoot 'global/rules.md') }) +
+        @(foreach ($id in @('shared', $Scope)) { if ($id -cin $PersonalRules) { [pscustomobject]@{ Tier='personal'; Path=(Join-Path $PersonalRoot "rules/$id.md") } } })
+    $inputs = [Collections.Generic.List[object]]::new(); $texts = [Collections.Generic.List[string]]::new()
+    foreach ($source in $paths) {
+        Assert-SwCentralPath $source.Path; Assert-SwPhysicalPath $source.Path
+        if (-not (Test-Path -LiteralPath $source.Path -PathType Leaf)) { throw "Selected rule source missing: $($source.Path)" }
+        $raw = [IO.File]::ReadAllBytes($source.Path)
+        $text = Read-SwText $source.Path
+        # Conservative first slice: reject standalone @ tokens, including extensionless/quoted/inline imports.
+        if ($source.Tier -eq 'personal' -and $text -match '(?m)(?:^|[\s`"''(])@') { throw "Personal rule nested import is unsupported: $($source.Path)" }
+        $inputs.Add([ordered]@{ tier=$source.Tier; path=$source.Path; sha256=(Get-SwByteHash $raw) })
+        $texts.Add($(if ($Scope -eq 'claude') { ConvertTo-SwCentralImport $source.Path } else { $text.Trim("`n") }))
+    }
+    $body = Get-SwGlobalBody ($texts -join "`n`n")
+    [pscustomobject]@{ Body=$body; Inputs=@($inputs); Hash=(Get-SwHash $body); KnownBytes=([Text.Encoding]::UTF8.GetByteCount($body)) }
+}
+
+function Get-SwCentralLinkObservation([string]$Path, $Entry) {
+    # Only this exact managed leaf may be a junction. The broad participating-path guards stay unchanged.
+    # Get-Item exposes reparse metadata even for a broken junction; never enumerate/open the leaf or its source here.
+    try {
+        Assert-SwPhysicalPath (Split-Path $Path -Parent)
+        $item = Get-Item -LiteralPath $Path -Force -ErrorAction Stop
+    } catch [Management.Automation.ItemNotFoundException], [IO.FileNotFoundException], [IO.DirectoryNotFoundException] {
+        return [pscustomobject]@{ State='missing-link'; Error=$null }
+    } catch { return [pscustomobject]@{ State='foreign-type'; Error=$_.Exception.Message } }
+    if (-not ($item.Attributes -band [IO.FileAttributes]::ReparsePoint)) { return [pscustomobject]@{ State='foreign-type'; Error="Real file or directory at skill leaf: $Path" } }
+    if (-not $Entry) { return [pscustomobject]@{ State='unowned-link'; Error="Unowned link cannot be adopted: $Path" } }
+    $targets = @($item.Target)
+    $matches = $false
+    if ($item.LinkType -ceq 'Junction' -and $targets.Count -eq 1 -and $targets[0] -ceq $Entry.rawReparseTarget) {
+        try { $matches = (Get-SwPathComparer).Equals((ConvertFrom-SwCentralReparseTarget $targets[0]), $Entry.normalizedTarget) } catch { }
+    }
+    if (-not $matches) { return [pscustomobject]@{ State='tampered'; Error="Recorded link type/target changed: $Path" } }
+    [pscustomobject]@{ State='current'; Error=$null }
+}
+
+function Get-SwCentralDecision($Artifact, [string]$Operation) {
+    # Pure state/action mapping over observations; no filesystem, lock, record or native calls.
+    $row = [ordered]@{}
+    foreach ($property in $Artifact.PSObject.Properties) { $row[$property.Name] = $property.Value }
+    $row.Action = 'no-op'; $row.State = 'OK'; $row.DesiredOwners = @($Artifact.ScopeOwners)
+    $remove = $Operation -eq 'remove'
+    if ($Artifact.Refusal -or $Artifact.Current -in 'foreign-type', 'malformed', 'tampered', 'unowned-link') {
+        $row.Action = 'refuse'; $row.State = 'FAILED'
+        if (-not $row.Refusal) { $row.Refusal = "Conflicting artifact: $($Artifact.Current)" }
+    } elseif ($Artifact.Kind -eq 'skill-link') {
+        if ($remove) {
+            $row.DesiredOwners = @($Artifact.ScopeOwners | Where-Object { $_ -cnotin $Artifact.Scopes })
+            $row.Action = if ($row.DesiredOwners.Count -eq $Artifact.ScopeOwners.Count) { 'no-op' }
+                elseif ($row.DesiredOwners.Count) { 'detach-owner' }
+                elseif ($Artifact.Current -eq 'missing-link') { 'forget-missing' } else { 'remove-link' }
+        } elseif (-not $Artifact.Desired) { $row.Action = 'retain-owned'; $row.State = 'WARN' }
+        elseif ($Artifact.SourceChanged -and @($Artifact.ScopeOwners | Where-Object { $_ -cnotin $Artifact.Scopes }).Count) {
+            $row.Action = 'refuse'; $row.State = 'FAILED'; $row.Refusal = 'Retarget requires every owning scope at the physical home to be selected'
+        } else {
+            $row.DesiredOwners = @('claude', 'codex-skills' | Where-Object { $_ -cin (@($Artifact.ScopeOwners) + @($Artifact.Scopes)) })
+            $row.Action = if ($Artifact.Current -eq 'missing-link') { 'create-link' } elseif ($Artifact.SourceChanged) { 'retarget-link' }
+                elseif (@($Artifact.Scopes | Where-Object { $_ -cnotin $Artifact.ScopeOwners }).Count) { 'attach-owner' } else { 'no-op' }
+        }
+        if ($row.State -ne 'FAILED' -and ($Artifact.Current -eq 'missing-link' -or $row.Action -in 'retarget-link', 'attach-owner')) { $row.State = 'WARN' }
+    } else {
+        if ($Artifact.Current -in 'edited', 'unverified') { $row.Action = 'preserve'; $row.State = 'WARN' }
+        elseif ($remove) {
+            $row.Action = if ($Artifact.Ownership -ne 'record') { 'preserve' }
+                elseif ($Artifact.Current -in 'missing-file', 'missing-block') { 'forget-missing' } else { 'remove-block' }
+        } else {
+            $row.Action = switch ($Artifact.Current) {
+                { $_ -in 'missing-file', 'missing-block' } { 'create-block' }
+                { $_ -in 'stale', 'stale-shipped' } { 'replace-block' }
+                default { if ($Artifact.Ownership -eq 'record') { 'no-op' } else { 'record-baseline' } }
+            }
+        }
+        if ($Artifact.Current -ne 'current' -or $Artifact.SourceDrift) { $row.State = 'WARN' }
+    }
+    # Backup and check report the prospective state; neither schedules an application effect.
+    if ($Operation -eq 'check' -and $row.Action -ne 'refuse') { $row.Action = 'inspect' }
+    if ($Operation -eq 'backup' -and $row.Action -ne 'refuse') { $row.Action = 'snapshot-metadata' }
+    $row.Desired = if ($Artifact.Kind -eq 'rules-block') { if ($remove) { 'block-absent' } else { 'current-block' } }
+        elseif ($remove) { if ($row.DesiredOwners.Count) { 'owned-by-remaining-scopes' } else { 'absent' } }
+        elseif ($Artifact.Desired) { 'selected-owned-link' } else { 'owned-out-of-selection' }
+    [pscustomobject]$row
+}
+
+function Get-SwCentralList([string[]]$Values) {
+    # A single CLI token may be a comma list; an actual PowerShell array is already a list.
+    if (@($Values).Count -eq 0 -or (@($Values).Count -eq 1 -and [string]::IsNullOrWhiteSpace($Values[0]))) { return }
+    $ids = @(if ($Values.Count -eq 1) { $Values[0].Split(',') } else { $Values })
+    @($ids | ForEach-Object { $_.Trim() })
+}
+
+function Get-SwCentralHomeList([string]$Kind, [string[]]$Explicit, [string]$EnvName, [string]$Default) {
+    $raw = if ($Explicit) { $Explicit } else { @([Environment]::GetEnvironmentVariable($EnvName)) }
+    # Get-SwHomeList checks ambiguous lists against disk. Reject network/device paths before that possible probe.
+    foreach ($value in $raw) {
+        if ($value -and $value.TrimStart() -match '^[\\/]{2}') { throw 'Central homes must be local absolute paths; network/device paths are unsupported' }
+    }
+    Get-SwHomeList $Kind $Explicit $EnvName $Default
+}
+
+function Get-SwCentralPlan {
+    [CmdletBinding()]
+    param([string]$Action = 'check', [Parameter(Mandatory)][string]$Harness, [string]$Component = 'all',
+        [AllowEmptyCollection()][AllowEmptyString()][string[]]$Skills, [AllowEmptyCollection()][AllowEmptyString()][string[]]$PersonalSkills,
+        [AllowEmptyCollection()][AllowEmptyString()][string[]]$PersonalRules, [string[]]$ClaudeConfigDir, [string[]]$CodexHome)
+    $userDir = Get-SwUserHome
+    $product = $script:Kit; $personal = Join-Path $userDir '.sw'
+    Assert-SwCentralPath $userDir; Assert-SwPhysicalPath $userDir
+    Assert-SwCentralPath $product; Assert-SwPhysicalPath $product
+    $recordPath = Join-Path $personal 'global.json'
+    $record = Read-SwCentralRecord $recordPath $product $personal
+    $diagnostics = [Collections.Generic.List[string]]::new()
+    $diagnostics.Add('Read-only plan; no adoption or native loading proof. Instruction size visibility is incomplete.')
+    if ($Action -eq 'backup') { $diagnostics.Add("Record snapshot: $recordPath (if present); rule-file bytes and exact link metadata only, never skill-source contents") }
+    $given = @{}
+    foreach ($pair in @(@('Skills', 'productSkills'), @('PersonalSkills', 'personalSkills'), @('PersonalRules', 'personalRules'))) {
+        if ($PSBoundParameters.ContainsKey($pair[0])) {
+            $given[$pair[1]] = @(Get-SwCentralList $PSBoundParameters[$pair[0]])
+            if ($pair[0] -eq 'PersonalRules') { Assert-SwCentralIds $given[$pair[1]] @('shared', 'claude', 'codex') }
+            else { Assert-SwCentralIds $given[$pair[1]] }
+        }
+    }
+    $scopeTargets = [Collections.Generic.List[object]]::new()
+    if ($Harness -in 'claude', 'both') {
+        foreach ($h in @(Get-SwCentralHomeList 'Claude' $ClaudeConfigDir 'CLAUDE_CONFIG_DIR' (Join-Path $userDir '.claude'))) {
+            $scopeTargets.Add([pscustomobject]@{ Scope='claude'; Dir=$h.Dir; Origin=$h.Origin })
+        }
+    }
+    if ($Harness -in 'codex', 'both') {
+        if ($Component -ne 'skills') {
+            foreach ($h in @(Get-SwCentralHomeList 'Codex' $CodexHome 'CODEX_HOME' (Join-Path $userDir '.codex'))) {
+                $scopeTargets.Add([pscustomobject]@{ Scope='codex'; Dir=$h.Dir; Origin=$h.Origin })
+            }
+        }
+        if ($Component -ne 'rules') { $scopeTargets.Add([pscustomobject]@{ Scope='codex-skills'; Dir=(Join-Path $userDir '.agents'); Origin='shared user scope' }) }
+    }
+    $rows = [Collections.Generic.List[object]]::new()
+    $links = [Collections.Specialized.OrderedDictionary]::new((Get-SwPathComparer))
+    $recordedRuleSources = @(); $recordedSkillSources = @()
+    foreach ($target in $scopeTargets) {
+        Assert-SwCentralPath $target.Dir; Assert-SwPhysicalPath $target.Dir
+        if (Test-Path -LiteralPath $target.Dir -PathType Leaf) { throw "Provider home is not a directory: $($target.Dir)" }
+        if ($target.Origin -notin 'default', 'shared user scope' -and -not (Test-Path -LiteralPath $target.Dir -PathType Container)) { throw "Home not found, nothing written: $($target.Dir) ($($target.Origin))" }
+        $homeKey = Find-SwGlobalHome $record.homes $target.Dir
+        $homeRecord = if ($null -ne $homeKey) { $record.homes[$homeKey] } else { $null }
+        $recordedSelection = if ($homeRecord -and $homeRecord.selection.Contains($target.Scope) -and $homeRecord.delivery[$target.Scope] -eq 'central-v1') { $homeRecord.selection[$target.Scope] } else { $null }
+        $selection = [ordered]@{}
+        foreach ($name in @('productSkills', 'personalSkills', 'personalRules')) {
+            $selection[$name] = if ($given.ContainsKey($name)) { @($given[$name]) } elseif ($recordedSelection) { @($recordedSelection[$name]) } else { @() }
+        }
+        if (@($selection.productSkills | Where-Object { $_ -iin $selection.personalSkills }).Count) { throw "Product/personal skill collision at $($target.Dir)" }
+        $isSkillScope = $target.Scope -in 'claude', 'codex-skills' -and $Component -ne 'rules'
+        if ($isSkillScope -and -not $recordedSelection -and -not $given.ContainsKey('productSkills')) {
+            if ($Action -eq 'install') { throw [Management.Automation.PSArgumentException]::new("Initial central skills install requires explicit -Skills for $($target.Scope) at $($target.Dir)") }
+            if ($Action -eq 'check') { $diagnostics.Add("$($target.Scope) at $($target.Dir): no recorded selection; no catalogue defaults inferred") }
+        }
+        if ($target.Scope -in 'claude', 'codex' -and $Component -ne 'skills') {
+            $key = $script:GlobalEntry[$target.Scope]
+            $entry = if ($homeRecord) { $homeRecord.entries[$key] } else { $null }
+            if ($entry) { $recordedRuleSources += @($entry.inputs | ForEach-Object { $_.path }) }
+            $inputs = @(); $body = ''; $hash = ''; $knownBytes = 0
+            if ($Action -notin 'remove', 'backup') {
+                $rules = Get-SwCentralRules $target.Scope $selection.personalRules $product $personal
+                $inputs = $rules.Inputs; $body = $rules.Body; $hash = $rules.Hash; $knownBytes = $rules.KnownBytes
+            } elseif ($entry) { $hash = $entry.bodySha256; $inputs = $entry.inputs }
+            $fileName = if ($target.Scope -eq 'claude') { 'CLAUDE.md' } else { 'AGENTS.md' }
+            $ruleTarget = [pscustomobject]@{ Dir=$target.Dir; File=(Join-Path $target.Dir $fileName); Key=$key }
+            $baseline = [ordered]@{ homes=[ordered]@{} }
+            if ($entry) { $baseline.homes[$target.Dir] = [ordered]@{ entries=[ordered]@{ $key=$entry.bodySha256 } } }
+            $observation = Get-SwGlobalState $ruleTarget $baseline $hash
+            $refusal = $observation.Error
+            if ($target.Scope -eq 'codex') {
+                $override = Join-Path $target.Dir 'AGENTS.override.md'
+                Assert-SwPhysicalPath $override
+                if (Test-Path -LiteralPath $override -PathType Container) { $refusal = "AGENTS.override.md is not a file: $override" }
+                elseif ((Test-Path -LiteralPath $override -PathType Leaf) -and (Get-Item -LiteralPath $override -Force).Length -gt 0) {
+                    if ($Action -ne 'remove') { $refusal = "Nonempty AGENTS.override.md masks requested rules: $override" }
+                    else { $diagnostics.Add("Override retained during base-block removal: $override") }
+                }
+            }
+            $artifact = [pscustomobject]@{ Artifact=$key; Kind='rules-block'; SourceTier=(@($inputs | ForEach-Object { $_.tier } | Select-Object -Unique) -join '+'); Source=@($inputs | ForEach-Object { $_.path });
+                TargetHome=$target.Dir; Target=$ruleTarget.File; Current=$observation.State; Desired=($Action -ne 'remove'); Scopes=@($target.Scope); ScopeOwners=@();
+                Ownership=$(if ($entry) { 'record' } else { 'no baseline' }); Refusal=$refusal; BlastRadius="$($target.Scope) rules in this configuration home only";
+                SourceChanged=$false; SourceDrift=$(if ($null -ne $entry -and $entry.inputs.Count -and $Action -notin 'remove', 'backup') { (ConvertTo-SwJson $inputs) -cne (ConvertTo-SwJson $entry.inputs) } else { $null });
+                Body=$body; Inputs=$inputs; KnownBytes=$knownBytes; Evidence=$(if ($entry) { "bodySha256=$($entry.bodySha256); hashFormat=$($entry.hashFormat)" } else { 'A7 shipped/desired body comparison only; no recorded baseline' }) }
+            $rows.Add((Get-SwCentralDecision $artifact $Action))
+        }
+        if (-not $isSkillScope) { continue }
+        $wanted = [ordered]@{}
+        if ($Action -notin 'remove', 'backup') {
+            foreach ($tier in @('product', 'personal')) {
+                $name = if ($tier -eq 'product') { 'productSkills' } else { 'personalSkills' }
+                foreach ($id in $selection[$name]) { $wanted["skills/$id"] = Get-SwCentralSkillSource $tier $id $product $personal }
+            }
+        }
+        # Include owned/out-of-selection leaves without scanning the native skills directory or the source catalogue.
+        $keys = @($wanted.Keys)
+        if ($homeRecord) {
+            foreach ($key in $homeRecord.entries.Keys) {
+                $entry = $homeRecord.entries[$key]
+                if ($entry.kind -ne 'skill-link' -or $target.Scope -cnotin $entry.scopeOwners) { continue }
+                if ($Action -in 'remove', 'backup' -and ($given.ContainsKey('productSkills') -or $given.ContainsKey('personalSkills'))) {
+                    $name = if ($entry.sourceTier -eq 'product') { 'productSkills' } else { 'personalSkills' }
+                    if (-not $given.ContainsKey($name) -or $entry.sourceId -cnotin $given[$name]) { continue }
+                }
+                if ($key -cnotin $keys) { $keys += $key }
+            }
+        }
+        foreach ($key in $keys) {
+            $entry = if ($homeRecord) { $homeRecord.entries[$key] } else { $null }
+            if ($entry) { $recordedSkillSources += $entry.sourcePath }
+            $desired = $wanted.Contains($key)
+            $source = if ($desired) { $wanted[$key].Path } else { $entry.sourcePath }
+            $tier = if ($desired) { $wanted[$key].Tier } else { $entry.sourceTier }
+            $leaf = Join-Path $target.Dir $key
+            if ($links.Contains($leaf)) {
+                $artifact = $links[$leaf]
+                if ($desired -and $artifact.Desired -and -not (Get-SwPathComparer).Equals($artifact.Source, $source)) { $artifact.Refusal = "Conflicting sources at the same physical skill leaf: $leaf" }
+                if ($desired -and -not $artifact.Desired) {
+                    $artifact.Source = $source; $artifact.SourceTier = $tier; $artifact.Desired = $true
+                    $artifact.SourceChanged = ($null -ne $entry -and -not (Get-SwPathComparer).Equals($entry.sourcePath, $source))
+                    $artifact.Scopes = @()
+                }
+                if (($desired -or $Action -eq 'remove') -and $target.Scope -cnotin $artifact.Scopes) { $artifact.Scopes += $target.Scope }
+                if ($target.Scope -eq 'codex-skills') { $artifact.BlastRadius = 'shared Codex user scope, independent of CODEX_HOME; includes any aliased Claude owners' }
+            } else {
+                $links[$leaf] = [pscustomobject]@{ Artifact=$key; Kind='skill-link'; SourceTier=$tier; Source=$source; TargetHome=$target.Dir; Target=$leaf;
+                    Current=$null; Desired=$desired; Scopes=@(if ($desired -or $Action -eq 'remove') { $target.Scope }); ScopeOwners=@(if ($entry) { $entry.scopeOwners });
+                    Ownership=$(if ($entry) { 'record' } else { 'no baseline' }); Refusal=$null;
+                    BlastRadius=$(if ($target.Scope -eq 'codex-skills') { 'shared Codex user scope, independent of CODEX_HOME; includes any aliased Claude owners' } else { 'Claude configuration home; retains any other recorded physical-home owners' });
+                    SourceChanged=($null -ne $entry -and -not (Get-SwPathComparer).Equals($entry.sourcePath, $source)); SourceDrift=$false;
+                    Evidence=$(if ($entry) { "junction; rawReparseTarget=$($entry.rawReparseTarget); normalizedTarget=$($entry.normalizedTarget)" } else { 'No recorded link ownership' }) }
+            }
+        }
+    }
+    foreach ($artifact in $links.Values) {
+        $homeKey = Find-SwGlobalHome $record.homes $artifact.TargetHome
+        $entry = if ($null -ne $homeKey) { $record.homes[$homeKey].entries[$artifact.Artifact] } else { $null }
+        $observation = Get-SwCentralLinkObservation $artifact.Target $entry
+        $artifact.Current = $observation.State
+        if ($observation.Error) { $artifact.Refusal = $observation.Error }
+        $rows.Add((Get-SwCentralDecision $artifact $Action))
+    }
+    # Check the whole requested graph, including cross-scope aliases. A native target may never edit/hide a source.
+    # Paths alone suffice: removal/backup still never opens or traverses a recorded skill source.
+    # Canonical containers protect unselected skills too; derive paths without catalogue or home discovery.
+    # Retargeting also preserves recorded sources from requested artifacts.
+    $productRoots = @($product, $record.productRoot | Select-Object -Unique)
+    $sourceFiles = @(foreach ($root in $productRoots) { Join-Path $root 'global/rules.md' }) +
+        @(foreach ($id in @('shared', 'claude', 'codex')) { Join-Path $personal "rules/$id.md" }) +
+        @($rows | Where-Object Kind -EQ 'rules-block' | ForEach-Object { $_.Source }) + $recordedRuleSources
+    $sourceDirs = @((Join-Path $personal 'skills')) + @(foreach ($root in $productRoots) {
+        Join-Path $root 'project/base/.agents/skills'
+        Join-Path $root 'project/profiles/unreal/files/.agents/skills'
+    }) + @($rows | Where-Object Kind -EQ 'skill-link' | ForEach-Object { $_.Source }) + $recordedSkillSources
+    foreach ($row in $rows) {
+        $overlap = @($sourceFiles | Where-Object { (Get-SwPathComparer).Equals($_, $row.Target) -or ($row.Kind -eq 'skill-link' -and (Test-SwContained $row.Target $_)) }) +
+            @($sourceDirs | Where-Object { (Get-SwPathComparer).Equals($_, $row.Target) -or (Test-SwContained $_ $row.Target) -or ($row.Kind -eq 'skill-link' -and (Test-SwContained $row.Target $_)) })
+        if ($overlap.Count) { $row.Refusal = "Source and target overlap: $($overlap -join ', ') -> $($row.Target)"; $row.Action = 'refuse'; $row.State = 'FAILED' }
+    }
+    [pscustomobject]@{ Record=$record; Rows=@($rows); Diagnostics=@($diagnostics); ExitCode=$(if (@($rows | Where-Object State -EQ 'FAILED').Count) { 1 } else { 0 }) }
+}
+
 function Invoke-SwGlobal {
     [CmdletBinding(SupportsShouldProcess)]
-    param([Parameter(Position = 0)][ValidateSet('install', 'check', 'backup')][string]$Action = 'check', [switch]$InstallRtk,
-        [string[]]$ClaudeConfigDir, [string[]]$CodexHome)
+    param([Parameter(Position = 0)][ValidateSet('install', 'check', 'backup', 'remove')][string]$Action = 'check', [switch]$InstallRtk,
+        [string[]]$ClaudeConfigDir, [string[]]$CodexHome,
+        [ValidateSet('central-v1')][string]$Delivery, [ValidateSet('claude', 'codex', 'both')][string]$Harness,
+        [ValidateSet('all', 'rules', 'skills')][string]$Component = 'all',
+        [AllowEmptyCollection()][AllowEmptyString()][string[]]$Skills, [AllowEmptyCollection()][AllowEmptyString()][string[]]$PersonalSkills,
+        [AllowEmptyCollection()][AllowEmptyString()][string[]]$PersonalRules)
+    $centralOptions = @('Harness', 'Component', 'Skills', 'PersonalSkills', 'PersonalRules')
+    $usage = if ($Delivery) {
+        if (-not $Harness) { '-Delivery central-v1 requires explicit -Harness claude|codex|both' }
+        elseif ($InstallRtk -and $Action -ne 'install') { '-InstallRtk is install-only; no central runtime probes are performed' }
+        elseif (($Harness -eq 'codex' -and $ClaudeConfigDir) -or ($Harness -eq 'claude' -and $CodexHome)) { 'Home arguments must match the explicitly selected harness' }
+        elseif (($Component -eq 'rules' -and ($PSBoundParameters.ContainsKey('Skills') -or $PSBoundParameters.ContainsKey('PersonalSkills'))) -or
+            ($Component -eq 'skills' -and $PSBoundParameters.ContainsKey('PersonalRules'))) { 'Selection lists must match -Component' }
+    } elseif ($Action -eq 'remove' -or @($centralOptions | Where-Object { $PSBoundParameters.ContainsKey($_) }).Count) { 'Central options and remove require -Delivery central-v1' }
+    elseif ($InstallRtk -and $Action -ne 'install') { '-InstallRtk is install-only' }
+    if ($usage) { Write-Output "Usage: $usage"; $global:LASTEXITCODE = 2; return }
+    if ($Delivery) {
+        # Hard E3 boundary before home resolution, source reads, locks, backups or legacy dispatch.
+        if ($Action -ne 'check' -and -not $WhatIfPreference) {
+            Write-Output "Central $Action effects are not implemented (E3 is read-only). Use -WhatIf or global check -Delivery central-v1 -Harness $Harness."
+            $global:LASTEXITCODE = 1; return
+        }
+        $options = @{ Action=$Action; Harness=$Harness; Component=$Component }
+        foreach ($name in @('ClaudeConfigDir', 'CodexHome', 'Skills', 'PersonalSkills', 'PersonalRules')) {
+            if ($PSBoundParameters.ContainsKey($name)) { $options[$name] = $PSBoundParameters[$name] }
+        }
+        try { $plan = Get-SwCentralPlan @options }
+        catch [Management.Automation.PSArgumentException] { Write-Output "Usage: $($_.Exception.Message)"; $global:LASTEXITCODE = 2; return }
+        catch { Write-Output "FAILED central preflight: $($_.Exception.Message)"; $global:LASTEXITCODE = 1; return }
+        if ($InstallRtk) { Write-Output 'RTK requested: read-only preview neither probes nor installs it.' }
+        foreach ($detail in $plan.Diagnostics) { Write-Output $detail }
+        foreach ($row in $plan.Rows) {
+            Write-Output "$($row.State) $($row.Artifact) [$($row.Kind)] $($row.SourceTier):$($row.Source -join ', ') -> $($row.Target) (home=$($row.TargetHome)); current=$($row.Current); desired=$($row.Desired); action=$($row.Action)"
+            Write-Output "  ownership=$($row.Ownership); scopes=$($row.Scopes -join ','); owners=$($row.ScopeOwners -join ','); desiredOwners=$($row.DesiredOwners -join ','); blast radius=$($row.BlastRadius)"
+            Write-Output "  evidence=$($row.Evidence)"
+            if ($row.Kind -eq 'rules-block') { Write-Output "  known composed bytes=$($row.KnownBytes); source drift=$(if ($null -eq $row.SourceDrift) { 'unrecorded/not compared' } else { $row.SourceDrift })" }
+            else { Write-Output '  Live source content is not version-frozen; link ownership compares metadata, not a directory hash.' }
+            if ($row.Refusal) { Write-Output "  refusal=$($row.Refusal)" }
+        }
+        $global:LASTEXITCODE = $plan.ExitCode; return
+    }
     $homes = @{ ClaudeConfigDir = $ClaudeConfigDir; CodexHome = $CodexHome }
     switch ($Action) {
         'install' { Install-SwGlobal -InstallRtk:$InstallRtk @homes }

@@ -2,6 +2,75 @@
 
 ## Startup
 
+Observed 2026-10-22 UTC. Read this section for current state and authorization;
+use the linked evidence only when the task needs it.
+
+- **Identity and authority:** this is the development checkout of the public
+  SuperWorkspace product; the owner's private instance is a separate remote.
+  Design is research-led and every component is revisable on evidence.
+  [Design register](workspace-outline.md) owns requirements and assumptions;
+  `AGENTS.md` and `.sw/workspace.md` own operational rules. Git owns branch,
+  ancestry and publication facts. Historical plans are not an execution queue.
+- **Implemented:** kit 0.4.0-dev, research profile, Windows PowerShell 5.1 and
+  PowerShell 7; Claude Code and Codex through T3 Code. The role roster,
+  OpenCode launcher/adapter and parent manager are retired. Sources are
+  `project/`, `lib/`, `global/` and `sw.ps1`; `.sw/manifest.json` identifies
+  generated definitions. This checkout uses GitHub tier 2 and local records.
+  Docs-only work may commit on main; code uses a T3 worktree and PR. A human
+  publishes main. Private integration does not publish to public `origin`;
+  a publication is an owner-approved snapshot commit (outline O13).
+- **Accepted baseline:** the rebuild, A7 global preservation, Windows/both-shell
+  runtime, native UTF-8 fix, CI local fallback, explicit owner commands, all
+  six audit fixes and central delivery E3 are integrated.
+  Latest public publication is origin PR #2 (2026-10-18); everything after it
+  is private only. Global rules were installed in the owner's existing harness
+  homes on 2026-10-18; that observation does not authorize further deployment.
+- **Product audit closed (2026-10-22 UTC):** private-instance PRs merged P1,
+  P2, P3a/P3b, P4 and the D1b/D1c prompt-time freshness repair; D1d documented
+  the recovery and stale outcome in [setup](setup.md). Hosted Actions are
+  disabled on the private repository, so the local gate in `AGENTS.md` Git
+  applies and the owner merges. Remaining audit items moved: D2a (native
+  checks) to G4, D2b (trials) waits for a selected trial budget, D2c waits for
+  both, and E2-E9 stay with the central delivery plan. A local task record
+  holds the evidence.
+- **Selected direction and gates (owner, 2026-10-22 UTC):** D10/D11 select
+  central product plus personal sources with preservation; D13 makes the
+  public repository the template. G1 is drafting and test fixtures only, with
+  no paid trials. G3 ships empty external plugin/MCP defaults; RTK is the first
+  named pilot candidate and needs source review, an adoption record, a budget
+  and install approval first. Nothing is installed. G4 native acceptance and
+  G5 adoption/publication remain unselected. Local task records own the
+  detail; [roadmap](central-delivery-roadmap.html) is the
+  visual view.
+- **Next:** E2 (catalogue drafting and fixtures) with E5 (rule wiring) scoped in
+  parallel under disjoint file ownership. Each needs an approved plan before a
+  worktree thread starts. The public-template handoff questions Q2-Q9 and the
+  P0 selection wait for a later owner sitting.
+- **Evidence limits:** E3 and the audit prove no real delivery, migration,
+  recovery effects or native loading (G4). Earlier bounded scratch checks do
+  not prove every real checkout, fresh-user behavior, compaction, security or
+  harness version. Group Policy blocking Bypass, a real no-console parent, the
+  file-symlink test skip and native memory loading remain unverified. No
+  probes, installations, sibling redeploys, global settings, corpus edits or
+  public publication are authorized by research or proposals.
+- **Records:** task records are ignored/local under `.sw/comms/tasks/` and
+  `.sw/comms/archive/`; dated evidence below preserves earlier checkpoints.
+
+## History (dated checkpoints)
+
+### Superseded Startup (preserved 2026-10-22 UTC)
+
+The 2026-10-20 Startup (product-audit execution selected, code worktrees
+awaiting publication) is superseded by the Startup above.
+
+### Superseded Startup (preserved 2026-10-20 UTC)
+
+The following is the verbatim pre-cleanup Startup. Its task locators and next
+actions describe that revision; current authorization is above. Completed
+records subsequently moved to the archive with their full trees preserved.
+
+## Startup
+
 - **Identity / sources (owner, 2026-10-05):** development checkout of the public
   SuperWorkspace product, research-led; every
   component is reconsiderable on evidence. The owner's private instance is a
@@ -18,9 +87,9 @@
   instance's `main`; Git owns branch, ancestry and publication facts.
   Publication to the private instance does not publish to the public `origin`;
   `origin` receives one squashed commit per approved publication (latest:
-  fed2165, 2026-10-18, merged in origin PR #1 after hosted CI passed on both
+  2026-10-18, merged in origin PR #2 after hosted CI passed on both
   Windows shells; `main` merged it back).
-- **Last task (closed 2026-10-16, published 5465219): `t3-native-rebuild`.**
+- **Rebuild checkpoint (closed 2026-10-16, published 5465219): `t3-native-rebuild`.**
   Kit 0.4.0-dev (breaking) is on the private instance's `main`: Claude Code and Codex
   through T3 Code, D9 Git flow (tier 2 here), generated Claude denies and
   Codex forbidden rules for the hard limits. Acceptance M7 (closing summary:
@@ -71,7 +140,9 @@
   merged without hosted CI under a one-time owner exception). Task `ci-minutes` (owner, 2026-10-18) merged
   in PR #8 (8445bfe): CI runs once per pull request revision and skips
   drafts, `ci.yml` skips `docs/**`, and a standing local-gate fallback
-  applies when hosted CI cannot run for a quota or billing reason (local
+  applies when hosted CI cannot run for a quota or billing reason, or
+  (2026-10-22) because Actions is disabled; the owner merges where
+  auto-merge is not allowed (local
   Pester 454/0/1 on both shells, Codex rounds 1-2; hosted CI skipped under
   the local-gate fallback). Task `owner-commands` (owner, 2026-10-18) merged in PR #9
   (e23b700): an `AGENTS.md` Authority rule that any action handed to the
@@ -81,32 +152,129 @@
   #10 (64e28a0): the same rule in the kit's `global/rules.md`, shipped hash
   recorded (local Pester 455/0/1 on both shells, Codex review clean; hosted
   CI skipped); the owner installed it with `sw.ps1 global install`. Task
-  `publish-origin-2` (owner, 2026-10-18) is authorized: publish the
-  private instance's PRs #8-#10 and their state records to `origin` as one
-  squashed commit, after a private-detail audit, through a draft PR on
-  `origin` that the owner merges once origin CI passes. No other
-  implementation is authorized. The main
+  `publish-origin-2` (owner, 2026-10-18) published private-instance PRs to `origin`
+  as one squash in origin PR #2 (Codex audit rounds 1-2, billing
+  details removed first; local Pester 455/0/1 on both shells in a
+  simulated public clone; hosted CI green on both shells). Additional
+  authorized slices are recorded below. The main
   thread coordinates, with code fixes in T3 worktree threads and pull
   requests; docs-only work may commit on `main`. A human publishes `main`;
   tier-2 thread publication follows `AGENTS.md`.
+- **Audit (closed 2026-10-18):** an owner-approved audit reviewed
+  code/tests, docs/instructions and research/direction: six confirmed findings
+  (three P2, three P3; no P0/P1 identified), with final report review complete.
+  Both Windows shells passed Pester 455/0/1; workspace/link validation and
+  disposable regeneration passed. One file-symlink case was skipped; no new
+  manual UI, live permission, fresh-user, no-console or hosted CI checks were
+  performed. Report and proposed fix packages are kept in a
+  local task record. No fixes were made during the audit;
+  the separately approved implementation is recorded below.
+- **Audit fixes (closed 2026-10-18):** an owner-approved fix task
+  resolved all six confirmed findings in a private-instance PR.
+  Archive/close operations validate participating paths before effects (F1);
+  closing authors resolve as From, User, then configured fallback (F2);
+  init/update CLI processes propagate partial failure status (F3); requested
+  native RTK installation failures survive diagnostics (F4). The design
+  register records completed parent-manager removal (F5) and qualified
+  plugin-subagent field/tool restrictions (F6). Generated definitions were
+  refreshed through the existing generator.
+  Both Windows shells passed full Pester 478/0/1 at the reviewed candidate;
+  all 23 new regressions and disposable fresh-install checks passed on each.
+  Static/link validation and regeneration passed; independent Codex review
+  found no actionable defects. Hosted jobs never started, so integration used
+  the standing local gate with exact evidence in the PR and local task record.
+  Main received the merge by fast-forward; its tree matched the tested
+  candidate. The existing file-symlink privilege case remained skipped;
+  all new junction cases ran. No new manual UI, live permission, no-console
+  or real RTK installation check was performed. Public `origin` is unchanged;
+  optional clarifications and unverified audit hot spots remain outside scope.
 - **Evidence limits:** the accepted checks do not establish comprehensive
   security, compaction, other-user/fresh-user behavior or every harness/tool
   version. The earlier audit's OpenCode N3 criterion was owner-deferred, not
   completed; its historical record is preserved below. Live checks in a
   scratch project do not prove native loading in every real checkout.
-- **Next action:** task `publish-origin-2` in a T3 worktree thread from
-  `origin/main` (local task record). The global rules are installed in the
+- **Next planning view (2026-10-19 UTC):** the owner requested a durable
+  [visual roadmap](central-delivery-roadmap.html) for central skills/rules
+  delivery and unresolved implementation choices, extended with public
+  skill/plugin/MCP selection in [topic 16](research/16-public-capabilities.md).
+  The owner selected a general foundation with research and software development
+  equally included by default as the target audience. The owner then requested
+  individual skill reassessment before catalogue selection. Topic 16 and P1 now
+  propose four kept common contracts, five revisions before common selection,
+  optional agent-documentation/Unreal and three priority outcome comparisons
+  (synthesis, local analysis, frontend design). The provisional nine supersedes
+  the unselected ten-default proposal; shipped defaults remain unchanged.
+  Research and roadmap documentation are authorized. The prior
+  audit-fix closure commit is published (Git owns publication facts).
+- **Execution planning (owner, 2026-10-19 UTC):** a detailed plan is
+  prepared in a local task record, with E0-E9
+  packages, file ownership, source/catalogue and delivery-contract gates,
+  preservation/recovery cases, both-shell checks, native acceptance and scoped
+  adoption/publication. The roadmap maps those packages to P1-P3/C1-C5/M1-M6.
+  The owner approved E0/E1 evidence and contract preparation. E0 inspected pinned
+  frontend/data instructions and scoped licenses, plus a concrete synthesis
+  method; [topic 16](research/16-public-capabilities.md#f8-exact-candidate-sources-narrow-the-proposals)
+  records findings and limits. E1 prepared commands, strict A7 record extension,
+  state/action outcomes and explicit project-copy coexistence/migration.
+  The local task now contains source receipts, 14 comparison case pairs and a
+  concrete G1/G2 brief. No candidate trial, source/default revision, link/rule
+  installation, project migration or native acceptance ran in this slice.
+  The owner then directed G1 to review individual public common skills from
+  ECC, Hermes and source documentation before selecting revisions/prototypes
+  or model comparisons. G2 accepted the reviewed direct-source/A7 contract
+  and authorized E3: strict schema handling, pure state/action planning and
+  read-only CLI preview in synthetic homes, in one T3 worktree. E3 creates no
+  links, replaces no rules and performs no project migration, real-home
+  discovery or deployment. The E3 checkpoint below records implementation
+  evidence.
+- **G1 individual-source review (2026-10-19 UTC):** [topic 16](research/16-public-capabilities.md#individual-public-source-review)
+  now records 15 ECC and 16 Hermes skills against actual pinned instructions,
+  selected helpers/licenses and primary documentation. Four new external
+  requests saved source bodies; no imported skills, installs or candidate
+  trials. Most development techniques fit existing procedures. General
+  writing and cited document reasoning join synthesis, local analysis and
+  frontend design in the next comparison proposal; format production and
+  other specialists remain optional candidates. Bundling/source advice is
+  not measured public use or benefit. The earlier 28-run proposal was not
+  selected; source findings change the next G1 proposal, not shipped defaults.
+- **E3 read-only preflight (completed 2026-10-19 UTC):** a private-instance PR
+  adds strict schema1/schema2 reading, in-memory legacy normalization and
+  opt-in `central-v1` planning/check/WhatIf previews through the existing global
+  CLI. Shared ownership remains independent of desired selections. Preflight
+  protects current and recorded sources, including unselected canonical skill
+  containers; valid sibling paths remain allowed. Central mutation is refused
+  before effects. Both Windows shells passed full Pester 556/0/1, with all
+  78 E3 cases passing per shell; the existing file-symlink privilege case was
+  skipped. Fresh generic/research/Unreal, regeneration parity, workspace/link
+  validation and independent review passed. Hosted jobs never started, so
+  integration used the documented local gate; main received a fast-forward
+  whose tree matched the tested candidate. Native loading, real delivery,
+  migration, races and recovery effects remain unverified. No central links,
+  rule writes, installs or public-origin publication occurred.
+- **Next action:** review the requested structure/memory audit in a local task
+  record and select any bounded simplification
+  scope, alongside revised G1 drafting/fixture selection in
+  the central delivery plan. The initial audit records stale memory,
+  context growth and current/history ambiguity; no restructuring or memory
+  repair is selected. Skill revisions and model comparisons still need scope.
+  G1 trial scope/budget, G3 catalogue/defaults, G4 native acceptance and G5
+  adoption/publication remain unselected; E4-E6 effects await their selected
+  scope and dependencies. The audit-fix and E3 PRs exercised ready-for-review triggers
+  without hosted execution at their checked revisions. The global rules are
+  installed in the
   Claude `.claude` and Codex homes (2026-10-18, verified). Further implementation,
   sibling redeploys, root-manager changes, new live probes, installs, global
   settings or public publication need their own approved scope. Existing
   historical tasks and proposals are not a queue to resume automatically.
 - **Task records:** `.sw/comms/` is local-only in this checkout (gitignored since
-  2026-10-05); previously published records remain in public history.
+  2026-10-05). The owner replaced public `origin` history on 2026-10-22 with
+  one commit of the then-public tree, so it holds no earlier records; `main`
+  shares no ancestry with `origin/main`.
 - **History:** [dated checkpoints](#history-dated-checkpoints) below and task
   records under `.sw/comms/tasks/` hold evidence and qualifications; they are
   not current authorization.
 
-## History (dated checkpoints)
+
 
 Dated context moved from Startup unchanged; Startup above supersedes it. Approvals
 here are task-specific and cannot authorize new work.
@@ -348,7 +516,8 @@ The current Startup and `AGENTS.md` govern execution.
   SuperWorkspace is the inherited installation, not a required target design.
   Every project component, including rules and tooling, is reconsiderable.
 - **Implemented:** base initialized with the generic profile, GitHub tier 0,
-  solo configuration (`users: []`). `main` tracks `origin`; the published
+  solo configuration (`users: []`). `main` then tracked `origin` (it now
+  tracks the private remote); the published
   integration and later ancestry are in Git (`git log`), not restated here.
   Agent, command, skill, lifecycle, and GitHub template files are installed.
   The small roster, including `project-research`, is implemented.
@@ -406,6 +575,6 @@ The current Startup and `AGENTS.md` govern execution.
 - `docs/workspace-outline.md`: canonical design rules/assumptions register.
 - `.sw/config.json`: installed profile, GitHub tier, contributors, startup budget.
 - `.sw/manifest.json`: kit-managed files and provenance.
-- `.sw/workspace.md`: roles, permissions, model tiers, and verification ladder.
-- `.sw/collaboration.md`: execution records and human-owned publication.
+- `.sw/workspace.md`: Git tiers, opt-ins, preservation and runtime checks.
+- `.sw/collaboration.md`: task events, archive format and publication handoff.
 - `.sw/comms/tasks/workspace-base-setup/`: setup commands, results, and limitations.
