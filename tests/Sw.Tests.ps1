@@ -486,6 +486,30 @@ Describe 'E3 central delivery (synthetic homes, read-only)' {
         }
     }
 
+    It 'guards the record path against links before reading its snapshot' {
+        Save-CentralRecord (New-CentralRecord)
+        Mock -ModuleName Sw.Kit Assert-SwPhysicalPath { throw 'Participating path traverses a link or junction: record' } -ParameterFilter { $Path -like '*global.json' }
+        Mock -ModuleName Sw.Kit Read-SwText { throw 'must not read the record before the link guard' } -ParameterFilter { $Path -like '*global.json' }
+        { Central-Plan @{ Action='check'; Harness='codex'; Component='rules' } } | Should -Throw '*link or junction*'
+        Should -Invoke -ModuleName Sw.Kit Read-SwText -Times 0 -ParameterFilter { $Path -like '*global.json' }
+    }
+
+    It 'takes the record snapshot from the same read that is parsed' {
+        Save-CentralRecord (New-CentralRecord)
+        $script:RecordReads = 0
+        Mock -ModuleName Sw.Kit Read-SwText { $script:RecordReads++; if ($script:RecordReads -gt 1) { '{"changed": true}' } else { [IO.File]::ReadAllText($Path).Replace("`r`n", "`n") } } -ParameterFilter { $Path -like '*global.json' }
+        $plan = Central-Plan @{ Action='check'; Harness='codex'; Component='rules' }
+        Should -Invoke -ModuleName Sw.Kit Read-SwText -Times 1 -Exactly -ParameterFilter { $Path -like '*global.json' }
+        $plan.RecordText | Should -BeExactly ([IO.File]::ReadAllText((Join-Path $global:SwCentralHome '.sw/global.json')).Replace("`r`n", "`n"))
+    }
+
+    It 'guards the kit VERSION file against links before reading it' {
+        Mock -ModuleName Sw.Kit Assert-SwPhysicalPath { throw 'Participating path traverses a link or junction: VERSION' } -ParameterFilter { $Path -like '*VERSION' }
+        Mock -ModuleName Sw.Kit Get-SwKitVersion { throw 'must not read VERSION before the link guard' }
+        { Central-Plan @{ Action='check'; Harness='codex'; Component='rules' } } | Should -Throw '*link or junction*'
+        Should -Invoke -ModuleName Sw.Kit Get-SwKitVersion -Times 0
+    }
+
     It 'backup preview never reads rule or skill source contents' {
         Save-CentralRecord (New-CentralRecord)
         Mock -ModuleName Sw.Kit Get-SwCentralSkillSource { throw 'backup must not read skill sources' }
@@ -599,6 +623,217 @@ Describe 'E3 central delivery (synthetic homes, read-only)' {
         foreach ($arguments in @(@('global','check','-Delivery','unknown'), @('global','check','-UnknownFlag'), @('global','remove'), @('global','check','-Delivery','central-v1'))) {
             & $Shell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $RepoRoot 'sw.ps1') @arguments 2>&1 | Out-Null
             $LASTEXITCODE | Should -Be 2
+        }
+    }
+    Context 'E5 rules blocks (central install/remove effects)' {
+        BeforeAll {
+            function Central-Rules([string]$Action, [string]$Harness, [string[]]$Rules = @()) {
+                @(Invoke-SwGlobal $Action -Delivery central-v1 -Harness $Harness -Component rules -PersonalRules $Rules -Confirm:$false 3>&1 | ForEach-Object { "$_" })
+            }
+            function Central-Target([string]$Scope) {
+                $artifact = if ($Scope -eq 'claude') { 'CLAUDE.md#global' } else { 'AGENTS.md#global' }
+                @((Central-Plan @{ Action='check'; Harness=$Scope; Component='rules'; PersonalRules=@() }).Rows | Where-Object Artifact -EQ $artifact)[0].Target
+            }
+            function Central-Bytes([string]$Path) { [Convert]::ToBase64String([IO.File]::ReadAllBytes($Path)) }
+        }
+
+        It 'installs real central rules twice without a record read-back failure' {
+            foreach ($i in 1, 2) {
+                $out = Central-Rules install both
+                $global:LASTEXITCODE | Should -Be 0 -Because ($out -join "`n")
+                ($out -join "`n") | Should -Not -Match 'Selection must be an array'
+            }
+        }
+
+        It 'Claude imports escape spaces and keep non-ASCII home characters unchanged' {
+            $global:SwCentralHome = Join-Path $TestDrive "home $([char]0xE9) x$(New-Id)"
+            New-Item -ItemType Directory -Path $global:SwCentralHome | Out-Null
+            Write-SwFile (Join-Path $global:SwCentralHome '.sw/rules/shared.md') "shared`n"
+            $out = Central-Rules install claude @('shared')
+            $global:LASTEXITCODE | Should -Be 0 -Because ($out -join "`n")
+            $text = Read-SwText (Central-Target claude)
+            $want = '@' + (Join-Path $global:SwCentralHome '.sw/rules/shared.md').Replace('\', '/').Replace(' ', '\ ')
+            $want | Should -Match ([regex]::Escape("home\ $([char]0xE9)\ x"))
+            ($text -split "`n") | Should -Contain $want
+            $text | Should -Not -Match "(?m)^shared$"
+        }
+
+        It 'Codex composes product rules, shared.md and codex.md exactly and in order, and rejects personal @ tokens' {
+            Write-SwFile (Join-Path $global:SwCentralHome '.sw/rules/shared.md') "shared`n"
+            Write-SwFile (Join-Path $global:SwCentralHome '.sw/rules/codex.md') "codex extra`n"
+            $out = Central-Rules install codex @('shared', 'codex')
+            $global:LASTEXITCODE | Should -Be 0 -Because ($out -join "`n")
+            $product = (Read-SwText (Join-Path $RepoRoot 'global/rules.md')).Trim("`n")
+            Read-SwText (Central-Target codex) | Should -BeExactly "<!-- sw:begin global -->`n$product`n`nshared`n`ncodex extra`n<!-- sw:end global -->`n"
+            Write-SwFile (Join-Path $global:SwCentralHome '.sw/rules/shared.md') "see @other.md`n"
+            { Central-Plan @{ Action='install'; Harness='codex'; Component='rules'; PersonalRules=@('shared') } } | Should -Throw '*nested import*'
+        }
+
+        It 'replaces an unrecorded old shipped block, keeps outside bytes and records the new hash separately' {
+            $old = InModuleScope Sw.Kit { Get-SwHash "`nold rules`n" }
+            InModuleScope Sw.Kit -Parameters @{ H = $old } { param($H) $script:E5SavedShipped = $script:GlobalShipped; $script:GlobalShipped = @($script:GlobalShipped) + $H }
+            try {
+                $target = Central-Target codex
+                Write-SwFile $target "before`n<!-- sw:begin global -->`nold rules`n<!-- sw:end global -->`nafter`n"
+                $out = Central-Rules install codex
+                $global:LASTEXITCODE | Should -Be 0 -Because ($out -join "`n")
+                $text = Read-SwText $target
+                $text | Should -Match '^before\n<!-- sw:begin global -->\n'
+                $text | Should -Match '\n<!-- sw:end global -->\nafter\n$'
+                $text | Should -Not -Match 'old rules'
+                $entry = (Read-CentralRecord).homes[(Split-Path $target -Parent)].entries['AGENTS.md#global']
+                $entry.bodySha256 | Should -Not -Be $old
+                $entry.bodySha256 | Should -Be (InModuleScope Sw.Kit { Get-SwHash (Get-SwGlobalBody (Read-SwText (Join-Path $script:Kit 'global/rules.md'))) })
+                $saved = @(Get-ChildItem -LiteralPath (Join-Path $global:SwCentralHome '.sw/backups') -Recurse -File -Filter AGENTS.md)
+                $saved.Count | Should -Be 1
+                Read-SwText $saved[0].FullName | Should -Match 'old rules'
+            } finally { InModuleScope Sw.Kit { $script:GlobalShipped = $script:E5SavedShipped } }
+        }
+
+        It 'keeps an edited or unverifiable block with a warning and writes the new block under incoming/' -ForEach @(@{ Case = 'edited' }, @{ Case = 'unverified' }) {
+            $target = Central-Target codex
+            if ($Case -eq 'edited') {
+                Central-Rules install codex | Out-Null; $global:LASTEXITCODE | Should -Be 0
+                Write-SwFile $target ((Read-SwText $target).Replace('<!-- sw:end global -->', "my edit`n<!-- sw:end global -->"))
+            } else { Write-SwFile $target "<!-- sw:begin global -->`nhand written`n<!-- sw:end global -->`n" }
+            $before = Central-Bytes $target
+            $out = Central-Rules install codex
+            $global:LASTEXITCODE | Should -Be 1
+            ($out -join "`n") | Should -Match 'PARTIAL'
+            ($out -join "`n") | Should -Match ([regex]::Escape("Kept $target"))
+            Central-Bytes $target | Should -Be $before
+            $incoming = @(Get-ChildItem -LiteralPath (Join-Path $global:SwCentralHome '.sw/backups') -Recurse -File -Filter AGENTS.md | Where-Object FullName -Match '[\\/]incoming[\\/]')
+            $incoming.Count | Should -Be 1
+            Read-SwText $incoming[0].FullName | Should -Match ([regex]::Escape((Read-SwText (Join-Path $RepoRoot 'global/rules.md')).Trim("`n").Split("`n")[0]))
+        }
+
+        It 'refuses <Case> targets with FAILED and writes nothing' -ForEach @(
+            @{ Case = 'malformed'; Text = "<!-- sw:begin global -->`nno end`n" }
+            @{ Case = 'duplicate'; Text = "<!-- sw:begin global -->`na`n<!-- sw:end global -->`n<!-- sw:begin global -->`nb`n<!-- sw:end global -->`n" }
+            @{ Case = 'foreign-type'; Text = $null }
+        ) {
+            $target = Central-Target codex
+            if ($null -eq $Text) { New-Item -ItemType Directory -Path $target -Force | Out-Null } else { Write-SwFile $target $Text }
+            $before = Central-Tree
+            $out = Central-Rules install codex
+            $global:LASTEXITCODE | Should -Be 1
+            ($out -join "`n") | Should -Match '(?m)^FAILED AGENTS\.md#global'
+            Central-Tree | Should -Be $before
+        }
+
+        It 'refuses a managed marker in composed rules with FAILED before <Case> a block' -ForEach @(@{ Case = 'creating' }, @{ Case = 'replacing' }) {
+            if ($Case -eq 'replacing') { Central-Rules install codex | Out-Null; $global:LASTEXITCODE | Should -Be 0 }
+            Write-SwFile (Join-Path $global:SwCentralHome '.sw/rules/codex.md') "extra`n<!-- sw:end global -->`n"
+            $before = Central-Tree
+            $out = Central-Rules install codex @('codex')
+            $global:LASTEXITCODE | Should -Be 1
+            ($out -join "`n") | Should -Match '(?m)^FAILED AGENTS\.md#global'
+            Central-Tree | Should -Be $before
+        }
+
+        It 'matches markers ordinally, so a soft-hyphenated look-alike in rules stays plain text' {
+            Write-SwFile (Join-Path $global:SwCentralHome '.sw/rules/codex.md') "extra`n<!-- sw:be$([char]0xAD)gin global -->`n"
+            $out = Central-Rules install codex @('codex')
+            $global:LASTEXITCODE | Should -Be 0 -Because ($out -join "`n")
+            $target = Central-Target codex; $first = Central-Bytes $target
+            $out = Central-Rules install codex @('codex')
+            $global:LASTEXITCODE | Should -Be 0 -Because ($out -join "`n")
+            Central-Bytes $target | Should -Be $first
+        }
+
+        It 'compares newlines ordinally, so a soft hyphen beside a block is kept on <Case>' -ForEach @(@{ Case = 'append' }, @{ Case = 'remove' }) {
+            $target = Central-Target codex; $shy = [char]0xAD
+            if ($Case -eq 'append') {
+                Write-SwFile $target "keep`n$shy"
+                $out = Central-Rules install codex
+                $global:LASTEXITCODE | Should -Be 0 -Because ($out -join "`n")
+                (Read-SwText $target).StartsWith("keep`n$shy`n`n<!-- sw:begin global -->`n", [StringComparison]::Ordinal) | Should -BeTrue
+            } else {
+                Central-Rules install codex | Out-Null; $global:LASTEXITCODE | Should -Be 0
+                Write-SwFile $target ((Read-SwText $target).Replace("<!-- sw:end global -->`n", "<!-- sw:end global -->$shy`nafter`n"))
+                $out = Central-Rules remove codex
+                $global:LASTEXITCODE | Should -Be 0 -Because ($out -join "`n")
+                [string]::Equals((Read-SwText $target), "$shy`nafter`n", [StringComparison]::Ordinal) | Should -BeTrue
+            }
+        }
+
+        It 'preserves BOM and CRLF around a written block' {
+            $target = Central-Target codex
+            New-Item -ItemType Directory -Path (Split-Path $target -Parent) -Force | Out-Null
+            [IO.File]::WriteAllBytes($target, [byte[]](@(0xEF, 0xBB, 0xBF) + [Text.Encoding]::UTF8.GetBytes("intro`r`nmore`r`n")))
+            $out = Central-Rules install codex
+            $global:LASTEXITCODE | Should -Be 0 -Because ($out -join "`n")
+            $bytes = [IO.File]::ReadAllBytes($target)
+            $bytes[0..2] | Should -Be @(0xEF, 0xBB, 0xBF)
+            $text = [Text.Encoding]::UTF8.GetString($bytes, 3, $bytes.Length - 3)
+            $text | Should -Match '^intro\r\nmore\r\n\r\n<!-- sw:begin global -->\r\n'
+            $text | Should -Match '<!-- sw:end global -->\r\n$'
+            $text | Should -Not -Match '[^\r]\n'
+        }
+
+        It 'remove then install restores the first install bytes and keeps a backup' {
+            Write-SwFile (Join-Path $global:SwCentralHome '.sw/rules/shared.md') "shared`n"
+            Central-Rules install both @('shared') | Out-Null; $global:LASTEXITCODE | Should -Be 0
+            $claude = Central-Target claude; $codex = Central-Target codex
+            $first = @((Central-Bytes $claude), (Central-Bytes $codex))
+            $out = Central-Rules remove both
+            $global:LASTEXITCODE | Should -Be 0 -Because ($out -join "`n")
+            Read-SwText $codex | Should -Not -Match 'sw:begin'
+            Central-Rules install both @('shared') | Out-Null; $global:LASTEXITCODE | Should -Be 0
+            @((Central-Bytes $claude), (Central-Bytes $codex)) | Should -Be $first
+            @(Get-ChildItem -LiteralPath (Join-Path $global:SwCentralHome '.sw/backups') -Recurse -File).Count | Should -BeGreaterThan 0
+        }
+
+        It 'records only each scope''s own personal rules so a combined selection installs twice' {
+            foreach ($id in 'shared', 'claude', 'codex') { Write-SwFile (Join-Path $global:SwCentralHome ".sw/rules/$id.md") "$id`n" }
+            foreach ($i in 1, 2) {
+                $out = Central-Rules install both @('shared', 'claude', 'codex')
+                $global:LASTEXITCODE | Should -Be 0 -Because ($out -join "`n")
+            }
+            $homes = (Read-CentralRecord).homes
+            foreach ($scope in 'claude', 'codex') {
+                @($homes[(Split-Path (Central-Target $scope) -Parent)].selection[$scope].personalRules) | Should -Be @('shared', $scope)
+            }
+        }
+
+        It 'refuses a product root change before any effect so an interrupted multi-home run leaves a readable record' {
+            Central-Rules install both | Out-Null; $global:LASTEXITCODE | Should -Be 0
+            $r = Read-CentralRecord
+            $old = Join-Path $global:SwCentralHome 'old-kit'
+            $r.productRoot = $old
+            foreach ($h in $r.homes.Values) { foreach ($e in $h.entries.Values) { foreach ($in in @($e.inputs)) { if ($in.tier -eq 'product') { $in.path = Join-Path $old 'global/rules.md' } } } }
+            Save-CentralRecord $r
+            Mock -ModuleName Sw.Kit Write-SwCentralBlock { 'changed' } -ParameterFilter { $Row.Scope -eq 'codex' }
+            $before = Central-Tree
+            $out = Central-Rules install both
+            $global:LASTEXITCODE | Should -Be 1
+            { Central-Plan @{ Action='check'; Harness='both'; Component='rules' } } | Should -Not -Throw
+            ($out -join "`n") | Should -Match 'FAILED central rules: .*product root'
+            Central-Tree | Should -Be $before
+        }
+
+        It 'removal keeps the newline after a block that shares its line with unmarked text' {
+            Central-Rules install codex | Out-Null; $global:LASTEXITCODE | Should -Be 0
+            $target = Central-Target codex
+            Write-SwFile $target ("intro`n# Personal preferences" + (Read-SwText $target) + "- Keep this setting`n")
+            $out = Central-Rules remove codex
+            $global:LASTEXITCODE | Should -Be 0 -Because ($out -join "`n")
+            Read-SwText $target | Should -BeExactly "intro`n# Personal preferences`n- Keep this setting`n"
+            Write-SwFile $target "x`n"
+            Central-Rules install codex | Out-Null; $global:LASTEXITCODE | Should -Be 0
+            Write-SwFile $target ("before`n" + (Read-SwText $target).Substring(3) + "after`n")
+            Central-Rules remove codex | Out-Null; $global:LASTEXITCODE | Should -Be 0
+            Read-SwText $target | Should -BeExactly "before`nafter`n"
+        }
+
+        It 'leaves Claude settings.json, ~/AGENTS.md and RTK files untouched' {
+            $claudeDir = Split-Path (Central-Target claude) -Parent
+            $files = @((Join-Path $claudeDir 'settings.json'), (Join-Path $claudeDir 'RTK.md'), (Join-Path $global:SwCentralHome 'AGENTS.md'), (Join-Path $global:SwCentralHome 'RTK.md'))
+            foreach ($f in $files) { Write-SwFile $f "keep $(Split-Path $f -Leaf)`n" }
+            $before = @($files | ForEach-Object { Central-Bytes $_ })
+            foreach ($action in 'install', 'remove', 'install') { $out = Central-Rules $action both; $global:LASTEXITCODE | Should -Be 0 -Because ($out -join "`n") }
+            @($files | ForEach-Object { Central-Bytes $_ }) | Should -Be $before
+            ($out -join "`n") | Should -Not -Match 'Read-only plan'
         }
     }
 }
@@ -1152,6 +1387,18 @@ Describe 'Sync and init lifecycle' {
         Read-SwText $incoming[0].FullName | Should -Be (Get-SwRender (Get-SwConfig $dir)).Files['.sw/workspace.md']
         @((Format-SwPlan $plan) -match '^\s*git diff --no-index \.sw/workspace\.md \.sw/backup/[^ ]+/incoming/\.sw/workspace\.md$').Count | Should -Be 1
         (Read-SwJson $mPath)['files']['.sw/workspace.md'] | Should -Be (Get-SwHash "old kit text`n")
+    }
+
+    It 'an adopted AGENTS.md keeps an inline look-alike core marker as text and gains the sections above the real block' {
+        $dir = Join-Path $TestDrive "adoptShy$(New-Id)"
+        New-Item -ItemType Directory -Force -Path $dir | Out-Null
+        $mine = "# My Project`n`nSee <!-- sw:be$([char]0xAD)gin core --> inline.`n"
+        Write-SwFile (Join-Path $dir 'AGENTS.md') $mine
+        Initialize-SwProject -Path $dir -Profile generic -Name AdoptShy -Adopt | Out-Null
+        $text = Read-SwText (Join-Path $dir 'AGENTS.md')
+        $text.StartsWith($mine, [StringComparison]::Ordinal) | Should -BeTrue
+        $text.IndexOf('## Project identity', [StringComparison]::Ordinal) | Should -BeGreaterThan $mine.Length
+        $text.IndexOf('## Project identity', [StringComparison]::Ordinal) | Should -BeLessThan $text.IndexOf('<!-- sw:begin core -->', [StringComparison]::Ordinal)
     }
 
     It 'an adopted AGENTS.md without Project identity gains the project sections above the core block' {
@@ -2220,6 +2467,28 @@ Describe 'Validation-first lifecycle' {
         # The same profile still updates cleanly and idempotently.
         $plan = Sync-SwProject -Root $dir -Config (Get-SwConfig $dir)
         @($plan | Where-Object Action -ne 'same').Count | Should -Be 0
+    }
+
+    It 'a managed LFS rule that differs from the rendered rule only by case counts as dropped' {
+        $dir = New-SwProject "lfscase$(New-Id)" unreal
+        $ga = Join-Path $dir '.gitattributes'
+        $text = Read-SwText $ga
+        $line = @($text -split "`n" | Where-Object { $_ -match 'filter=lfs' })[0]
+        $pattern, $rest = $line -split ' ', 2
+        Write-SwFile $ga $text.Replace($line, $pattern.ToUpperInvariant() + ' ' + $rest)
+        $before = Get-Tree $dir
+        { Update-SwProject -Path $dir -Force -Adopt } | Should -Throw '*Refusing to drop*LFS*'
+        Get-Tree $dir | Should -Be $before
+    }
+
+    It 'look-alike .gitattributes markers ahead of the managed block cannot hide its LFS rules from the drop guard' {
+        $dir = New-SwProject "lfsshy$(New-Id)" unreal
+        $ga = Join-Path $dir '.gitattributes'
+        $shy = [char]0xAD
+        Write-SwFile $ga ("# sw:be$($shy)gin superworkspace`n# sw:e$($shy)nd superworkspace`n" + (Read-SwText $ga))
+        $before = Get-Tree $dir
+        { Initialize-SwProject -Path $dir -Profile generic -Force -Adopt } | Should -Throw '*Refusing to drop*LFS*'
+        Get-Tree $dir | Should -Be $before
     }
 
     It 'a retained managed .gitattributes block without LFS rules is left alone by a generic update' {
@@ -4032,6 +4301,125 @@ Describe 'Portable source leak guard' {
         $hits = Get-ChildItem -LiteralPath $sourcePaths -Recurse -File -Force |
             Select-String -Pattern $patterns
         $hits | ForEach-Object { "$($_.Path):$($_.LineNumber)" } | Should -BeNullOrEmpty
+    }
+}
+
+Describe 'Ordinal string identity' {
+    BeforeAll {
+        $script:Shy = [char]0xAD
+        function Get-CultureComparisons([string]$Path) {
+            # Culture-sensitive string comparisons under lib/: they ignore characters such as U+00AD, so two different
+            # names compare equal. Ordinal forms are Test-SwSame/Test-SwIn/Get-SwUnique, regex, and string methods given
+            # a [StringComparison]. Case-insensitive keyword checks against a literal stay allowed; parameters are
+            # checked at the boundary with Test-SwIn or a ValidatePattern with Options = 'None' (IgnoreCase regex
+            # matches U+212A as k on .NET 5+), never ValidateSet.
+            $L = 'System.Management.Automation.Language'
+            $equality = 'eq', 'ne', 'in', 'notin', 'contains', 'notcontains', 'like', 'notlike'
+            $numeric = 'Count', 'Length', 'Exists', 'ExitCode'
+            function Test-Fixed($e) {
+                if ($e -is "$L.StringConstantExpressionAst" -or $e -is "$L.ExpandableStringExpressionAst") { return $false }
+                if ($e -is "$L.ConstantExpressionAst") { return $true }
+                if ($e -is "$L.VariableExpressionAst") { return $e.VariablePath.UserPath -in 'null', 'true', 'false' }
+                if ($e -is "$L.ConvertExpressionAst") { return ($e.Type.TypeName.Name -in 'int', 'long', 'bool', 'double') -or (Test-Fixed $e.Child) }
+                if ($e -is "$L.InvokeMemberExpressionAst") { return $e.Member.Extent.Text -in 'IndexOf', 'LastIndexOf', 'CompareTo' }
+                if ($e -is "$L.MemberExpressionAst") { return $e.Member.Extent.Text -in $numeric }
+                if ($e -is "$L.BinaryExpressionAst") { return ($e.Operator.ToString() -eq 'Minus' -and ((Test-Fixed $e.Left) -or (Test-Fixed $e.Right))) -or ($e.Operator.ToString() -eq 'Plus' -and (Test-Fixed $e.Left) -and (Test-Fixed $e.Right)) }
+                if ($e -is "$L.ArrayLiteralAst") { return -not @($e.Elements | Where-Object { -not (Test-Fixed $_) }) }
+                if ($e -is "$L.ArrayExpressionAst" -or $e -is "$L.ParenExpressionAst") {
+                    $inner = if ($e -is "$L.ArrayExpressionAst") { @($e.SubExpression.Statements) } else { @($e.Pipeline) }
+                    if ($inner.Count -eq 1 -and $inner[0] -is "$L.PipelineAst" -and $inner[0].PipelineElements.Count -eq 1 -and $inner[0].PipelineElements[0] -is "$L.CommandExpressionAst") { return Test-Fixed $inner[0].PipelineElements[0].Expression }
+                }
+                $false
+            }
+            $ast = [Management.Automation.Language.Parser]::ParseFile($Path, [ref]$null, [ref]$null)
+            $leaf = Split-Path $Path -Leaf
+            foreach ($n in $ast.FindAll({ $true }, $true)) {
+                $why = $null
+                if ($n -is "$L.BinaryExpressionAst") {
+                    $op = $n.Operator.ToString()
+                    $base = $op -replace '^[IC]', ''
+                    if ($op -cmatch '^C(?i:eq|ne|gt|ge|lt|le|in|notin|contains|notcontains|like|notlike)$') { $why = "-$($op.ToLowerInvariant())" }
+                    elseif ($base -in $equality -and -not (Test-Fixed $n.Left) -and -not (Test-Fixed $n.Right)) { $why = "-$($op.ToLowerInvariant()) between two values" }
+                } elseif ($n -is "$L.InvokeMemberExpressionAst" -and $n.Member.Extent.Text -in 'IndexOf', 'LastIndexOf', 'StartsWith', 'EndsWith', 'CompareTo', 'Compare' -and $n.Expression.Extent.Text -ne '[Array]') {
+                    $ordinal = @($n.Arguments) | Where-Object { $_.Extent.Text -cmatch '^\[StringComparison\]::Ordinal(IgnoreCase)?$|^\$cmp$' -or ($_ -is "$L.ConvertExpressionAst" -and $_.Type.TypeName.Name -eq 'char') }
+                    if (-not $ordinal) { $why = ".$($n.Member.Extent.Text) without an ordinal StringComparison" }
+                } elseif ($n -is "$L.CommandAst") {
+                    $name = $n.GetCommandName()
+                    $unique = @($n.CommandElements | Where-Object { $_ -is "$L.CommandParameterAst" -and 'Unique'.StartsWith($_.ParameterName, [StringComparison]::OrdinalIgnoreCase) })
+                    if ($name -in 'Get-Unique', 'Group-Object', 'group' -or ($name -in 'Select-Object', 'select', 'Sort-Object', 'sort' -and $unique)) { $why = "$name dedupes by culture" }
+                    elseif ($name -in 'Where-Object', 'where', '?') {
+                        $els = @($n.CommandElements)
+                        for ($i = 1; $i -lt $els.Count; $i++) {
+                            if ($els[$i] -isnot "$L.CommandParameterAst") { continue }
+                            $pn = $els[$i].ParameterName.ToLowerInvariant()
+                            $base = if ($pn -match '^i(.+)$' -and $Matches[1] -in $equality) { $Matches[1] } else { $pn }
+                            $value = if ($els[$i].Argument) { $els[$i].Argument } elseif ($i + 1 -lt $els.Count) { $els[$i + 1] }
+                            if ($pn -cmatch '^c(eq|ne|gt|ge|lt|le|in|notin|contains|notcontains|like|notlike)$' -or ($base -in $equality -and $value -and -not (Test-Fixed $value))) { $why = "$name -$pn" }
+                        }
+                    }
+                } elseif ($n -is "$L.AttributeAst" -and $n.TypeName.Name -eq 'ValidateSet' -and @($n.PositionalArguments | Where-Object { $_ -is "$L.StringConstantExpressionAst" })) {
+                    $why = 'ValidateSet of strings (use Test-SwIn or an ordinal ValidatePattern)'
+                } elseif ($n -is "$L.AttributeAst" -and $n.TypeName.Name -eq 'ValidatePattern') {
+                    $options = @($n.NamedArguments | Where-Object { $_.ArgumentName -eq 'Options' })
+                    if (-not $options -or $options[0].Argument.Extent.Text -ne "'None'") { $why = "ValidatePattern without Options = 'None'" }
+                }
+                if ($why) { '{0}:{1}: {2}: {3}' -f $leaf, $n.Extent.StartLineNumber, $why, ($n.Extent.Text -replace '\s+', ' ') }
+            }
+        }
+    }
+
+    It 'has no culture-sensitive comparison of runtime strings in <_>' -ForEach @('Sw.Kit.psm1', 'Sw.Project.psm1') {
+        Get-CultureComparisons (Join-Path $RepoRoot "lib/$_") | Should -BeNullOrEmpty
+    }
+
+    It 'flags each culture-sensitive form it guards against' {
+        $probe = Join-Path $TestDrive 'probe.psm1'
+        Set-Content -LiteralPath $probe -Encoding UTF8 -Value @(
+            'function P([ValidateSet(''a'', ''b'')][string]$X, [ValidatePattern(''^a$'')][string]$Y, [ValidatePattern(''^a\z'', Options = ''None'')][string]$Z) {'
+            '  $a -ceq ''x''; $a -eq $b; $a -iin $b; $a -cnotcontains $b; $a -like $b'
+            '  $s.StartsWith($p); $s.IndexOf(''*''); [string]::Compare($a, $b)'
+            '  $v | Select-Object -Unique; $v | sort -u; $v | Group-Object'
+            '  $a -eq $null; $a -match $b; $a.Count -eq $b.Count; $s.EndsWith($p, [StringComparison]::Ordinal); $s.IndexOf([char]42)'
+            '  $v | Where-Object Name -eq $n; $v | where Name -ceq ''x''; $v | ? Name -eq 3; $v | Where-Object { Test-SwSame $_.Name $n }'
+            '  $text -eq ''<!-- sw:end global -->''; $old.State -ne $new.State; $old -eq ($new + ''x''); $a.Count -eq ($b.Count + 1)'
+            '  $s.StartsWith($m, [StringComparison]::CurrentCulture); $s.IndexOf($m, [StringComparison]::InvariantCultureIgnoreCase)'
+            '}')
+        $hits = @(Get-CultureComparisons $probe)
+        @($hits | ForEach-Object { [int]($_ -split ':')[1] } | Sort-Object) | Should -Be @(1, 1, 2, 2, 2, 2, 2, 3, 3, 3, 4, 4, 4, 6, 6, 7, 7, 7, 8, 8)
+    }
+
+    It 'compares by code unit, so a soft hyphen makes a different string' {
+        Test-SwSame 'skill' "ski${Shy}ll" | Should -BeFalse
+        Test-SwSame 'Skill' 'skill' | Should -BeFalse
+        Test-SwSame 'Skill' 'skill' -IgnoreCase | Should -BeTrue
+        Test-SwSame $null '' | Should -BeFalse
+        Test-SwSame $null $null | Should -BeTrue
+        Test-SwIn "wo${Shy}rk" @('work', 'review') | Should -BeFalse
+        Test-SwIn 'work' @('work', 'review') | Should -BeTrue
+        $unique = @(Get-SwUnique @('work', "wo${Shy}rk", 'work', 'Work'))
+        $unique.Count | Should -Be 3
+        [string]::Equals($unique[1], "wo${Shy}rk", [StringComparison]::Ordinal) | Should -BeTrue
+        @(Get-SwUnique @('work', 'Work') ([StringComparer]::OrdinalIgnoreCase)).Count | Should -Be 1
+    }
+
+    It 'parameters reject look-alike keywords and identities but accept an ASCII case variant of a keyword' {
+        $kelvin = [char]0x212A
+        { Invoke-SwGlobal "bac${kelvin}up" -WhatIf } | Should -Throw "*parameter 'Action'*"
+        { Invoke-SwGlobal check -Harness "${kelvin}laude" -WhatIf } | Should -Throw "*parameter 'Harness'*"
+        { Invoke-SwComms "in${Shy}box" -Path TestDrive:\ } | Should -Throw "*parameter 'Action'*"
+        { Invoke-SwComms event -Status "pen${Shy}ding" -Path TestDrive:\ } | Should -Throw "*parameter 'Status'*"
+        $err = $null; try { Invoke-SwComms event -Task demo -From alice -Status COMPLETE -Path TestDrive:\ -WhatIf | Out-Null } catch { $err = $_ }
+        "$err" | Should -Not -BeLike "*parameter 'Status'*"
+        { Set-SwBlock '' global body -Style "has${kelvin}" } | Should -Throw "*parameter 'Style'*"
+        Set-SwBlock '' global body -Style HASH | Should -BeLike '# sw:begin global*'
+        { Add-SwUser "${kelvin}ari" -Path TestDrive:\ } | Should -Throw "*parameter 'Name'*"
+        { Add-SwUser "alice`n" -Path TestDrive:\ } | Should -Throw "*parameter 'Name'*"
+        $err = { Invoke-SwComms INBOX -User '..' -Path TestDrive:\ } | Should -Throw -PassThru
+        $err.Exception.Message | Should -Not -BeLike "*parameter 'Action'*"
+        $err = { Update-SwProject (Join-Path $TestDrive "missing$(New-Id)") -Records LOCAL -GitPolicy HOST -WhatIf } | Should -Throw -PassThru
+        $err.Exception.Message | Should -Not -BeLike "*parameter*"
+        { Update-SwProject TestDrive:\ -Records "loca${kelvin}" -WhatIf } | Should -Throw "*parameter 'Records'*"
+        (Invoke-SwGlobal check -Delivery CENTRAL-V1 | Out-String) | Should -BeLike '*requires explicit -Harness*'
     }
 }
 

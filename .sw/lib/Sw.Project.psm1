@@ -30,6 +30,26 @@ function Get-SwByteHash([byte[]]$Bytes) {
     try { [BitConverter]::ToString($sha.ComputeHash($Bytes)).Replace('-', '').ToLowerInvariant() } finally { $sha.Dispose() }
 }
 
+# Ordinal string identity. PowerShell's -eq/-in/-contains, switch, ValidateSet, Sort/Select -Unique and the
+# culture-default IndexOf/StartsWith/EndsWith ignore characters such as U+00AD, so two different names compare equal.
+# Every comparison between two runtime strings under lib/ goes through these (a static test in tests/ enforces it).
+function Test-SwSame($A, $B, [switch]$IgnoreCase) {
+    if ($null -eq $A -or $null -eq $B) { return ($null -eq $A -and $null -eq $B) }
+    $cmp = if ($IgnoreCase) { [StringComparison]::OrdinalIgnoreCase } else { [StringComparison]::Ordinal }
+    [string]::Equals([string]$A, [string]$B, $cmp)
+}
+
+function Test-SwIn($Value, $List, [switch]$IgnoreCase) {
+    foreach ($item in @($List)) { if (Test-SwSame $Value $item -IgnoreCase:$IgnoreCase) { return $true } }
+    $false
+}
+
+function Get-SwUnique($Values, [StringComparer]$Comparer = [StringComparer]::Ordinal) {
+    # First occurrence of each string, in input order.
+    $seen = [Collections.Generic.HashSet[string]]::new($Comparer)
+    @(foreach ($v in @($Values)) { if ($null -ne $v -and $seen.Add([string]$v)) { $v } })
+}
+
 # --- one code path on Windows PowerShell 5.1 (.NET Framework) and PowerShell 7 ----------------------------------
 
 function Get-SwRelativePath([string]$Base, [string]$Path) {
@@ -38,9 +58,9 @@ function Get-SwRelativePath([string]$Base, [string]$Path) {
     $full = [IO.Path]::GetFullPath($Path)
     $b = @([IO.Path]::GetFullPath($Base).TrimEnd($seps).Split($seps))
     $p = @($full.TrimEnd($seps).Split($seps))
-    if ($b[0] -ine $p[0]) { return $full }
+    if (-not (Test-SwSame $b[0] $p[0] -IgnoreCase)) { return $full }
     $i = 1
-    while ($i -lt $b.Count -and $i -lt $p.Count -and $b[$i] -ieq $p[$i]) { $i++ }
+    while ($i -lt $b.Count -and $i -lt $p.Count -and (Test-SwSame $b[$i] $p[$i] -IgnoreCase)) { $i++ }
     $parts = @(for ($k = $i; $k -lt $b.Count; $k++) { '..' }) + @(for ($k = $i; $k -lt $p.Count; $k++) { $p[$k] })
     if ($parts.Count -eq 0) { '.' } else { $parts -join '\' }
 }
@@ -65,7 +85,7 @@ function Invoke-SwNative([string]$Exe, [string[]]$Arguments) {
     $ErrorActionPreference = 'Continue'
     $PSNativeCommandUseErrorActionPreference = $false
     $cmd = Get-Command -Name $Exe -ErrorAction SilentlyContinue | Select-Object -First 1
-    if (-not ($cmd -and $cmd.CommandType -eq 'Application' -and $cmd.Extension -in '.exe', '.com')) {
+    if (-not ($cmd -and (Test-SwSame $cmd.CommandType 'Application' -IgnoreCase) -and (Test-SwIn $cmd.Extension '.exe', '.com' -IgnoreCase))) {
         # Windows PowerShell 5.1 turns redirected stderr into error records that 'Stop' makes terminating, so this scope continues.
         try { & $Exe @Arguments 2>$null } catch { throw }
         return
@@ -105,10 +125,10 @@ function Get-SwOnDiskCase([string]$Root, [string]$Full) {
     # $Full below $Root rebuilt from the names on disk (an exact match first, else one differing only in case); $null
     # when a part is missing. Lists each folder on the way, so call it only on a path already checked for links.
     $path = [IO.Path]::GetFullPath($Root).TrimEnd([char[]]@([char]92, [char]47))
-    foreach ($part in @((Get-SwRelativePath $path $Full) -split '[\\/]' | Where-Object { $_ -and $_ -ne '.' })) {
-        $names = @([IO.Directory]::EnumerateFileSystemEntries($path) | ForEach-Object { [IO.Path]::GetFileName($_) } | Where-Object { $_ -ieq $part })
+    foreach ($part in @((Get-SwRelativePath $path $Full) -split '[\\/]' | Where-Object { $_ -and (-not (Test-SwSame $_ '.' -IgnoreCase)) })) {
+        $names = @([IO.Directory]::EnumerateFileSystemEntries($path) | ForEach-Object { [IO.Path]::GetFileName($_) } | Where-Object { Test-SwSame $_ $part -IgnoreCase })
         if (-not $names) { return $null }
-        $path = Join-Path $path $(if ($part -cin $names) { $part } else { $names[0] })
+        $path = Join-Path $path $(if (Test-SwIn $part $names) { $part } else { $names[0] })
     }
     $path
 }
@@ -117,7 +137,7 @@ function Assert-SwRelativePath($Relative) {
     # Ownership keys have one portable spelling, never a rooted/stream/alias path.
     if ($Relative -isnot [string] -or -not $Relative -or $Relative -match '[\\:<>"|?*\x00-\x1f]' -or [IO.Path]::IsPathRooted($Relative)) { throw 'Ownership path must be a clean relative path.' }
     foreach ($part in $Relative -split '/') {
-        if ($part -in '', '.', '..' -or $part -match '[. ]$' -or ($part -match '^(?i:CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])(?:\.|$)')) { throw 'Ownership path contains an ambiguous or invalid segment.' }
+        if ((Test-SwIn $part '', '.', '..' -IgnoreCase) -or $part -match '[. ]$' -or ($part -match '^(?i:CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])(?:\.|$)')) { throw 'Ownership path contains an ambiguous or invalid segment.' }
     }
 }
 
@@ -128,7 +148,7 @@ function Assert-SwPhysicalPath([string]$Path) {
         try {
             $attributes = [IO.File]::GetAttributes($current)
             if ($attributes -band [IO.FileAttributes]::ReparsePoint) { throw "Participating path traverses a link or junction: $current" }
-            if ($current -ne $full -and -not ($attributes -band [IO.FileAttributes]::Directory)) { throw "Participating ancestor is not a directory: $current" }
+            if ((-not (Test-SwSame $current $full -IgnoreCase)) -and -not ($attributes -band [IO.FileAttributes]::Directory)) { throw "Participating ancestor is not a directory: $current" }
         } catch [IO.FileNotFoundException], [IO.DirectoryNotFoundException] { }
     }
 }
@@ -212,7 +232,7 @@ function ConvertFrom-SwJson([string]$Text) {
     # PowerShell 7's ConvertFrom-Json -AsHashtable on both shells: ordered objects with case-sensitive keys, arrays kept
     # whole (also at the root), integers as [long] and other numbers as [double]. Keys that differ only in case are
     # refused by ConvertFrom-Json on both shells (Windows PowerShell 5.1 cannot hold them in one object).
-    $root = try { if ($Text.TrimStart().StartsWith('[')) { (('{"v":' + $Text + '}') | ConvertFrom-Json).v } else { $Text | ConvertFrom-Json } }
+    $root = try { if ($Text.TrimStart().StartsWith('[', [StringComparison]::Ordinal)) { (('{"v":' + $Text + '}') | ConvertFrom-Json).v } else { $Text | ConvertFrom-Json } }
     catch {
         if ($_.Exception.Message -match 'different casing|duplicated keys') { throw 'JSON keys that differ only in letter case are not supported' }
         throw
@@ -307,7 +327,7 @@ function Get-SwConfiguredTier($Config) {
 
 function Get-SwGitPolicy([Collections.IDictionary]$Config) {
     if (-not $Config.Contains('gitPolicy')) { return 'workspace' } # Preserve legacy installations.
-    if ($Config['gitPolicy'] -cnotin 'host', 'workspace') { throw "Config 'gitPolicy' must be 'host' or 'workspace'." }
+    if (-not (Test-SwIn $Config['gitPolicy'] ('host', 'workspace'))) { throw "Config 'gitPolicy' must be 'host' or 'workspace'." }
     $Config['gitPolicy']
 }
 
@@ -336,7 +356,7 @@ function Get-SwToolProbe([string]$Name) {
     $r = Invoke-SwProbe $exe @('--version')
     $m = [regex]::Match([string]$r.Output, '(\d+\.\d+\.\d+)')
     $state = if ($r.Threw) { 'threw' } elseif ($r.ExitCode -ne 0) { 'failed' } elseif ($m.Success) { 'ok' } else { 'unparsed' }
-    [pscustomobject]@{ Name = $Name; State = $state; Version = $(if ($state -eq 'ok') { [version]$m.Groups[1].Value }); ExitCode = $r.ExitCode }
+    [pscustomobject]@{ Name = $Name; State = $state; Version = $(if (Test-SwSame $state 'ok' -IgnoreCase) { [version]$m.Groups[1].Value }); ExitCode = $r.ExitCode }
 }
 
 function Get-SwToolVersion([string]$Name) { (Get-SwToolProbe $Name).Version }
@@ -389,14 +409,14 @@ function ConvertFrom-SwScalar([string]$Value) {
 function Read-SwFrontmatter([string]$Path, [string[]]$Allowed) {
     # Top-level single-line scalar keys only (lowercase, `_` or `-`), each from $Allowed.
     $lines = @((Read-SwText $Path) -split "`n")
-    if ($lines.Count -lt 3 -or $lines[0] -cne '---') { throw 'Missing opening frontmatter delimiter' }
+    if ($lines.Count -lt 3 -or (-not (Test-SwSame $lines[0] '---'))) { throw 'Missing opening frontmatter delimiter' }
     $data = [ordered]@{}; $close = -1
     for ($i = 1; $i -lt $lines.Count; $i++) {
         $line = $lines[$i]
-        if ($line -ceq '---') { $close = $i; break }
+        if (Test-SwSame $line '---') { $close = $i; break }
         if ($line -match '^([a-z][a-z_-]*): (.+)$') {
             $key = $Matches[1]
-            if ($Allowed -cnotcontains $key -or $data.Contains($key)) { throw "Unknown or duplicate key: $key" }
+            if ((-not (Test-SwIn $key $Allowed)) -or $data.Contains($key)) { throw "Unknown or duplicate key: $key" }
             $data[$key] = ConvertFrom-SwScalar $Matches[2]
         } else { throw "Unsupported frontmatter at line $($i + 1): $line" }
     }
@@ -645,11 +665,11 @@ function Get-SwClaudeRuleRegex([string]$Rule) {
     $regex = $null
     if ($script:ClaudeRuleRegex.TryGetValue($Rule, [ref]$regex)) { return $regex }
     if ($Rule -match '^(Bash|PowerShell)\((.*)\)$') {
-        $options = if ($Matches[1] -ceq 'PowerShell') { 'IgnoreCase, Singleline' } else { 'Singleline' }
+        $options = if (Test-SwSame $Matches[1] 'PowerShell') { 'IgnoreCase, Singleline' } else { 'Singleline' }
         $pattern = $Matches[2]
-        if ($pattern.EndsWith(':*')) { $pattern = $pattern.Substring(0, $pattern.Length - 2) + ' *' }
+        if ($pattern.EndsWith(':*', [StringComparison]::Ordinal)) { $pattern = $pattern.Substring(0, $pattern.Length - 2) + ' *' }
         $text = '\A' + [regex]::Escape($pattern).Replace('\*', '.*') + '\z'
-        if ($pattern.EndsWith(' *') -and $pattern.IndexOf('*') -eq $pattern.Length - 1) { $text = '\A' + [regex]::Escape($pattern.Substring(0, $pattern.Length - 2)) + '(?: .*)?\z' }
+        if ($pattern.EndsWith(' *', [StringComparison]::Ordinal) -and $pattern.IndexOf('*', [StringComparison]::Ordinal) -eq $pattern.Length - 1) { $text = '\A' + [regex]::Escape($pattern.Substring(0, $pattern.Length - 2)) + '(?: .*)?\z' }
         $regex = [regex]::new($text, $options)
     }
     $script:ClaudeRuleRegex[$Rule] = $regex
@@ -679,7 +699,7 @@ function Test-SwCodexRule($Pattern, [string]$Command) {
         $words = @($part.Trim() -split '\s+' | Where-Object { $_ } | ForEach-Object { $_ -replace '^"([^"]*)"$', '$1' -replace "^'([^']*)'$", '$1' })
         if ($words.Count -lt $p.Count) { continue }
         $ok = $true
-        for ($i = 0; $ok -and $i -lt $p.Count; $i++) { $ok = $words[$i] -cin @($p[$i]) }
+        for ($i = 0; $ok -and $i -lt $p.Count; $i++) { $ok = (Test-SwIn $words[$i] @($p[$i])) }
         if ($ok) { return $true }
     }
     $false
@@ -687,11 +707,11 @@ function Test-SwCodexRule($Pattern, [string]$Command) {
 
 function Assert-SwSafeName([string]$Value, [string]$Label) {
     # Comms names become path segments; block traversal and separators.
-    if ($Value -notmatch '^[A-Za-z0-9_.-]+$' -or $Value -in '.', '..') { throw "Invalid ${Label}: '$Value' (allowed: letters, digits, underscore, dot, hyphen; not '.' or '..')" }
+    if ($Value -notmatch '^[A-Za-z0-9_.-]+$' -or (Test-SwIn $Value '.', '..' -IgnoreCase)) { throw "Invalid ${Label}: '$Value' (allowed: letters, digits, underscore, dot, hyphen; not '.' or '..')" }
 }
 
 function Assert-SwSafeFileName([string]$Value, [string]$Label) {
-    if ($Value -ne [IO.Path]::GetFileName($Value)) { throw "Invalid ${Label}: '$Value' must be a bare file name" }
+    if (-not (Test-SwSame $Value ([IO.Path]::GetFileName($Value)) -IgnoreCase)) { throw "Invalid ${Label}: '$Value' must be a bare file name" }
 }
 
 # --- validation -------------------------------------------------------------------
@@ -718,7 +738,7 @@ $script:SelectionSets = @('skills', 'context', 'checks')
 
 function Assert-SwExactKeys($Map, [string[]]$Keys, [string]$Label) {
     if ($Map -isnot [Collections.IDictionary]) { throw "Selection ${Label} must be an object" }
-    $extra = @($Map.Keys | Where-Object { $_ -cnotin $Keys }); $missing = @($Keys | Where-Object { $_ -cnotin @($Map.Keys) })
+    $extra = @($Map.Keys | Where-Object { -not (Test-SwIn $_ $Keys) }); $missing = @($Keys | Where-Object { -not (Test-SwIn $_ @($Map.Keys)) })
     if ($extra.Count -or $missing.Count) { throw "Selection ${Label} needs exactly keys $($Keys -join ', ')$(if ($extra.Count) { "; unsupported: $($extra -join ', ')" })$(if ($missing.Count) { "; missing: $($missing -join ', ')" })" }
 }
 
@@ -729,7 +749,7 @@ function Assert-SwIdList($Value, [string]$Label, [string[]]$Allowed) {
     foreach ($v in $Value) {
         if ($v -isnot [string] -or $v -cnotmatch '^[a-z0-9]+(-[a-z0-9]+)*$') { throw "Selection ${Label}: '$v' is not a canonical identifier" }
         if (-not $seen.Add($v)) { throw "Selection ${Label}: duplicate '$v'" }
-        if ($PSBoundParameters.ContainsKey('Allowed') -and $v -cnotin $Allowed) { throw "Selection ${Label}: unknown '$v'" }
+        if ($PSBoundParameters.ContainsKey('Allowed') -and (-not (Test-SwIn $v $Allowed))) { throw "Selection ${Label}: unknown '$v'" }
     }
 }
 
@@ -741,7 +761,7 @@ function Resolve-SwSelection {
     Throws on any malformed input; the result lists generator-owned components only.
     #>
     param($Selection, [string]$Profile, $ProfileData, $Catalogue)
-    $isInt = { param($v, $n) ($v -is [int] -or $v -is [long]) -and $v -eq $n }
+    $isInt = { param($v, $n) ($v -is [int] -or $v -is [long]) -and $v -eq [long]$n }
     Assert-SwExactKeys $Catalogue @('version', 'core', 'capabilities', 'context', 'checks') 'catalogue'
     if (-not (& $isInt $Catalogue['version'] 2)) { throw 'Selection catalogue version must be 2' }
     Assert-SwIdList $Catalogue['context'] 'catalogue context'
@@ -756,7 +776,7 @@ function Resolve-SwSelection {
     }
     & $sets $Catalogue['core'] 'catalogue core'
     foreach ($k in $script:SelectionSets) {
-        $lost = @($script:SelectionFloor[$k] | Where-Object { $_ -cnotin $Catalogue['core'][$k] })
+        $lost = @($script:SelectionFloor[$k] | Where-Object { -not (Test-SwIn $_ $Catalogue['core'][$k]) })
         if ($lost.Count) { throw "Selection catalogue core drops the fixed v1 floor ($k): $($lost -join ', ')" }
     }
     $caps = $Catalogue['capabilities']
@@ -798,7 +818,7 @@ function Get-SwSelectionKnown($Catalogue, $ProfileData) {
 
 function Test-SwLinkedPath([string]$Root, [string]$Relative) {
     # True when the path or any parent up to the root is a link or junction (never followed).
-    (Invoke-SwContextRead $Root $Relative {}).Status -eq 'unsafe'
+    Test-SwSame ((Invoke-SwContextRead $Root $Relative {}).Status) 'unsafe' -IgnoreCase
 }
 
 function Test-SwLocalOnly([string]$Root, [string]$Relative) {
@@ -820,7 +840,7 @@ function Get-SwResearchWarnings([string]$Root) {
         $first = [array]::FindIndex([string[]]$lines, [Predicate[string]] { param($l) $l -match '^## ' })
         $header = if ($first -ge 0) { $lines[0..([math]::Max(0, $first - 1))] } else { $lines }
         # Explicit dated snapshots are not six-section topics; date and finding lint still applies.
-        if ($header -cnotcontains '<!-- sw:research-format: snapshot -->') {
+        if (-not (Test-SwIn '<!-- sw:research-format: snapshot -->' $header)) {
             $missing = @(1..6 | Where-Object { $n = $_; -not @($lines | Where-Object { $_ -match "^## $n\. " }).Count })
             if ($missing.Count) { "${rel}: missing section(s) $($missing -join ', ') (expected '## 1.' to '## 6.')" }
         }
@@ -877,7 +897,7 @@ function Test-SwProject {
             Require ($Node -notmatch '(?i)((?<![a-z])[a-z]:[\\/]|\\\\|/(?:Users|home|opt|usr|Applications)/)') "$Label contains an absolute machine path"
         } elseif ($Node -is [Collections.IDictionary]) {
             foreach ($key in @($Node.Keys)) {
-                if ($key -eq '__body') { continue }
+                if (Test-SwSame $key '__body' -IgnoreCase) { continue }
                 Require ($key -notmatch '^(model|small_model|provider|providers|shell|shell_path|shellPath)$') "$Label forbidden shared pin: $key"
                 Portable $Node[$key] "$Label.$key"
             }
@@ -924,12 +944,12 @@ function Test-SwProject {
                 $written = [IO.Path]::GetFullPath((Join-Path $(if ($folder) { $folder } else { Split-Path $File -Parent }) $target)).TrimEnd([char[]]@([char]92, [char]47))
                 $top = ([IO.Path]::GetFullPath($Root)).TrimEnd([char[]]@([char]92, [char]47))
                 # The root itself, perhaps named from above it (../../<root>): the case check below starts at the root.
-                if ($full.TrimEnd([char[]]@([char]92, [char]47)) -eq $top) { Require ($written -ceq $top) "${at}: local link differs in letter case from the name on disk (breaks on GitHub and Linux): $target (on disk: the project root, $(Split-Path $top -Leaf))" LocalLinks; continue }
+                if (Test-SwSame ($full.TrimEnd([char[]]@([char]92, [char]47))) $top -IgnoreCase) { Require (Test-SwSame $written $top) "${at}: local link differs in letter case from the name on disk (breaks on GitHub and Linux): $target (on disk: the project root, $(Split-Path $top -Leaf))" LocalLinks; continue }
                 if (-not (Test-SwContained $Root $full)) { Require $false "${at}: local link escapes the project root, refused and not checked: $target" LocalLinks; continue }
                 $status = (Invoke-SwContextRead $Root ((Get-SwRelativePath $Root $full)) {}).Status
-                if ($status -ne 'ok') { Require $false "${at}: $(if ($status -eq 'unsafe') { 'local link crosses a link or junction, not followed:' } else { 'missing local link' }) $target" LocalLinks; continue }
+                if (-not (Test-SwSame $status 'ok' -IgnoreCase)) { Require $false "${at}: $(if (Test-SwSame $status 'unsafe' -IgnoreCase) { 'local link crosses a link or junction, not followed:' } else { 'missing local link' }) $target" LocalLinks; continue }
                 $disk = Get-SwOnDiskCase $Root $written
-                Require ($disk -ceq $written) "${at}: local link differs in letter case from the name on disk (breaks on GitHub and Linux): $target (on disk: $(if ($disk) { (Get-SwRelativePath $Root $disk).Replace('\', '/') } else { 'not found' }))" LocalLinks
+                Require (Test-SwSame $disk $written) "${at}: local link differs in letter case from the name on disk (breaks on GitHub and Linux): $target (on disk: $(if ($disk) { (Get-SwRelativePath $Root $disk).Replace('\', '/') } else { 'not found' }))" LocalLinks
             }
         }
     }
@@ -955,7 +975,7 @@ function Test-SwProject {
             $catalogue = Read-SwJson $catalogueFile
             $selection = Resolve-SwSelection $config['selection'] ([string]$config['profile']) $profileData $catalogue
             $known = Get-SwSelectionKnown $catalogue $profileData
-            Require ((ConvertTo-SwJson $profileData['effectiveSelection']) -ceq (ConvertTo-SwJson $selection)) '.sw/profile.json effectiveSelection does not match config, profile and .sw/selection.json; run sw update'
+            Require (Test-SwSame (ConvertTo-SwJson $profileData['effectiveSelection']) (ConvertTo-SwJson $selection)) '.sw/profile.json effectiveSelection does not match config, profile and .sw/selection.json; run sw update'
         }
         if (Test-Path -LiteralPath (Join-Path $Root '.claude/.sw-generated')) { $warnings += 'Retired local Claude adapter present (.claude/.sw-generated); remove it with the previous kit, which needs PowerShell 7 (pwsh .sw/sw.ps1 claude disable), before sw update' }
         # Per-user files stay untracked and ignored (checked even when absent, so the ignore entry is proven).
@@ -973,7 +993,7 @@ function Test-SwProject {
                     $data = Read-SwFrontmatter $file.FullName @('name', 'description', 'disable-model-invocation')
                     Portable $data $file.Name
                     Require ($data.Contains('description') -and $data['description']) "$($file.Name): description required"
-                    Require ($data['name'] -ceq $file.Directory.Name) "$($file.FullName): name must equal directory"
+                    Require (Test-SwSame $data['name'] $file.Directory.Name) "$($file.FullName): name must equal directory"
                     # Agent Skills spec: lowercase letters, digits and single inner hyphens, at most 64 characters.
                     Require ($data['name'] -cmatch '^[a-z0-9]+(-[a-z0-9]+)*$' -and $data['name'].Length -le 64) "$($file.FullName): name must be 1-64 lowercase letters, digits and single hyphens (Agent Skills spec)"
                     Require ($data['description'].Length -le 1024) "$($file.FullName): description exceeds 1024 characters (Agent Skills spec)"
@@ -989,14 +1009,14 @@ function Test-SwProject {
         if ($selection) {
             # Known deselected kit skills must be gone; unknown project-owned ones are kept and disclosed, not adopted.
             foreach ($id in $skills.Keys | Sort-Object) {
-                if ($id -cin $known.skills) { Require ($id -cin $selection.skills) "Deselected kit component installed: .agents/skills/$id/ (remove it or select it; not hidden by selection)" }
+                if (Test-SwIn $id $known.skills) { Require (Test-SwIn $id $selection.skills) "Deselected kit component installed: .agents/skills/$id/ (remove it or select it; not hidden by selection)" }
                 else { $warnings += "Project-owned extra kept, outside the selection: .agents/skills/$id/ (not adopted; not shown to be hidden or safe)" }
             }
         }
         foreach ($name in $requiredSkills) {
             Require ($skills.ContainsKey($name)) "Missing skill: $name"
-            if ($name -cin $script:UserInvoked -and $skills.ContainsKey($name)) {
-                Require ($skills[$name]['disable-model-invocation'] -ceq 'true') "Skill $name must stay user-invoked (disable-model-invocation: true)"
+            if ((Test-SwIn $name $script:UserInvoked) -and $skills.ContainsKey($name)) {
+                Require (Test-SwSame $skills[$name]['disable-model-invocation'] 'true') "Skill $name must stay user-invoked (disable-model-invocation: true)"
                 # Codex reads explicit-only from agents/openai.yaml beside SKILL.md (policy.allow_implicit_invocation, default true).
                 $meta = Join-Path $skillDir "$name/agents/openai.yaml"
                 $explicit = (Test-Path -LiteralPath $meta -PathType Leaf) -and (Read-SwText $meta) -cmatch '(?m)^policy:[ \t]*\n[ \t]+allow_implicit_invocation:[ \t]*false[ \t]*$'
@@ -1009,8 +1029,8 @@ function Test-SwProject {
             foreach ($f in Get-SwPhysicalFiles $src) {
                 $rel = (Get-SwRelativePath $src $f.FullName).Replace('\', '/')
                 $copy = Join-Path $Root ".claude/skills/$name/$rel"
-                $same = (Test-Path -LiteralPath $copy -PathType Leaf) -and (Read-SwText $copy) -ceq (Read-SwText $f.FullName)
-                if ($name -cin $requiredSkills) { Require $same "Claude skill copy differs or is missing: .claude/skills/$name/$rel (run sw update; edit both copies together)" }
+                $same = (Test-Path -LiteralPath $copy -PathType Leaf) -and (Test-SwSame (Read-SwText $copy) (Read-SwText $f.FullName))
+                if (Test-SwIn $name $requiredSkills) { Require $same "Claude skill copy differs or is missing: .claude/skills/$name/$rel (run sw update; edit both copies together)" }
                 elseif (-not $same) { $warnings += "Project-owned skill without a matching Claude copy: .claude/skills/$name/$rel (Claude threads do not see it)" }
             }
         }
@@ -1019,7 +1039,7 @@ function Test-SwProject {
         $importFile = Join-Path $Root '.claude/CLAUDE.md'
         $import = if (Test-Path -LiteralPath $importFile -PathType Leaf) { (Read-SwText $importFile).Trim() } else { '' }
         $importTarget = if ($import -match '^@([^\r\n]+)$') { [IO.Path]::GetFullPath((Join-Path (Split-Path $importFile) $Matches[1])) } else { '' }
-        Require ($importTarget -eq (Join-Path $Root 'AGENTS.md') -and (Test-Path -LiteralPath $importTarget -PathType Leaf)) 'Claude import .claude/CLAUDE.md must be @../AGENTS.md, resolving to the root AGENTS.md'
+        Require ((Test-SwSame $importTarget (Join-Path $Root 'AGENTS.md') -IgnoreCase) -and (Test-Path -LiteralPath $importTarget -PathType Leaf)) 'Claude import .claude/CLAUDE.md must be @../AGENTS.md, resolving to the root AGENTS.md'
 
         # Hard limits, the only Git/GitHub blocks: rule presence plus static decision cases. Not runtime enforcement.
         $settingsRel = '.claude/settings.json'; $rulesRel = '.codex/rules/workspace.rules'
@@ -1031,44 +1051,44 @@ function Test-SwProject {
             NoEffort (Read-SwText (Join-Path $Root $settingsRel)) $settingsRel
             $perm = if ($settings['permissions'] -is [Collections.IDictionary]) { $settings['permissions'] } else { @{} }
             $deny = @($perm['deny'] | Where-Object { $_ -is [string] })
-            foreach ($rule in Get-SwClaudeDeny) { Require ($rule -cin $deny) "Claude hard limit missing from ${settingsRel}: $rule (presence only, not runtime enforcement)" }
-            foreach ($g in @($profileData['editDeny'] | Where-Object { $_ })) { Require ("Edit(**/$g)" -cin $deny) "Claude profile edit deny missing from ${settingsRel}: Edit(**/$g)" }
-            Require ('Bash(*)' -cnotin @($perm['allow'])) 'Claude must not allow Bash(*)'
+            foreach ($rule in Get-SwClaudeDeny) { Require (Test-SwIn $rule $deny) "Claude hard limit missing from ${settingsRel}: $rule (presence only, not runtime enforcement)" }
+            foreach ($g in @($profileData['editDeny'] | Where-Object { $_ })) { Require (Test-SwIn ("Edit(**/$g)") $deny) "Claude profile edit deny missing from ${settingsRel}: Edit(**/$g)" }
+            Require (-not (Test-SwIn 'Bash(*)' @($perm['allow']))) 'Claude must not allow Bash(*)'
         }
         if (-not (Test-Path -LiteralPath (Join-Path $Root $rulesRel) -PathType Leaf)) { Require $false "Missing $rulesRel (run sw update)" }
         else {
             $rulesText = Read-SwText (Join-Path $Root $rulesRel)
             foreach ($block in Get-SwCodexRuleBlocks) { Require ($rulesText.Contains($block)) "Codex hard limit missing from ${rulesRel}: $(($block -split "`n")[1].Trim()) (presence only; loads only in a trusted project)" }
-            $codex = @(Read-SwCodexRules $rulesText | Where-Object Decision -ceq 'forbidden')
+            $codex = @(Read-SwCodexRules $rulesText | Where-Object { Test-SwSame $_.Decision 'forbidden' })
         }
         # A denial is proved on the installed file; an allowed case on the kit's own rules, so stricter project additions
         # still validate.
-        $kitDeny = @(Get-SwClaudeDeny); $kitCodex = @(Read-SwCodexRules (Get-SwCodexRules) | Where-Object Decision -ceq 'forbidden')
+        $kitDeny = @(Get-SwClaudeDeny); $kitCodex = @(Read-SwCodexRules (Get-SwCodexRules) | Where-Object { Test-SwSame $_.Decision 'forbidden' })
         $claudeRegex = @{}
         foreach ($set in 'installed', 'kit') {
             foreach ($tool in 'Bash', 'PowerShell') {
-                $claudeRegex["$set $tool"] = @(@(if ($set -eq 'kit') { $kitDeny } else { $deny }) | Where-Object { $_ -and $_.StartsWith("$tool(") } | ForEach-Object { Get-SwClaudeRuleRegex $_ } | Where-Object { $_ })
+                $claudeRegex["$set $tool"] = @(@(if (Test-SwSame $set 'kit' -IgnoreCase) { $kitDeny } else { $deny }) | Where-Object { $_ -and $_.StartsWith("$tool(", [StringComparison]::Ordinal) } | ForEach-Object { Get-SwClaudeRuleRegex $_ } | Where-Object { $_ })
             }
         }
         foreach ($kind in $script:HardLimitCases.Keys) {
-            $wantCodex = $kind -in 'Both', 'CodexOnly'
+            $wantCodex = (Test-SwIn $kind 'Both', 'CodexOnly' -IgnoreCase)
             foreach ($c in $script:HardLimitCases[$kind]) {
                 if ($null -ne $deny) {
                     $parts = @(Split-SwClaudeCommand $c)
                     foreach ($tool in 'Bash', 'PowerShell') {
-                        $wantClaude = ($kind -in 'Both', 'ClaudeOnly') -or ($kind -eq 'PowerShellOnly' -and $tool -eq 'PowerShell')
+                        $wantClaude = (Test-SwIn $kind 'Both', 'ClaudeOnly' -IgnoreCase) -or ((Test-SwSame $kind 'PowerShellOnly' -IgnoreCase) -and (Test-SwSame $tool 'PowerShell' -IgnoreCase))
                         $hit = $false
                         foreach ($regex in $claudeRegex["$(if ($wantClaude) { 'installed' } else { 'kit' }) $tool"]) {
                             foreach ($part in $parts) { if ($regex.IsMatch($part)) { $hit = $true; break } }
                             if ($hit) { break }
                         }
-                        Require ($hit -eq $wantClaude) "STATIC claude $tool [$c]: $(if ($wantClaude) { 'expected deny, got no deny' } elseif ($kind -eq 'Gap') { 'documented gap is now denied by the kit rules; move the case and update the gap list' } else { 'expected no deny from the kit rules, got deny' })" HardLimits
+                        Require ($hit -eq [bool]$wantClaude) "STATIC claude $tool [$c]: $(if ($wantClaude) { 'expected deny, got no deny' } elseif (Test-SwSame $kind 'Gap' -IgnoreCase) { 'documented gap is now denied by the kit rules; move the case and update the gap list' } else { 'expected no deny from the kit rules, got deny' })" HardLimits
                     }
                 }
                 if ($null -ne $codex) {
                     $hit = $false
                     foreach ($rule in $(if ($wantCodex) { $codex } else { $kitCodex })) { if (Test-SwCodexRule $rule.Pattern $c) { $hit = $true; break } }
-                    Require ($hit -eq $wantCodex) "STATIC codex [$c]: $(if ($wantCodex) { 'expected forbidden, got not forbidden' } elseif ($kind -eq 'Gap') { 'documented gap is now forbidden by the kit rules; move the case and update the gap list' } else { 'expected not forbidden by the kit rules, got forbidden' })" HardLimits
+                    Require ($hit -eq [bool]$wantCodex) "STATIC codex [$c]: $(if ($wantCodex) { 'expected forbidden, got not forbidden' } elseif (Test-SwSame $kind 'Gap' -IgnoreCase) { 'documented gap is now forbidden by the kit rules; move the case and update the gap list' } else { 'expected not forbidden by the kit rules, got forbidden' })" HardLimits
                 }
             }
         }
@@ -1095,7 +1115,7 @@ function Test-SwProject {
             $attrs = if (Test-Path -LiteralPath $attrsPath -PathType Leaf) { Read-SwText $attrsPath } else { '' }
             $match = [regex]::Match($attrs, '(?ms)^# sw:begin superworkspace\n(.*?)^# sw:end superworkspace$')
             Require ($match.Success -and ([regex]::Matches($attrs, '(?m)^# sw:(begin|end) superworkspace$')).Count -eq 2) '.gitattributes requires one complete profile LFS block'
-            foreach ($pattern in $profileData['lfs']) { Require (("$pattern filter=lfs diff=lfs merge=lfs -text") -cin @($match.Groups[1].Value -split "`n")) ".gitattributes missing profile LFS rule: $pattern" }
+            foreach ($pattern in $profileData['lfs']) { Require (Test-SwIn ("$pattern filter=lfs diff=lfs merge=lfs -text") @($match.Groups[1].Value -split "`n")) ".gitattributes missing profile LFS rule: $pattern" }
         }
         $b = Get-SwStartupBudget $config $agentsMdText $skills
         if (-not $Quiet) { Write-Output "Startup budget: $($b.Scope) = $($b.Total) bytes, ~$($b.Tokens) tokens (bytes/4 estimate; tokenizer varies); cap $($b.Cap)" }
@@ -1106,7 +1126,7 @@ function Test-SwProject {
             $full = Join-Path $Root $rel
             if (Test-Path -LiteralPath $full -PathType Leaf) { $hygiene.Add($full) }
         }
-        foreach ($file in $hygiene | Select-Object -Unique) {
+        foreach ($file in Get-SwUnique $hygiene ([StringComparer]::OrdinalIgnoreCase)) {
             $counts.HygieneFiles++
             $n = 0
             $text = Read-SwText $file
@@ -1114,9 +1134,9 @@ function Test-SwProject {
                 $n++
                 if ($line -match '[\t ]+$') { $problems.Add("${file}:${n}: trailing whitespace") }
                 if ($line -match '^(<<<<<<<|=======|>>>>>>>)( |$)') { $problems.Add("${file}:${n}: conflict marker") }
-                if ($file.EndsWith('.md') -and $line -match $script:MojibakePattern) { $problems.Add("${file}:${n}: possible mojibake") }
+                if ($file.EndsWith('.md', [StringComparison]::Ordinal) -and $line -match $script:MojibakePattern) { $problems.Add("${file}:${n}: possible mojibake") }
             }
-            if ($CheckLinks -and $file.EndsWith('.md')) { Links $file $text }
+            if ($CheckLinks -and $file.EndsWith('.md', [StringComparison]::Ordinal)) { Links $file $text }
         }
         # -CheckLinks also checks the local links in docs/**/*.md (links only, not hygiene). Each directory is checked before
         # it is listed; a link or junction inside docs/ is reported and never followed.
@@ -1125,12 +1145,12 @@ function Test-SwProject {
             while ($queue.Count) {
                 $dir = $queue.Dequeue()
                 $listing = Invoke-SwContextRead $Root $dir { param($f) if ([IO.Directory]::Exists($f)) { , @(Get-ChildItem -LiteralPath $f -Force | Sort-Object Name) } }
-                if ($listing.Status -eq 'unsafe') { $warnings += "-CheckLinks did not follow linked $dir"; continue }
+                if (Test-SwSame $listing.Status 'unsafe' -IgnoreCase) { $warnings += "-CheckLinks did not follow linked $dir"; continue }
                 foreach ($item in @($listing.Value | Where-Object { $_ })) {
                     $rel = "$dir/$($item.Name)"
                     if ($item.Attributes -band [IO.FileAttributes]::ReparsePoint) { $warnings += "-CheckLinks did not follow linked $rel"; continue }
                     if ($item.PSIsContainer) { $queue.Enqueue($rel) }
-                    elseif ($item.Extension -eq '.md') { Links $item.FullName (Read-SwText $item.FullName) }
+                    elseif (Test-SwSame $item.Extension '.md' -IgnoreCase) { Links $item.FullName (Read-SwText $item.FullName) }
                 }
             }
         }
@@ -1159,9 +1179,9 @@ function Invoke-SwComms {
     #>
     [CmdletBinding(SupportsShouldProcess)]
     param(
-        [Parameter(Position = 0, Mandatory)][ValidateSet('send', 'inbox', 'event', 'close', 'archive')][string]$Action,
+        [Parameter(Position = 0, Mandatory)][ValidateScript({ Test-SwIn $_ 'send', 'inbox', 'event', 'close', 'archive' -IgnoreCase })][string]$Action,
         [string]$To, [string]$From, [string]$User, [string]$Subject, [string]$Body, [string]$Task,
-        [string]$Event = 'progress', [ValidateSet('pending', 'in_progress', 'complete', 'blocked')][string]$Status = 'in_progress',
+        [string]$Event = 'progress', [ValidateScript({ Test-SwIn $_ 'pending', 'in_progress', 'complete', 'blocked' -IgnoreCase })][string]$Status = 'in_progress',
         [string]$Outcome, [string]$Message, [string]$Path
     )
     $Root = Resolve-SwRoot $Path
@@ -1210,7 +1230,7 @@ function Invoke-SwComms {
             $branch = (Invoke-SwNative git @('-C', $Root, 'branch', '--show-current'))
             $head = (Invoke-SwNative git @('-C', $Root, 'rev-parse', 'HEAD'))
             # Task records churn on every event; list other changes only, at most 10.
-            $changed = @(Invoke-SwNative git @('-C', $Root, 'status', '--porcelain') | Where-Object { $_ -and $_.Substring(3).TrimStart('"') -notlike '.sw/comms/*' })
+            $changed = @(Invoke-SwNative git @('-C', $Root, 'status', '--porcelain') | Where-Object { $_ -and (-not ([string]$_.Substring(3).TrimStart('"')).StartsWith('.sw/comms/', [StringComparison]::OrdinalIgnoreCase)) })
             $dirty = @($changed | Select-Object -First 10) -join '; '
             if ($changed.Count -gt 10) { $dirty += " (+$($changed.Count - 10) more)" }
             $utc = Get-SwUtc
@@ -1264,13 +1284,13 @@ function Invoke-SwComms {
 
 function Add-SwUser {
     [CmdletBinding(SupportsShouldProcess)]
-    param([Parameter(Position = 0, Mandatory)][ValidatePattern('^[a-z0-9_-]+$')][string]$Name, [string]$Path)
+    param([Parameter(Position = 0, Mandatory)][ValidatePattern('^[A-Za-z0-9_-]+\z', Options = 'None')][string]$Name, [string]$Path)
     $Root = Resolve-SwRoot $Path
     $configPath = Join-Path $Root '.sw/config.json'
     $config = Read-SwJson $configPath
     $gitPolicy = Get-SwGitPolicy $config
     $users = [Collections.Generic.List[string]]@($config['users'])
-    if ($users -notcontains $Name) { $users.Add($Name) }
+    if (-not (Test-SwIn $Name $users -IgnoreCase)) { $users.Add($Name) }
     $config['users'] = @($users)
     $placeholder = Resolve-SwManagedPath $Root ".sw/comms/inbox/$Name/.gitkeep"
     if ($PSCmdlet.ShouldProcess($configPath, "add contributor $Name")) {
@@ -1278,7 +1298,7 @@ function Add-SwUser {
         if (-not (Test-Path -LiteralPath $placeholder)) { Write-SwFile $placeholder '' }
     }
     Write-Output "Contributor $Name recorded."
-    if ($gitPolicy -eq 'host') { Write-Output 'Use the project-owned Git onboarding workflow; no branch is created or prescribed.' }
+    if (Test-SwSame $gitPolicy 'host' -IgnoreCase) { Write-Output 'Use the project-owned Git onboarding workflow; no branch is created or prescribed.' }
     else { Write-Output 'They work in T3 Code threads: on main, or in a T3 worktree thread (branch prefix t3/) from published main. No personal branch is created.' }
     Write-Output "Send them .sw/onboarding.md; they check their setup with: powershell -NoProfile -ExecutionPolicy Bypass -File .sw/sw.ps1 doctor -User $Name"
 }
@@ -1286,9 +1306,9 @@ function Add-SwUser {
 function Get-SwDoctorHint([string]$Tool) {
     $winget = @{ git = 'Git.Git'; gh = 'GitHub.cli' }
     if ($winget.Contains($Tool)) { "winget install $($winget[$Tool])" }
-    elseif ($Tool -eq 't3') { 'T3 Code desktop: Settings > General > About > Install t3 command; or the CLI from https://t3.codes' }
-    elseif ($Tool -eq 'claude') { 'install Claude Code (T3 Code Claude threads run the claude binary)' }
-    elseif ($Tool -eq 'codex') { 'connect Codex in T3 Code (Settings > Providers) or install the Codex CLI' }
+    elseif (Test-SwSame $Tool 't3' -IgnoreCase) { 'T3 Code desktop: Settings > General > About > Install t3 command; or the CLI from https://t3.codes' }
+    elseif (Test-SwSame $Tool 'claude' -IgnoreCase) { 'install Claude Code (T3 Code Claude threads run the claude binary)' }
+    elseif (Test-SwSame $Tool 'codex' -IgnoreCase) { 'connect Codex in T3 Code (Settings > Providers) or install the Codex CLI' }
     else { 'install rtk' }
 }
 
@@ -1327,7 +1347,7 @@ function Test-SwDoctor {
     $add = { param($n, $state, $detail) $rows.Add([pscustomobject]@{ Item = $n; State = $state; Detail = $detail }) }
     $optional = { param([string]$Name)
         $probe = Get-SwToolProbe $Name
-        & $add $Name $(if ($probe.State -eq 'ok') { 'OK' } else { 'WARN' }) $(switch ($probe.State) { 'ok' { $probe.Version.ToString() } 'missing' { "Fix: $(Get-SwDoctorHint $Name)" } default { "$(Format-SwProbe $probe); Fix: $(Get-SwDoctorHint $Name)" } })
+        & $add $Name $(if (Test-SwSame $probe.State 'ok' -IgnoreCase) { 'OK' } else { 'WARN' }) $(switch ($probe.State) { 'ok' { $probe.Version.ToString() } 'missing' { "Fix: $(Get-SwDoctorHint $Name)" } default { "$(Format-SwProbe $probe); Fix: $(Get-SwDoctorHint $Name)" } })
         $probe
     }
 
@@ -1345,18 +1365,18 @@ function Test-SwDoctor {
     $null = & $optional 'codex'
 
     $gh = & $optional 'gh'
-    if ($gh.State -eq 'ok') {
+    if (Test-SwSame $gh.State 'ok' -IgnoreCase) {
         $auth = Get-SwGhAuth
         & $add 'gh auth' $(if ($auth -eq 0) { 'OK' } else { 'WARN' }) $(if ($auth -eq 0) { 'logged in' } else { 'Fix: gh auth login' })
     }
 
     $rtk = & $optional 'rtk'
-    if ($rtk.State -eq 'ok' -and $rtk.Version -lt [version]'0.48.0') { & $add 'rtk >= 0.48' 'WARN' "found $($rtk.Version)" }
+    if ((Test-SwSame $rtk.State 'ok' -IgnoreCase) -and $rtk.Version -lt [version]'0.48.0') { & $add 'rtk >= 0.48' 'WARN' "found $($rtk.Version)" }
 
     $config = Get-SwConfig $Root
-    $hostPolicy = (Get-SwGitPolicy $config) -eq 'host'
+    $hostPolicy = (Test-SwSame ((Get-SwGitPolicy $config)) 'host' -IgnoreCase)
     $users = @($config['users'])
-    $listed = [bool]($User -and ($users -ccontains $User))
+    $listed = [bool]($User -and (Test-SwIn $User $users))
     if ($User) {
         & $add "user $User" $(if ($listed) { 'OK' } else { 'MISSING' }) $(if ($listed) { 'listed in .sw/config.json' } else { "Fix (project owner runs): powershell -NoProfile -ExecutionPolicy Bypass -File .sw/sw.ps1 user $User" })
     } else {
@@ -1366,12 +1386,12 @@ function Test-SwDoctor {
     # The checked-out branch: main, or a T3 Code worktree thread branch (t3/<name>).
     $current = [string](Invoke-SwNative git @('-C', $Root, 'branch', '--show-current'))
     $shown = if ($current) { $current } else { 'detached HEAD' }
-    $allowed = -not $hostPolicy -and ($current -ceq 'main' -or $current -cmatch '^t3/[^/]')
+    $allowed = -not $hostPolicy -and ((Test-SwSame $current 'main') -or $current -cmatch '^t3/[^/]')
     & $add 'current branch' $(if ($allowed) { 'OK' } else { 'WARN' }) $(if ($hostPolicy) { "$shown (host Git policy; verify against your project rules, not checked here)" } elseif ($allowed) { $current } else { "$shown (expected main or a T3 Code t3/<name> thread branch)" })
 
     # Codex loads the project's .codex/rules hard limits only when it trusts the project; trusting is the owner's choice.
     $trust = Get-SwCodexTrust $Root $CodexHome
-    & $add 'codex trust' $(if ($trust -eq 'trusted') { 'OK' } else { 'WARN' }) $(switch ($trust) { 'trusted' { 'project trusted in the Codex config' } 'untrusted' { 'not trusted: Codex skips .codex/rules (hard limits); trust the project in Codex if you use it' } default { 'unknown (no readable Codex config)' } })
+    & $add 'codex trust' $(if (Test-SwSame $trust 'trusted' -IgnoreCase) { 'OK' } else { 'WARN' }) $(switch ($trust) { 'trusted' { 'project trusted in the Codex config' } 'untrusted' { 'not trusted: Codex skips .codex/rules (hard limits); trust the project in Codex if you use it' } default { 'unknown (no readable Codex config)' } })
 
     $rows | Format-Table -AutoSize | Out-String -Width 200 | Write-Output
     Write-Output 'Reminder: T3 Code -> runtime mode Auto or Full access, not Supervised; worktree branch prefix "t3/", automatic pull and merge-based worktree cleanup under workspace Git policy. None can be detected.'
@@ -1379,17 +1399,17 @@ function Test-SwDoctor {
     Write-Output 'Startup budget (validate) counts kit files only. Harness prompt, tool schemas, user files, hooks and plugins are not counted; check `/context` (Claude) for the real total.'
     if ($hostPolicy) { Write-Output 'Host branch protection and workflow: not checked; consult the project owner.' }
     else { Write-Output 'Branch protection on main: not checked; see .sw/collaboration.md.' }
-    $global:LASTEXITCODE = if (@($rows | Where-Object State -in 'MISSING', 'FAILED').Count) { 1 } else { 0 }
+    $global:LASTEXITCODE = if (@($rows | Where-Object { Test-SwIn $_.State 'MISSING', 'FAILED' }).Count) { 1 } else { 0 }
 }
 
 # --- GitHub (read-only helpers; writes are human-run) -----------------------------------
 
 function Invoke-SwGitHub {
     [CmdletBinding(SupportsShouldProcess)]
-    param([Parameter(Position = 0, Mandatory)][ValidateSet('status', 'labels')][string]$Action, [string]$Path)
+    param([Parameter(Position = 0, Mandatory)][ValidateScript({ Test-SwIn $_ 'status', 'labels' -IgnoreCase })][string]$Action, [string]$Path)
     $Root = Resolve-SwRoot $Path
     if (-not (Get-Command gh -ErrorAction SilentlyContinue)) { throw 'gh CLI not found.' }
-    if ($Action -eq 'status') {
+    if (Test-SwSame $Action 'status' -IgnoreCase) {
         Push-Location $Root
         try {
             Write-Output '== Open PRs'; & gh pr list --limit 10
@@ -1425,7 +1445,7 @@ function Get-SwUsage {
     $rtk = Find-SwTool 'rtk'
     if ($rtk) { Push-Location $Root; try { & $rtk gain --project } finally { Pop-Location } } else { Write-Output 'rtk not installed.' }
     Write-Output '== Startup budget (static kit estimate)'
-    Test-SwProject -Path $Root | Where-Object { $_ -like 'Startup budget:*' }
+    Test-SwProject -Path $Root | Where-Object { (([string]$_).StartsWith('Startup budget:', [StringComparison]::OrdinalIgnoreCase)) }
 }
 
 # --- context report (read-only) ---------------------------------------------------------
@@ -1440,21 +1460,21 @@ function Invoke-SwContextRead([string]$Root, [string]$Relative, [scriptblock]$Ac
         if (-not (Test-SwContained $Root $full)) { $status = 'unsafe' }
         # Test-SwContained excludes the base itself, so the walk also stops on $Root's own attributes.
         $anchor = [IO.Path]::GetFullPath($Root).TrimEnd([char[]]@([char]92, [char]47))
-        for ($c = $full; $status -ne 'unsafe' -and ((Test-SwContained $Root $c) -or $c -eq $anchor); $c = Split-Path $c -Parent) {
+        for ($c = $full; (-not (Test-SwSame $status 'unsafe' -IgnoreCase)) -and ((Test-SwContained $Root $c) -or (Test-SwSame $c $anchor -IgnoreCase)); $c = Split-Path $c -Parent) {
             try { if ([IO.File]::GetAttributes($c) -band [IO.FileAttributes]::ReparsePoint) { $status = 'unsafe' } }
             catch [IO.FileNotFoundException], [IO.DirectoryNotFoundException] { $status = 'missing' }
         }
-        if ($status -eq 'ok') { $value = & $Action $full }
+        if (Test-SwSame $status 'ok' -IgnoreCase) { $value = & $Action $full }
     } catch { $status = 'failed'; $value = $null }
     [pscustomobject]@{ Status = $status; Value = $value }
 }
 
 function Resolve-SwProjectPath([string]$Root, [string]$Relative, [string]$Label) {
     # Explicit caller paths: project-relative only; no rooted/UNC/drive/stream forms, '..' segments or links.
-    if (-not $Relative -or [IO.Path]::IsPathRooted($Relative) -or $Relative -match '^[\\/]|:' -or @($Relative -split '[\\/]') -contains '..') { throw "Invalid ${Label}: '$Relative' must be a project-relative path" }
+    if (-not $Relative -or [IO.Path]::IsPathRooted($Relative) -or $Relative -match '^[\\/]|:' -or (Test-SwIn '..' (@($Relative -split '[\\/]')) -IgnoreCase)) { throw "Invalid ${Label}: '$Relative' must be a project-relative path" }
     $full = [IO.Path]::GetFullPath((Join-Path $Root $Relative))
     if (-not (Test-SwContained $Root $full)) { throw "Invalid ${Label}: '$Relative' escapes the project" }
-    if ((Invoke-SwContextRead $Root $Relative {}).Status -eq 'unsafe') { throw "Invalid ${Label}: '$Relative' traverses a link or junction" }
+    if (Test-SwSame ((Invoke-SwContextRead $Root $Relative {}).Status) 'unsafe' -IgnoreCase) { throw "Invalid ${Label}: '$Relative' traverses a link or junction" }
     $full
 }
 
@@ -1468,9 +1488,9 @@ function Get-SwContext {
     # Invalid arguments fail before any read.
     if ($Task) { Assert-SwSafeName $Task 'Task' }
     if ($StateSection -and -not $StateFile) { throw '-StateSection needs -StateFile (the state file named in AGENTS.md).' }
-    if ($StateFile -and [IO.Path]::GetExtension($StateFile) -ine '.md') { throw "Invalid StateFile: '$StateFile' must be a Markdown file" }
+    if ($StateFile -and (-not (Test-SwSame ([IO.Path]::GetExtension($StateFile)) '.md' -IgnoreCase))) { throw "Invalid StateFile: '$StateFile' must be a Markdown file" }
     if ($StateFile -and -not $StateSection) { $StateSection = 'Startup' }
-    if ($StateSection -and ($StateSection -match '[\r\n#]' -or $StateSection.Trim() -cne $StateSection)) { throw "Invalid StateSection: '$StateSection'" }
+    if ($StateSection -and ($StateSection -match '[\r\n#]' -or (-not (Test-SwSame ($StateSection.Trim()) $StateSection)))) { throw "Invalid StateSection: '$StateSection'" }
     # Git is optional evidence: a failed launch (missing or denied) makes it unavailable for the rest of the report,
     # never retried. core.fsmonitor=false keeps a configured fsmonitor hook from running; plain reads take no locks.
     $gitState = @{ Usable = $true }
@@ -1498,7 +1518,7 @@ function Get-SwContext {
     $walk = { param([string]$Rel, [bool]$Recurse)
         # Lists a directory, entering each subdirectory only after it is checked; links are skipped, never followed.
         $top = & $list $Rel
-        if ($top.Status -ne 'ok') { return [pscustomobject]@{ Status = $top.Status; Files = @(); Skipped = 0 } }
+        if (-not (Test-SwSame $top.Status 'ok' -IgnoreCase)) { return [pscustomobject]@{ Status = $top.Status; Files = @(); Skipped = 0 } }
         $files = [Collections.Generic.List[string]]::new(); $skipped = 0
         $queue = [Collections.Generic.Queue[object]]::new(); $queue.Enqueue([pscustomobject]@{ Rel = $Rel; Items = $top.Value })
         while ($queue.Count) {
@@ -1507,7 +1527,7 @@ function Get-SwContext {
                 $r = "$($d.Rel)/$($i.Name)"
                 if ($i.Attributes -band [IO.FileAttributes]::ReparsePoint) { $skipped++ }
                 elseif (-not $i.PSIsContainer) { $files.Add($r) }
-                elseif ($Recurse) { $sub = & $list $r; if ($sub.Status -eq 'ok') { $queue.Enqueue([pscustomobject]@{ Rel = $r; Items = $sub.Value }) } else { $skipped++ } }
+                elseif ($Recurse) { $sub = & $list $r; if (Test-SwSame $sub.Status 'ok' -IgnoreCase) { $queue.Enqueue([pscustomobject]@{ Rel = $r; Items = $sub.Value }) } else { $skipped++ } }
             }
         }
         $sorted = $files.ToArray(); [Array]::Sort($sorted, [StringComparer]::Ordinal)
@@ -1529,13 +1549,13 @@ function Get-SwContext {
     Write-Output '== Core static kit estimate (same arithmetic and cap as sw validate)'
     try {
         $gaps = [Collections.Generic.List[string]]::new()
-        $need = { param([string]$Rel, $Result) if ($Result.Status -ne 'ok') { $gaps.Add("$Rel $($Result.Status)") }; $Result.Value }
+        $need = { param([string]$Rel, $Result) if (-not (Test-SwSame $Result.Status 'ok' -IgnoreCase)) { $gaps.Add("$Rel $($Result.Status)") }; $Result.Value }
         $config = & $need '.sw/config.json' (& $read '.sw/config.json' { param($f) Read-SwJson $f })
         $agentsMd = & $need 'AGENTS.md' (& $text 'AGENTS.md')
         $skills = @{}
         $skillTree = & $walk '.agents/skills' $true
-        if ($skillTree.Status -ne 'ok') { $gaps.Add(".agents/skills $($skillTree.Status)") }
-        $skillFiles = @($skillTree.Files | Where-Object { ($_ -split '/')[-1] -eq 'SKILL.md' })
+        if (-not (Test-SwSame $skillTree.Status 'ok' -IgnoreCase)) { $gaps.Add(".agents/skills $($skillTree.Status)") }
+        $skillFiles = @($skillTree.Files | Where-Object { Test-SwSame (($_ -split '/')[-1]) 'SKILL.md' -IgnoreCase })
         foreach ($f in $skillFiles) { $d = & $need $f (& $read $f { param($p) Read-SwFrontmatter $p 'name', 'description', 'disable-model-invocation' }); if ($d) { $skills[$d['name']] = $d } }
         if ($gaps.Count) { Write-Output "core: incomplete ($($gaps -join '; ')); session total withheld; sw validate reports definition errors" }
         else {
@@ -1548,7 +1568,7 @@ function Get-SwContext {
     if (-not $StateFile) { Write-Output 'state: unavailable (state source not specified; pass -StateFile named by AGENTS.md)' }
     else {
         $show = $StateFile.Replace('\', '/'); $s = & $text $StateFile
-        if ($s.Status -ne 'ok') { Write-Output "state: unavailable ($($s.Status): $show)" }
+        if (-not (Test-SwSame $s.Status 'ok' -IgnoreCase)) { Write-Output "state: unavailable ($($s.Status): $show)" }
         else {
             $match = [regex]::Match($s.Value, '(?ms)^## ' + [regex]::Escape($StateSection) + '[ \t]*\n(.*?)(?=^## |\z)')
             if ($match.Success) { Write-Output "state: $show section `"$StateSection`" bytes=$(& $bytes $match.Groups[1].Value) (section body only; the rest of the file is not counted)" }
@@ -1557,15 +1577,15 @@ function Get-SwContext {
     }
     foreach ($p in '.sw/workspace.md', '.sw/collaboration.md') {
         $r = & $text $p
-        Write-Output $(if ($r.Status -eq 'ok') { "policy: $p bytes=$(& $bytes $r.Value)" } else { "policy: $p unavailable ($($r.Status))" })
+        Write-Output $(if (Test-SwSame $r.Status 'ok' -IgnoreCase) { "policy: $p bytes=$(& $bytes $r.Value)" } else { "policy: $p unavailable ($($r.Status))" })
     }
 
     Write-Output '== Available, not necessarily loaded (metadata only; bodies not printed)'
     try {
-        if ($skillTree.Status -notin 'ok', 'incomplete') { Write-Output "skills: unavailable ($($skillTree.Status): .agents/skills)" }
+        if (-not (Test-SwIn $skillTree.Status 'ok', 'incomplete' -IgnoreCase)) { Write-Output "skills: unavailable ($($skillTree.Status): .agents/skills)" }
         else {
             if ($skillTree.Skipped) { Write-Output "skills: incomplete ($($skillTree.Skipped) entries not followed or unreadable)" }
-            foreach ($f in $skillFiles) { $r = & $text $f; Write-Output "skill: $(($f -split '/')[-2]) $(if ($r.Status -eq 'ok') { "bytes=$(& $bytes $r.Value)" } else { "unavailable ($($r.Status))" })" }
+            foreach ($f in $skillFiles) { $r = & $text $f; Write-Output "skill: $(($f -split '/')[-2]) $(if (Test-SwSame $r.Status 'ok' -IgnoreCase) { "bytes=$(& $bytes $r.Value)" } else { "unavailable ($($r.Status))" })" }
         }
     } catch { Write-Output 'inventory: incomplete (listing failed)' }
 
@@ -1574,7 +1594,7 @@ function Get-SwContext {
 
     Write-Output '== Source and evidence inventory (opaque references; no approval, acceptance or active task inferred)'
     $dotGit = & $read '.git' {}
-    if ($dotGit.Status -ne 'ok') { Write-Output "checkout: unavailable ($($dotGit.Status): .git)" }
+    if (-not (Test-SwSame $dotGit.Status 'ok' -IgnoreCase)) { Write-Output "checkout: unavailable ($($dotGit.Status): .git)" }
     elseif (-not $gitState.Usable) { Write-Output 'checkout: unavailable (git could not be run; not retried)' }
     else {
         $branch = & $git $Root @('branch', '--show-current'); $head = & $git $Root @('rev-parse', '--verify', '--quiet', 'HEAD'); $dirty = & $git $Root @('status', '--porcelain=v1')
@@ -1583,20 +1603,20 @@ function Get-SwContext {
     try {
         $t = & $list $taskRel
         if (-not $Task) {
-            if ($t.Status -ne 'ok') { Write-Output "tasks: unavailable ($($t.Status): $taskRel)" }
+            if (-not (Test-SwSame $t.Status 'ok' -IgnoreCase)) { Write-Output "tasks: unavailable ($($t.Status): $taskRel)" }
             else {
                 $dirs = @($t.Value | Where-Object PSIsContainer)
                 Write-Output "tasks: candidates=$($dirs.Count) listed=$([math]::Min($dirs.Count, 20)) omitted=$([math]::Max($dirs.Count - 20, 0)) (candidates only; pass -Task <id> to inspect one)"
                 foreach ($d in $dirs | Select-Object -First 20) {
                     if ($d.Attributes -band [IO.FileAttributes]::ReparsePoint) { Write-Output "candidate: $($d.Name) (link; not inspected)"; continue }
                     $e = & $list "$taskRel/$($d.Name)"
-                    Write-Output "candidate: $($d.Name) events=$(if ($e.Status -eq 'ok') { @($e.Value | Where-Object { -not $_.PSIsContainer -and $_.Extension -eq '.md' }).Count } else { "unavailable ($($e.Status))" })"
+                    Write-Output "candidate: $($d.Name) events=$(if (Test-SwSame $e.Status 'ok' -IgnoreCase) { @($e.Value | Where-Object { -not $_.PSIsContainer -and (Test-SwSame $_.Extension '.md' -IgnoreCase) }).Count } else { "unavailable ($($e.Status))" })"
                 }
             }
-        } elseif ($t.Status -ne 'ok') { Write-Output "task: $Task unavailable ($($t.Status): $taskRel)" }
+        } elseif (-not (Test-SwSame $t.Status 'ok' -IgnoreCase)) { Write-Output "task: $Task unavailable ($($t.Status): $taskRel)" }
         else {
             $all = @($t.Value)
-            $events = @($all | Where-Object { -not $_.PSIsContainer -and $_.Extension -eq '.md' })
+            $events = @($all | Where-Object { -not $_.PSIsContainer -and (Test-SwSame $_.Extension '.md' -IgnoreCase) })
             $shown = @($events | Select-Object -Last 20)
             Write-Output "task: $Task events=$($events.Count) listed=$($shown.Count) omitted=$($events.Count - $shown.Count) other_entries=$($all.Count - $events.Count) (name order; not a status or approval ranking)"
             foreach ($e in $shown) { Write-Output "event: $taskRel/$($e.Name)" }
@@ -1607,7 +1627,7 @@ function Get-SwContext {
         }
     } catch { Write-Output 'task: incomplete (evidence could not be listed)' }
     $after = @(foreach ($s in $stamped) { & $stamp $s })
-    if (($before -join "`n") -cne ($after -join "`n") -or @($before + $after | Where-Object { $_ -like 'failed|*' }).Count) {
+    if ((-not (Test-SwSame ($before -join "`n") ($after -join "`n"))) -or @($before + $after | Where-Object { (([string]$_).StartsWith('failed|', [StringComparison]::OrdinalIgnoreCase)) }).Count) {
         Write-Output 'notice: evidence changed during inspection or could not be re-checked; this report is incomplete. Re-run before relying on it.'
     }
     $global:LASTEXITCODE = 0
@@ -1620,4 +1640,5 @@ Export-ModuleMember -Function Resolve-SwRoot, Write-SwFile, Read-SwText, Read-Sw
     Get-SwStartupBudget, Get-SwContext, Resolve-SwSelection, Get-SwSelectionKnown, Test-SwLinkedPath, Get-SwRetiredOutputs,
     Get-SwClaudeDeny, Get-SwClaudeSettings, Get-SwCodexRules, Get-SwCodexRuleBlocks, Read-SwCodexRules, Test-SwClaudeRule, Test-SwCodexRule, Get-SwHardLimitCases,
     Assert-SwRelativePath, Assert-SwPhysicalPath, Resolve-SwManagedPath, Get-SwPhysicalFiles, Get-SwConfiguredTier,
-    Get-SwRelativePath, Test-SwFullyQualified, Invoke-SwNative, ConvertFrom-SwJson
+    Get-SwRelativePath, Test-SwFullyQualified, Invoke-SwNative, ConvertFrom-SwJson,
+    Test-SwSame, Test-SwIn, Get-SwUnique
