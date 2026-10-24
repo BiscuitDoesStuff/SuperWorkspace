@@ -12,7 +12,15 @@ The reviewer is Codex by default. A Claude or other cross-provider review runs
 only when the request explicitly asks for it, and a
 [single-provider review](#single-provider-review) only in a project whose owner
 uses one provider. Review is advisory: it neither authorizes scope nor proves
-integration.
+integration, and grants no write, merge or publication authority. Method:
+topic 16 (`docs/research/16-public-capabilities.md` in the SuperWorkspace kit).
+
+**Command identity.** A harness may ship its own `review` command, and in
+Claude overriding a bundled skill's name does not override its aliases. Before
+step 1, confirm the loaded instructions are this skill (it has the steps
+below and this paragraph). If a native review ran instead, do not count its
+output as this review: rerun with this skill's own instructions, or stop and
+tell the owner which command ran.
 
 ## Steps
 
@@ -48,8 +56,10 @@ Previous rounds: <findings, responses, objections | none>.
 2. Score the change against the rubric; run read-only checks where useful.
 3. Report findings by severity (P0-P3) with file:line, failing condition,
    consequence and a bounded fix. Separate defects from risks and questions.
-   Distinguish what you observed from what the author reported.
-   If nothing is actionable, say so and state what you did not cover.
+   Distinguish what you observed from what the author reported; claim no
+   check you did not run. Leave formatting to the mechanical checks.
+   If nothing is actionable, say so and state what you did not cover; do not
+   invent findings.
 ```
 
 ## Single-provider review
