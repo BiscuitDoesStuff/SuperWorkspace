@@ -17,13 +17,13 @@ use the linked evidence only when the task needs it.
   `project/`, `lib/`, `global/` and `sw.ps1`; `.sw/manifest.json` identifies
   generated definitions. This checkout uses GitHub tier 2 and local records.
   Docs-only work may commit on main; code uses a T3 worktree and PR. A human
-  publishes main. Private integration does not publish to public `origin`;
-  a publication is an owner-approved snapshot commit (outline O13).
+  publishes main. Product work is public-first: a `t3/` pull request to
+  `origin`, then a merge of `origin/main` into private `main` (outline O13).
 - **Accepted baseline:** the rebuild, A7 global preservation, Windows/both-shell
   runtime, native UTF-8 fix, CI local fallback, explicit owner commands, all
   six audit fixes and central delivery E3 are integrated.
-  Latest public publication is origin PR #2 (2026-10-18); everything after it
-  is private only. Global rules were installed in the owner's existing harness
+  Latest public publication is origin PR #1 (merge 683e9a4, 2026-10-22); the
+  private and public histories are joined (merge-base 683e9a4). Global rules were installed in the owner's existing harness
   homes on 2026-10-18; that observation does not authorize further deployment.
 - **Product audit closed (2026-10-22 UTC):** private-instance PRs merged P1,
   P2, P3a/P3b, P4 and the D1b/D1c prompt-time freshness repair; D1d documented
