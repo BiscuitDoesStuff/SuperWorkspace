@@ -7,6 +7,17 @@ published as a public product (`origin`). Design is research-led, not driven by 
 private instance is a separate remote, configured locally; its adaptations may be upstreamed here.
 Keep private evidence, personal paths and nonredistributable research out of
 anything published to `origin`.
+
+Public product work is public-first (design register O13): launch the thread
+after `git fetch origin` with `baseRef: origin/main`, `startFromOrigin: false`;
+its first step checks `git rev-parse HEAD` equals `origin/main`. The agent may
+push its own `t3/<name>` branch to `origin` and open the public pull request;
+before each push,
+`powershell -NoProfile -ExecutionPolicy Bypass -File tools/publish-scan.ps1 -Base origin/main -Source HEAD`
+must exit 0. Public pull requests gate on hosted CI and are squash-merged by
+the owner. After each public merge, a pull request merges `origin/main` into
+private `main` (a merge, never a rebase).
+
 Read only the Startup section of `docs/workspace-state.md` at startup; it owns
 implemented state and current authorization. `docs/workspace-outline.md` is the
 single project design rules/assumptions register; read its detail on demand.
@@ -104,15 +115,6 @@ The harness auto-loads this file; do not re-read it. Before a meaningful change:
   once the gate passes. Below
   tier 2 the owner uses T3 Code's Git actions. Tiers: `.sw/config.json`,
   `.sw/workspace.md`.
-- Public product work is public-first (design register O13): launch the
-  thread after `git fetch origin` with `baseRef: origin/main`,
-  `startFromOrigin: false`; its first step checks `git rev-parse HEAD` equals
-  `origin/main`. The agent may push its own `t3/<name>` branch to `origin` and
-  open the public pull request; before each push,
-  `powershell -NoProfile -ExecutionPolicy Bypass -File tools/publish-scan.ps1 -Base origin/main -Source HEAD`
-  must exit 0. Public pull requests gate on hosted CI and are squash-merged by
-  the owner. After each public merge, a pull request merges `origin/main` into
-  private `main` (a merge, never a rebase).
 - Commit as you go in small conventional commits
   (feat/fix/docs/refactor/test/chore). Stage selected paths only; never
   `git add .` in a shared checkout.
