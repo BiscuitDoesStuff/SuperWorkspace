@@ -602,10 +602,8 @@ Describe 'E3 central delivery (synthetic homes, read-only)' {
 
     It 'unsupported central writes and usage errors stop before even resolving user homes' {
         Mock -ModuleName Sw.Kit Get-SwUserHome { throw 'home discovery must not run' }
-        foreach ($action in 'install','remove','backup') {
-            (Invoke-SwGlobal $action -Delivery central-v1 -Harness both) -join ' ' | Should -Match 'not implemented'
-            $global:LASTEXITCODE | Should -Be 1
-        }
+        (Invoke-SwGlobal backup -Delivery central-v1 -Harness both) -join ' ' | Should -Match 'not implemented'
+        $global:LASTEXITCODE | Should -Be 1
         Invoke-SwGlobal check -Delivery central-v1 | Out-Null; $global:LASTEXITCODE | Should -Be 2
         Invoke-SwGlobal remove | Out-Null; $global:LASTEXITCODE | Should -Be 2
         Invoke-SwGlobal check -Harness codex | Out-Null; $global:LASTEXITCODE | Should -Be 2
@@ -808,7 +806,7 @@ Describe 'E3 central delivery (synthetic homes, read-only)' {
             $out = Central-Rules install both
             $global:LASTEXITCODE | Should -Be 1
             { Central-Plan @{ Action='check'; Harness='both'; Component='rules' } } | Should -Not -Throw
-            ($out -join "`n") | Should -Match 'FAILED central rules: .*product root'
+            ($out -join "`n") | Should -Match 'FAILED central delivery: .*product root'
             Central-Tree | Should -Be $before
         }
 
@@ -834,6 +832,267 @@ Describe 'E3 central delivery (synthetic homes, read-only)' {
             foreach ($action in 'install', 'remove', 'install') { $out = Central-Rules $action both; $global:LASTEXITCODE | Should -Be 0 -Because ($out -join "`n") }
             @($files | ForEach-Object { Central-Bytes $_ }) | Should -Be $before
             ($out -join "`n") | Should -Not -Match 'Read-only plan'
+        }
+    }
+
+    Context 'E4 central skill links (install/check/remove effects)' {
+        BeforeAll {
+            function New-PersonalSkill([string]$Id) {
+                $root = Join-Path $global:SwCentralHome '.sw/skills'
+                Write-SwFile (Join-Path $root "$Id/SKILL.md") "---`nname: $Id`ndescription: test skill`n---`nbody`n"
+                Write-SwFile (Join-Path $root "$Id/sentinel.txt") "keep $Id`n"
+            }
+            function Central-Links([string]$Action, [string]$Harness, [hashtable]$More = @{}) {
+                @(Invoke-SwGlobal $Action -Delivery central-v1 -Harness $Harness -Component skills -Confirm:$false @More 3>&1 | ForEach-Object { "$_" })
+            }
+            function Skill-Source([string]$Id) { Join-Path $global:SwCentralHome ".sw/skills/$Id" }
+            function Link-Of([string]$Path) {
+                $item = Get-Item -LiteralPath $Path -Force -ErrorAction Ignore
+                if ($item) { "$($item.LinkType)|$(@($item.Target)[0])" }
+            }
+            # Junctions are unlinked without descending, so no cleanup (PS 5.1 included) follows them into a source.
+            function Clear-Links([string]$Dir) {
+                if (-not [IO.Directory]::Exists($Dir)) { return }
+                foreach ($d in [IO.Directory]::GetDirectories($Dir)) {
+                    if ([IO.File]::GetAttributes($d) -band [IO.FileAttributes]::ReparsePoint) { [IO.Directory]::Delete($d, $false) } else { Clear-Links $d }
+                }
+            }
+        }
+        AfterEach { Clear-Links $global:SwCentralHome }
+
+        It 'A1 a preview, a declined prompt or an invalid ID creates nothing' {
+            New-PersonalSkill mine; $before = Central-Tree
+            $out = Central-Links install codex @{ Skills=@(); PersonalSkills=@('mine'); WhatIf=$true }
+            $global:LASTEXITCODE | Should -Be 0 -Because ($out -join "`n")
+            ($out -join "`n") | Should -Match 'create-link'
+            Central-Tree | Should -Be $before
+            $out = Central-Links install codex @{ Skills=@(); PersonalSkills=@('../x') }
+            $global:LASTEXITCODE | Should -Be 2 -Because ($out -join "`n")
+            Central-Tree | Should -Be $before
+            # Declined consent, answered by an in-memory host in a fresh runspace (no Pester mocks there).
+            $fixtureHost = [SwAuditPromptHost]::new($Host, 'skill links')
+            $space = [Management.Automation.Runspaces.RunspaceFactory]::CreateRunspace($fixtureHost)
+            $space.Open(); $ps = [Management.Automation.PowerShell]::Create(); $ps.Runspace = $space
+            try {
+                $null = $ps.AddScript({
+                    param($Lib, $UserHome)
+                    Import-Module (Join-Path $Lib 'Sw.Project.psm1') -Force -DisableNameChecking
+                    Import-Module (Join-Path $Lib 'Sw.Kit.psm1') -Force -DisableNameChecking
+                    & (Get-Module Sw.Kit) { param($u) $script:SwTestUserHome = $u; function script:Get-SwUserHome { $script:SwTestUserHome } } $UserHome
+                    Invoke-SwGlobal install -Delivery central-v1 -Harness codex -Component skills -Skills @() -PersonalSkills mine -Confirm | Out-Null
+                    $global:LASTEXITCODE
+                }.ToString()).AddArgument((Join-Path $RepoRoot 'lib')).AddArgument($global:SwCentralHome)
+                $values = @($ps.Invoke())
+                if ($ps.HadErrors) { throw ($ps.Streams.Error -join "`n") }
+                $values[-1] | Should -Be 1
+                $fixtureHost.Denied | Should -Be 1
+            } finally { $ps.Dispose(); $space.Dispose() }
+            Central-Tree | Should -Be $before
+        }
+
+        It 'A2 a missing source, a bad home or a malformed record refuses and changes nothing' {
+            $before = Central-Tree
+            $out = Central-Links install codex @{ Skills=@(); PersonalSkills=@('absent') }
+            $global:LASTEXITCODE | Should -Be 1 -Because ($out -join "`n")
+            ($out -join "`n") | Should -Match 'Selected skill source missing'
+            $out = Central-Links install claude @{ Skills=@(); PersonalSkills=@(); ClaudeConfigDir=@('relative') }
+            $global:LASTEXITCODE | Should -Not -Be 0
+            ($out -join "`n") | Should -Match 'absolute path'
+            $out = Central-Links install claude @{ Skills=@(); PersonalSkills=@(); ClaudeConfigDir=@((Join-Path $TestDrive "nohome$(New-Id)")) }
+            $global:LASTEXITCODE | Should -Be 1
+            ($out -join "`n") | Should -Match 'Home not found, nothing written'
+            Central-Tree | Should -Be $before
+            New-PersonalSkill mine
+            Write-SwFile (Join-Path $global:SwCentralHome '.sw/global.json') '{'
+            $before = Central-Tree
+            $out = Central-Links install codex @{ Skills=@(); PersonalSkills=@('mine') }
+            $global:LASTEXITCODE | Should -Be 1 -Because ($out -join "`n")
+            ($out -join "`n") | Should -Match 'FAILED central preflight'
+            Central-Tree | Should -Be $before
+        }
+
+        It 'A3 product/personal, case-only and real-folder collisions refuse, naming source and target' {
+            New-PersonalSkill work; New-PersonalSkill mine
+            $before = Central-Tree
+            $out = (Central-Links install codex @{ Skills=@('work'); PersonalSkills=@('work') }) -join "`n"
+            $global:LASTEXITCODE | Should -Be 1 -Because $out
+            $out | Should -Match "collision for 'work'"
+            $out | Should -Match ([regex]::Escape((Join-Path $global:SwCentralHome '.agents')) + '[\\/]skills[\\/]work')
+            $out | Should -Match ([regex]::Escape((Join-Path $global:SwCentralHome '.sw')) + '[\\/]skills[\\/]work')
+            $out | Should -Match 'project[\\/]base[\\/]\.agents[\\/]skills[\\/]work'
+            $out = (Central-Links install codex @{ Skills=@('work', 'Work') }) -join "`n"
+            $global:LASTEXITCODE | Should -Be 2 -Because $out
+            $out | Should -Match "duplicate selection ID: 'Work'"
+            Central-Tree | Should -Be $before
+            $real = Join-Path $global:SwCentralHome '.agents/skills/mine'
+            Write-SwFile (Join-Path $real 'sentinel.txt') "real`n"
+            $before = Central-Tree
+            $out = (Central-Links install codex @{ Skills=@(); PersonalSkills=@('mine') }) -join "`n"
+            $global:LASTEXITCODE | Should -Be 1 -Because $out
+            $out | Should -Match ('Real file or directory at skill leaf: ' + [regex]::Escape($real))
+            $out | Should -Match 'action=refuse'
+            Central-Tree | Should -Be $before
+        }
+
+        It 'A4 a repeat install of current owned links is a no-op with one stable receipt' {
+            New-PersonalSkill mine
+            $leaves = @((Join-Path $global:SwCentralHome '.claude/skills/mine'), (Join-Path $global:SwCentralHome '.agents/skills/mine'))
+            $out = Central-Links install both @{ Skills=@(); PersonalSkills=@('mine') }
+            $global:LASTEXITCODE | Should -Be 0 -Because ($out -join "`n")
+            foreach ($leaf in $leaves) { Link-Of $leaf | Should -BeLike "Junction|*$(Skill-Source mine)" }
+            $first = ConvertTo-SwJson (Read-CentralRecord).homes
+            $out = Central-Links install both
+            $global:LASTEXITCODE | Should -Be 0 -Because ($out -join "`n")
+            ($out -join "`n") | Should -Not -Match 'create-link'
+            ConvertTo-SwJson (Read-CentralRecord).homes | Should -Be $first
+            $record = Read-CentralRecord
+            @($record.homes.Keys).Count | Should -Be 2
+            @($record.homes[(Join-Path $global:SwCentralHome '.claude')].entries.Keys) | Should -Be @('skills/mine')
+            @($record.homes[(Join-Path $global:SwCentralHome '.claude')].entries['skills/mine'].scopeOwners) | Should -Be @('claude')
+            @($record.homes[(Join-Path $global:SwCentralHome '.agents')].entries['skills/mine'].scopeOwners) | Should -Be @('codex-skills')
+            foreach ($leaf in $leaves) { Link-Of $leaf | Should -BeLike "Junction|*$(Skill-Source mine)" }
+        }
+
+        It 'A5 foreign, tampered and broken links get leaf-only behaviour; sources and siblings survive' {
+            New-PersonalSkill mine; New-PersonalSkill other
+            $skills = Join-Path $global:SwCentralHome '.agents/skills'
+            $foreign = Join-Path $TestDrive "foreign$(New-Id)"
+            Write-SwFile (Join-Path $foreign 'sentinel.txt') "foreign`n"
+            Write-SwFile (Join-Path $skills 'sibling/sentinel.txt') "sibling`n"
+            New-Item -ItemType Junction -Path (Join-Path $skills 'other') -Value $foreign | Out-Null
+            $out = (Central-Links install codex @{ Skills=@(); PersonalSkills=@('other') }) -join "`n"
+            $global:LASTEXITCODE | Should -Be 1 -Because $out
+            $out | Should -Match 'Unowned link cannot be adopted'
+            $out | Should -Match ([regex]::Escape("cmd /c rmdir `"$(Join-Path $skills 'other')`""))
+            Link-Of (Join-Path $skills 'other') | Should -BeLike "Junction|*$foreign"
+            $out = Central-Links install codex @{ Skills=@(); PersonalSkills=@('mine') }
+            $global:LASTEXITCODE | Should -Be 0 -Because ($out -join "`n")
+            $leaf = Join-Path $skills 'mine'
+            [IO.Directory]::Delete($leaf, $false)
+            New-Item -ItemType Junction -Path $leaf -Value $foreign | Out-Null
+            foreach ($action in 'install', 'remove') {
+                $out = (Central-Links $action codex) -join "`n"
+                $global:LASTEXITCODE | Should -Be 1 -Because $out
+                $out | Should -Match 'Recorded link type/target changed'
+                Link-Of $leaf | Should -BeLike "Junction|*$foreign"
+            }
+            # Broken: the owned link is restored, then its source is renamed. Remove unlinks the leaf only.
+            [IO.Directory]::Delete($leaf, $false)
+            New-Item -ItemType Junction -Path $leaf -Value (Skill-Source mine) | Out-Null
+            [IO.Directory]::Move((Skill-Source mine), (Skill-Source moved))
+            $out = Central-Links remove codex
+            $global:LASTEXITCODE | Should -Be 0 -Because ($out -join "`n")
+            Link-Of $leaf | Should -BeNullOrEmpty
+            Read-SwText (Join-Path (Skill-Source moved) 'sentinel.txt') | Should -Be "keep mine`n"
+            Read-SwText (Join-Path $foreign 'sentinel.txt') | Should -Be "foreign`n"
+            Read-SwText (Join-Path $skills 'sibling/sentinel.txt') | Should -Be "sibling`n"
+            Link-Of (Join-Path $skills 'other') | Should -BeLike "Junction|*$foreign"
+        }
+
+        It 'A5 a linked skills directory refuses and nothing is created through it' {
+            New-PersonalSkill mine
+            $elsewhere = Join-Path $TestDrive "elsewhere$(New-Id)"
+            Write-SwFile (Join-Path $elsewhere 'sentinel.txt') "x`n"
+            New-Item -ItemType Directory -Path (Join-Path $global:SwCentralHome '.agents') | Out-Null
+            New-Item -ItemType Junction -Path (Join-Path $global:SwCentralHome '.agents/skills') -Value $elsewhere | Out-Null
+            $out = (Central-Links install codex @{ Skills=@(); PersonalSkills=@('mine') }) -join "`n"
+            $global:LASTEXITCODE | Should -Be 1 -Because $out
+            $out | Should -Match 'action=refuse'
+            @(Get-ChildItem -LiteralPath $elsewhere -Force | ForEach-Object Name) | Should -Be @('sentinel.txt')
+            Test-Path -LiteralPath (Join-Path $global:SwCentralHome '.sw/global.json') | Should -BeFalse
+        }
+
+        It 'A8 remove deletes only proven owned links' {
+            New-PersonalSkill mine
+            $skills = Join-Path $global:SwCentralHome '.agents/skills'
+            $foreign = Join-Path $TestDrive "foreign$(New-Id)"
+            Write-SwFile (Join-Path $foreign 'sentinel.txt') "foreign`n"
+            Write-SwFile (Join-Path $skills 'real/sentinel.txt') "real`n"
+            New-Item -ItemType Junction -Path (Join-Path $skills 'foreign') -Value $foreign | Out-Null
+            $out = Central-Links install codex @{ Skills=@(); PersonalSkills=@('mine') }
+            $global:LASTEXITCODE | Should -Be 0 -Because ($out -join "`n")
+            $out = (Central-Links remove codex) -join "`n"
+            $global:LASTEXITCODE | Should -Be 0 -Because $out
+            $out | Should -Match 'OK remove-link'
+            Link-Of (Join-Path $skills 'mine') | Should -BeNullOrEmpty
+            Read-SwText (Join-Path (Skill-Source mine) 'sentinel.txt') | Should -Be "keep mine`n"
+            Read-SwText (Join-Path $skills 'real/sentinel.txt') | Should -Be "real`n"
+            Link-Of (Join-Path $skills 'foreign') | Should -BeLike "Junction|*$foreign"
+            Read-SwText (Join-Path $foreign 'sentinel.txt') | Should -Be "foreign`n"
+            @((Read-CentralRecord).homes.Keys).Count | Should -Be 0
+        }
+
+        It 'A9 a receipt failure after link creation leaves an explicit unrecorded link and exits nonzero' {
+            New-PersonalSkill mine
+            $leaf = Join-Path $global:SwCentralHome '.agents/skills/mine'
+            Mock -ModuleName Sw.Kit Write-SwCentralReceipt { throw 'disk full' } -ParameterFilter { $Row.Kind -eq 'skill-link' -and $global:SwFailReceipt }
+            $global:SwFailReceipt = $true
+            try { $out = (Central-Links install codex @{ Skills=@(); PersonalSkills=@('mine') }) -join "`n" } finally { $global:SwFailReceipt = $false }
+            $global:LASTEXITCODE | Should -Be 1 -Because $out
+            $out | Should -Match ('FAILED central delivery: Created ' + [regex]::Escape($leaf) + ' but its receipt was not recorded')
+            $out | Should -Match ([regex]::Escape("cmd /c rmdir `"$leaf`""))
+            $out | Should -Match 'disk full'
+            Link-Of $leaf | Should -BeLike "Junction|*$(Skill-Source mine)"
+            $before = Central-Tree
+            foreach ($more in @{ Skills=@(); PersonalSkills=@('mine'); WhatIf=$true }, @{ Skills=@(); PersonalSkills=@('mine') }) {
+                $out = (Central-Links install codex $more) -join "`n"
+                $global:LASTEXITCODE | Should -Be 1 -Because $out
+                $out | Should -Match 'Unowned link cannot be adopted'
+                Central-Tree | Should -Be $before
+            }
+            $out = (Central-Links check codex @{ Skills=@(); PersonalSkills=@('mine') }) -join "`n"
+            $global:LASTEXITCODE | Should -Be 1 -Because $out
+            $out | Should -Match 'Unowned link cannot be adopted'
+            Link-Of $leaf | Should -BeLike "Junction|*$(Skill-Source mine)"
+        }
+
+        It 'A10 links two Claude homes and the shared Codex scope under spaced non-ASCII paths' {
+            $global:SwCentralHome = Join-Path $TestDrive "home $([char]0xE9) x$(New-Id)"
+            New-Item -ItemType Directory -Path $global:SwCentralHome | Out-Null
+            New-PersonalSkill mine
+            $a = Join-Path $global:SwCentralHome 'claude a'; $b = Join-Path $global:SwCentralHome "claude $([char]0xE9)"
+            New-Item -ItemType Directory -Path $a, $b | Out-Null
+            $out = Central-Links install both @{ Skills=@(); PersonalSkills=@('mine'); ClaudeConfigDir=@($a, $b) }
+            $global:LASTEXITCODE | Should -Be 0 -Because ($out -join "`n")
+            $agents = Join-Path $global:SwCentralHome '.agents'
+            foreach ($dir in $a, $b, $agents) { Link-Of (Join-Path $dir 'skills/mine') | Should -BeLike "Junction|*$(Skill-Source mine)" }
+            $record = Read-CentralRecord
+            @($record.homes[$a].entries['skills/mine'].scopeOwners) | Should -Be @('claude')
+            @($record.homes[$b].entries['skills/mine'].scopeOwners) | Should -Be @('claude')
+            @($record.homes[$agents].entries['skills/mine'].scopeOwners) | Should -Be @('codex-skills')
+            $out = Central-Links remove both @{ ClaudeConfigDir=@($a, $b) }
+            $global:LASTEXITCODE | Should -Be 0 -Because ($out -join "`n")
+            foreach ($dir in $a, $b, $agents) { Link-Of (Join-Path $dir 'skills/mine') | Should -BeNullOrEmpty }
+            Read-SwText (Join-Path (Skill-Source mine) 'sentinel.txt') | Should -Be "keep mine`n"
+        }
+
+        It 'a scoped remove detaches only its claim; the last owner unlinks' {
+            New-PersonalSkill mine
+            $agents = Join-Path $global:SwCentralHome '.agents'
+            New-Item -ItemType Directory -Path $agents | Out-Null
+            $leaf = Join-Path $agents 'skills/mine'
+            $out = Central-Links install both @{ Skills=@(); PersonalSkills=@('mine'); ClaudeConfigDir=@($agents) }
+            $global:LASTEXITCODE | Should -Be 0 -Because ($out -join "`n")
+            @((Read-CentralRecord).homes[$agents].entries['skills/mine'].scopeOwners) | Should -Be @('claude', 'codex-skills')
+            $out = Central-Links remove claude @{ ClaudeConfigDir=@($agents) }
+            $global:LASTEXITCODE | Should -Be 0 -Because ($out -join "`n")
+            Link-Of $leaf | Should -BeLike "Junction|*$(Skill-Source mine)"
+            @((Read-CentralRecord).homes[$agents].entries['skills/mine'].scopeOwners) | Should -Be @('codex-skills')
+            $out = Central-Links remove codex
+            $global:LASTEXITCODE | Should -Be 0 -Because ($out -join "`n")
+            Link-Of $leaf | Should -BeNullOrEmpty
+            @((Read-CentralRecord).homes.Keys).Count | Should -Be 0
+        }
+
+        It 'refuses a create whose source moved after the plan, never retargeting by name' {
+            $agents = Join-Path $global:SwCentralHome '.agents'
+            $leaf = Join-Path $agents 'skills/gone'
+            $result = InModuleScope Sw.Kit -Parameters @{ Leaf=$leaf; HomeDir=$agents; Source=(Skill-Source gone) } {
+                param($Leaf, $HomeDir, $Source)
+                Invoke-SwCentralLink ([pscustomobject]@{ Action='create-link'; Target=$Leaf; TargetHome=$HomeDir; Source=$Source; ScopeOwners=@() }) $null
+            }
+            $result.Status | Should -Match 'source missing or moved since the plan, not retargeted by name'
+            Test-Path -LiteralPath $leaf | Should -BeFalse
         }
     }
 }

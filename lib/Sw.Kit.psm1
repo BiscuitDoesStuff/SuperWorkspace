@@ -850,7 +850,7 @@ function Read-SwGlobalBaseline([string]$Path) {
 }
 
 # Central delivery extends the A7 record in memory. The legacy reader/writer above deliberately remains schema1-only.
-# E5 writes rules blocks with per-artifact receipts; links and migration are not implemented. Unrelated recorded paths are validated as data, never visited.
+# E5 writes rules blocks and E4 one junction per selected skill, each with its own receipt; migration is not implemented. Unrelated recorded paths are validated as data, never visited.
 $script:CentralScopes = @('claude', 'codex', 'codex-skills')
 
 function Assert-SwCentralKeys($Value, [string[]]$Keys) {
@@ -1315,7 +1315,7 @@ function Get-SwCentralLinkObservation([string]$Path, $Entry) {
         return [pscustomobject]@{ State='missing-link'; Error=$null }
     } catch { return [pscustomobject]@{ State='foreign-type'; Error=$_.Exception.Message } }
     if (-not ($item.Attributes -band [IO.FileAttributes]::ReparsePoint)) { return [pscustomobject]@{ State='foreign-type'; Error="Real file or directory at skill leaf: $Path" } }
-    if (-not $Entry) { return [pscustomobject]@{ State='unowned-link'; Error="Unowned link cannot be adopted: $Path" } }
+    if (-not $Entry) { return [pscustomobject]@{ State='unowned-link'; Error="Unowned link cannot be adopted: $Path. If it is yours, remove only that link (cmd /c rmdir `"$Path`", never /s), then run global install again." } }
     $targets = @($item.Target)
     $matches = $false
     if ((Test-SwSame $item.LinkType 'Junction') -and $targets.Count -eq 1 -and (Test-SwSame $targets[0] $Entry.rawReparseTarget)) {
@@ -1441,8 +1441,10 @@ function Get-SwCentralPlan {
             $selection[$name] = @(if ($given.ContainsKey($name)) { $given[$name] } elseif ($recordedSelection) { $recordedSelection[$name] })
         }
         # A scope composes and records only shared plus its own personal rules, as the record reader requires.
-        $selection.personalRules = @($selection.personalRules | Where-Object { Test-SwIn $_ ('shared', $target.Scope) })
-        if (@($selection.productSkills | Where-Object { Test-SwIn $_ $selection.personalSkills -IgnoreCase }).Count) { throw "Product/personal skill collision at $($target.Dir)" }
+        $selection.personalRules = @(if (-not (Test-SwSame $target.Scope 'codex-skills' -IgnoreCase)) { $selection.personalRules | Where-Object { Test-SwIn $_ ('shared', $target.Scope) } })
+        # Codex rules homes carry no skills; the shared ~/.agents scope owns Codex skill links.
+        if (Test-SwSame $target.Scope 'codex' -IgnoreCase) { $selection.productSkills = @(); $selection.personalSkills = @() }
+        foreach ($id in @($selection.productSkills | Where-Object { Test-SwIn $_ $selection.personalSkills -IgnoreCase })) { throw "Product/personal skill collision for '$id' at $(Join-Path $target.Dir "skills/$id"): $(Get-SwCentralSourcePath 'product' $id $product $personal) and $(Get-SwCentralSourcePath 'personal' $id $product $personal)" }
         $isSkillScope = (Test-SwIn $target.Scope 'claude', 'codex-skills' -IgnoreCase) -and (-not (Test-SwSame $Component 'rules' -IgnoreCase))
         if ($isSkillScope -and -not $recordedSelection -and -not $given.ContainsKey('productSkills')) {
             if (Test-SwSame $Action 'install' -IgnoreCase) { throw [Management.Automation.PSArgumentException]::new("Initial central skills install requires explicit -Skills for $($target.Scope) at $($target.Dir)") }
@@ -1522,13 +1524,15 @@ function Get-SwCentralPlan {
                 if (($desired -or (Test-SwSame $Action 'remove' -IgnoreCase)) -and (-not (Test-SwIn $target.Scope $artifact.Scopes))) { $artifact.Scopes += $target.Scope }
                 if (Test-SwSame $target.Scope 'codex-skills' -IgnoreCase) { $artifact.BlastRadius = 'shared Codex user scope, independent of CODEX_HOME; includes any aliased Claude owners' }
             } else {
-                $links[$leaf] = [pscustomobject]@{ Artifact=$key; Kind='skill-link'; SourceTier=$tier; Source=$source; TargetHome=$target.Dir; Target=$leaf;
+                $links[$leaf] = [pscustomobject]@{ Artifact=$key; Kind='skill-link'; SourceTier=$tier; Source=$source; TargetHome=$target.Dir; Target=$leaf; Selections=@{};
                     Current=$null; Desired=$desired; Scopes=@(if ($desired -or (Test-SwSame $Action 'remove' -IgnoreCase)) { $target.Scope }); ScopeOwners=@(if ($entry) { $entry.scopeOwners });
                     Ownership=$(if ($entry) { 'record' } else { 'no baseline' }); Refusal=$null;
                     BlastRadius=$(if (Test-SwSame $target.Scope 'codex-skills' -IgnoreCase) { 'shared Codex user scope, independent of CODEX_HOME; includes any aliased Claude owners' } else { 'Claude configuration home; retains any other recorded physical-home owners' });
                     SourceChanged=($null -ne $entry -and -not (Get-SwPathComparer).Equals($entry.sourcePath, $source)); SourceDrift=$false;
                     Evidence=$(if ($entry) { "junction; rawReparseTarget=$($entry.rawReparseTarget); normalizedTarget=$($entry.normalizedTarget)" } else { 'No recorded link ownership' }) }
             }
+            # Each owning scope records its own selection with the link receipt.
+            $links[$leaf].Selections[$target.Scope] = $selection
         }
     }
     foreach ($artifact in $links.Values) {
@@ -1611,42 +1615,100 @@ function Write-SwCentralBlock($Row, [switch]$Remove, [switch]$CheckOnly) {
     } finally { $fs.Dispose() }
 }
 
-function Write-SwCentralReceipt($Record, [string]$RecordPath, $Known, $Row, [switch]$Drop) {
+function Write-SwCentralReceipt($Record, [string]$RecordPath, $Known, $Row, [string]$Raw, [switch]$Drop) {
     # One atomic record replace per verified effect. The record must still be exactly what this run last wrote or read;
     # anything else means another writer ran, so stop before overwriting its receipt.
     $now = if (Test-Path -LiteralPath $RecordPath -PathType Leaf) { Read-SwText $RecordPath } else { $null }
     if (-not (Test-SwSame $now $Known)) { throw "The global baseline record changed after it was read (another install ran): $RecordPath. Run global install again." }
-    $homes = $Record.homes; $scope = $Row.Scope
+    $homes = $Record.homes
     $k = Find-SwGlobalHome $homes $Row.TargetHome
     if ($null -eq $k) {
         if ($Drop) { return $Known }
         $k = $Row.TargetHome; $homes[$k] = [ordered]@{ kind = ''; delivery = [ordered]@{}; selection = [ordered]@{}; entries = [ordered]@{} }
     }
     $h = $homes[$k]
-    if ($Drop) {
-        $h.entries.Remove($Row.Artifact)
-        if (-not @($h.entries.Values | Where-Object { (Test-SwSame $_.kind 'skill-link' -IgnoreCase) -and (Test-SwIn $scope @($_.scopeOwners)) }).Count) { $h.delivery.Remove($scope); $h.selection.Remove($scope) }
-        if (-not $h.entries.Count) { $homes.Remove($k) }
-    } else {
+    if (Test-SwSame $Row.Kind 'skill-link' -IgnoreCase) {
+        # One entry per physical leaf. An owning scope records its own selection; a detached scope drops only this ID.
+        $owners = @($Row.DesiredOwners); $id = $Row.Artifact.Substring(7); $old = $h.entries[$Row.Artifact]
+        if ($Drop -or -not $owners.Count) { $h.entries.Remove($Row.Artifact) }
+        else {
+            $h.entries[$Row.Artifact] = [ordered]@{ kind = 'skill-link'; scopeOwners = $owners; sourceTier = $Row.SourceTier; sourceId = $id; sourcePath = $Row.Source;
+                linkType = 'junction'; normalizedTarget = $Row.Source; rawReparseTarget = $(if ($Raw) { $Raw } elseif ($old) { $old.rawReparseTarget }) }
+        }
+        $list = if (Test-SwSame $Row.SourceTier 'product' -IgnoreCase) { 'productSkills' } else { 'personalSkills' }
+        foreach ($s in @($Row.Scopes)) {
+            $owned = Test-SwIn $s $owners
+            $from = if ($owned) { $Row.Selections[$s] } else { $h.selection[$s] }
+            if (-not $from) { continue }
+            $copy = [ordered]@{}
+            foreach ($name in @('productSkills', 'personalSkills', 'personalRules')) {
+                $copy[$name] = @($from[$name] | Where-Object { $owned -or -not ((Test-SwSame $name $list) -and (Test-SwSame $_ $id -IgnoreCase)) })
+            }
+            if ($owned) { $h.delivery[$s] = 'central-v1' }
+            $h.selection[$s] = $copy
+        }
+    } elseif ($Drop) { $h.entries.Remove($Row.Artifact) }
+    else {
+        $scope = $Row.Scope
         $mode = if ((Test-SwSame $scope 'claude' -IgnoreCase) -and @($Row.Inputs).Count) { 'imports' } else { 'literal' }
         $h.entries[$Row.Artifact] = [ordered]@{ kind = 'rules-block'; sourceMode = $mode; bodySha256 = $Row.Hash; hashFormat = 'a7-lf-utf8'; inputs = @($Row.Inputs) }
         $h.delivery[$scope] = 'central-v1'; $h.selection[$scope] = $Row.Selection
     }
-    if ($homes.Contains($k)) { $h.kind = @($script:CentralScopes | Where-Object { Test-SwIn $_ @($h.delivery.Keys) }) -join '+' }
+    # A scope stays delivered while it still owns a rules block or a skill link.
+    foreach ($s in @($h.delivery.Keys)) {
+        if (($script:GlobalEntry.Contains($s) -and $h.entries.Contains($script:GlobalEntry[$s])) -or
+            @($h.entries.Values | Where-Object { (Test-SwSame $_.kind 'skill-link' -IgnoreCase) -and (Test-SwIn $s @($_.scopeOwners)) }).Count) { continue }
+        $h.delivery.Remove($s); $h.selection.Remove($s)
+    }
+    if (-not $h.entries.Count) { $homes.Remove($k) }
+    else { $h.kind = @($script:CentralScopes | Where-Object { Test-SwIn $_ @($h.delivery.Keys) }) -join '+' }
     $Record.schema = [long]2; $Record.kitVersion = Get-SwKitVersion; $Record.kitCommit = $(try { Get-SwKitCommit } catch { $null }); $Record.productRoot = $script:Kit
     $text = ConvertTo-SwJson $Record
     Write-SwFileAtomic $RecordPath $text
     $text
 }
 
-function Invoke-SwCentralRules {
-    # E5 effects for central rules blocks only: consent, one lock per user home, a re-plan under it, a backup of every
-    # file that may change, then each block effect followed by its own receipt, so a crash leaves at most one effect
-    # unrecorded (the next run finds its block current and records it).
+function Invoke-SwCentralLink($Row, $Entry) {
+    # The only link effects: one junction at an exact managed leaf, or a nonrecursive unlink of a proven owned one.
+    # Containment, ownership, leaf type and target are proven again just before the effect; a source is never opened,
+    # followed or retargeted by name. No copy fallback and no elevation.
+    $leaf = $Row.Target; $raw = if ($Entry) { $Entry.rawReparseTarget } else { $null }
+    if (-not (Test-SwContained $Row.TargetHome $leaf)) { return [pscustomobject]@{ Status='leaf outside its home'; Raw=$null } }
+    $seen = Get-SwCentralLinkObservation $leaf $Entry
+    $need = if (Test-SwIn $Row.Action 'create-link', 'forget-missing' -IgnoreCase) { @('missing-link') } elseif (Test-SwSame $Row.Action 'detach-owner' -IgnoreCase) { @('current', 'missing-link') } else { @('current') }
+    if (-not (Test-SwIn $seen.State $need)) { return [pscustomobject]@{ Status="changed ($($seen.State))"; Raw=$null } }
+    if ($Entry -and (-not (Test-SwSame (@($Entry.scopeOwners) -join '+') (@($Row.ScopeOwners) -join '+')))) { return [pscustomobject]@{ Status='changed owners'; Raw=$null } }
+    $unrecorded = "it is unrecorded, so later runs keep it and report it as unowned (remove only that link: cmd /c rmdir `"$leaf`", then run global install again)"
+    if (Test-SwSame $Row.Action 'create-link' -IgnoreCase) {
+        try {
+            Assert-SwCentralPath $Row.Source; Assert-SwPhysicalPath $Row.Source
+            if (-not (Test-Path -LiteralPath $Row.Source -PathType Container)) { throw 'missing' }
+        } catch { return [pscustomobject]@{ Status="source missing or moved since the plan, not retargeted by name: $($Row.Source)"; Raw=$null } }
+        [IO.Directory]::CreateDirectory((Split-Path $leaf -Parent)) | Out-Null
+        try { New-Item -ItemType Junction -Path $leaf -Value $Row.Source -ErrorAction Stop | Out-Null }
+        catch {
+            if (-not (Test-SwSame (Get-SwCentralLinkObservation $leaf $null).State 'missing-link')) { throw "Creating $leaf failed after something appeared there; $unrecorded`: $($_.Exception.Message)" }
+            return [pscustomobject]@{ Status="link not created ($($_.Exception.Message))"; Raw=$null }
+        }
+        $item = Get-Item -LiteralPath $leaf -Force
+        $targets = @($item.Target)
+        $matches = (Test-SwSame $item.LinkType 'Junction') -and $targets.Count -eq 1 -and $(try { (Get-SwPathComparer).Equals((ConvertFrom-SwCentralReparseTarget $targets[0]), $Row.Source) } catch { $false })
+        if (-not $matches) { throw "Created $leaf but it does not point at $($Row.Source); $unrecorded" }
+        $raw = $targets[0]
+    } elseif (Test-SwSame $Row.Action 'remove-link' -IgnoreCase) {
+        [IO.Directory]::Delete($leaf, $false)
+    }
+    [pscustomobject]@{ Status='ok'; Raw=$raw }
+}
+
+function Invoke-SwCentralEffects {
+    # E5/E4 effects for central rules blocks and skill links: consent, one lock per user home, a re-plan under it, a
+    # backup of every file that may change, then each effect followed by its own receipt, so a crash leaves at most one
+    # effect unrecorded (the next run finds a block current and records it, or keeps a link and reports it as unowned).
     [CmdletBinding(SupportsShouldProcess)]
     param([Parameter(Mandatory)]$Plan, [Parameter(Mandatory)][hashtable]$Options)
-    if (-not $PSCmdlet.ShouldProcess($Plan.RecordPath, 'write central global rules blocks, then record each receipt')) {
-        if (-not $WhatIfPreference) { Write-Warning 'PARTIAL: central rules effects declined; nothing was written.'; $global:LASTEXITCODE = 1 }
+    if (-not $PSCmdlet.ShouldProcess($Plan.RecordPath, 'write central global rules blocks and skill links, then record each receipt')) {
+        if (-not $WhatIfPreference) { Write-Warning 'PARTIAL: central delivery effects declined; nothing was written.'; $global:LASTEXITCODE = 1 }
         return
     }
     $userDir = Get-SwUserHome
@@ -1656,27 +1718,31 @@ function Invoke-SwCentralRules {
         [IO.Directory]::CreateDirectory((Split-Path $lockPath -Parent)) | Out-Null
         $lock = try { [IO.FileStream]::new($lockPath, [IO.FileMode]::CreateNew, [IO.FileAccess]::ReadWrite, [IO.FileShare]::None, 1, [IO.FileOptions]::DeleteOnClose) }
         catch [IO.IOException] { throw "Another global install holds $lockPath, nothing was written. If none is running, delete that file and retry." }
-    } catch { Write-Output "FAILED central rules: $($_.Exception.Message)"; $global:LASTEXITCODE = 1; return }
+    } catch { Write-Output "FAILED central delivery: $($_.Exception.Message)"; $global:LASTEXITCODE = 1; return }
     try {
         # Judge again under the lock: a changed record means another install ran; a target changed since the plan is kept.
         $fresh = Get-SwCentralPlan @Options
         $recordPath = $fresh.RecordPath
         if (-not (Test-SwSame $fresh.RecordText $Plan.RecordText)) { throw "The global baseline record changed after it was read (another install ran), nothing was written: $recordPath. Run global install again." }
         if ($fresh.ExitCode) { throw 'A target became unsafe after the plan, nothing was written. Run global check -Delivery central-v1 again.' }
-        $record = $fresh.Record; $rows = @($fresh.Rows | Where-Object { Test-SwSame $_.Kind 'rules-block' })
+        $record = $fresh.Record; $rows = @($fresh.Rows); $rules = @($rows | Where-Object { Test-SwSame $_.Kind 'rules-block' })
         $planned = @{}; foreach ($r in $Plan.Rows) { $planned["$($r.TargetHome)|$($r.Artifact)"] = $r }
         if ($record.productRoot -and (-not (Test-SwSame $record.productRoot $script:Kit))) {
-            # Every recorded input path is tied to the record's product root; a partial move across homes would leave an unreadable record.
+            # Every recorded input and product skill path is tied to the record's product root; a partial move across homes would leave an unreadable record.
             foreach ($hk in @($record.homes.Keys)) {
                 foreach ($ek in @($record.homes[$hk].entries.Keys)) {
                     $entry = $record.homes[$hk].entries[$ek]
-                    if (@($entry.inputs).Count) { throw "The record names another product root ($($record.productRoot)) for $ek in $hk, nothing was written. Moving the product root of recorded rules is not supported yet." }
+                    if (@($entry.inputs).Count -or ((Test-SwSame $entry.kind 'skill-link' -IgnoreCase) -and (Test-SwSame $entry.sourceTier 'product' -IgnoreCase))) {
+                        throw "The record names another product root ($($record.productRoot)) for $ek in $hk, nothing was written. Moving the product root of recorded rules or product skills is not supported yet."
+                    }
                 }
             }
         }
-        $touch = @(Get-SwUnique @($rows | Where-Object { (Test-SwIn $_.Action 'create-block', 'replace-block', 'remove-block' -IgnoreCase) -and (-not (Test-SwSame $_.Observation.State 'missing-file' -IgnoreCase)) } | ForEach-Object Target) ([StringComparer]::OrdinalIgnoreCase))
+        $touch = @(Get-SwUnique @($rules | Where-Object { (Test-SwIn $_.Action 'create-block', 'replace-block', 'remove-block' -IgnoreCase) -and (-not (Test-SwSame $_.Observation.State 'missing-file' -IgnoreCase)) } | ForEach-Object Target) ([StringComparer]::OrdinalIgnoreCase))
         $backup = $null
-        if ($touch.Count -or @($rows | Where-Object { Test-SwSame $_.Action 'preserve' }).Count) {
+        # Link effects change no file content, so only the record is saved for them; skill sources are never copied.
+        if ($touch.Count -or @($rules | Where-Object { Test-SwSame $_.Action 'preserve' }).Count -or
+            @($rows | Where-Object { Test-SwIn $_.Action 'create-link', 'attach-owner', 'detach-owner', 'remove-link', 'forget-missing' -IgnoreCase }).Count) {
             $backup = New-SwSnapshotDir (Join-Path $userDir ".sw/backups/$(Get-SwOperationId)")
             $saved = 0
             foreach ($path in @($touch) + @(if ($null -ne $fresh.RecordText) { $recordPath })) {
@@ -1689,6 +1755,30 @@ function Invoke-SwCentralRules {
         $known = $fresh.RecordText; $clean = $true
         foreach ($row in $rows) {
             $was = $planned["$($row.TargetHome)|$($row.Artifact)"]
+            if (Test-SwSame $row.Kind 'skill-link' -IgnoreCase) {
+                if (-not $was -or (-not (Test-SwSame $was.Action $row.Action)) -or (-not (Test-SwSame $was.Current $row.Current)) -or
+                    (-not (Test-SwSame (@($was.Source) -join '|') (@($row.Source) -join '|'))) -or (-not (Test-SwSame (@($was.DesiredOwners) -join '+') (@($row.DesiredOwners) -join '+')))) { $status = 'changed' }
+                elseif (Test-SwSame $row.Action 'retain-owned' -IgnoreCase) { Write-Output "Retained $($row.Target): owned link outside the current selection, unchanged."; continue }
+                elseif (Test-SwSame $row.Action 'retarget-link' -IgnoreCase) {
+                    $clean = $false
+                    Write-Output "Kept $($row.Target): its recorded source differs from $($row.Source); links are never retargeted. Remove that skill (global remove -Component skills), then run global install again."
+                    continue
+                }
+                elseif ((Test-SwSame $row.Action 'no-op' -IgnoreCase) -and (Test-SwSame $Options.Action 'remove' -IgnoreCase)) { continue }
+                else {
+                    $hk = Find-SwGlobalHome $record.homes $row.TargetHome
+                    $res = Invoke-SwCentralLink $row $(if ($null -ne $hk) { $record.homes[$hk].entries[$row.Artifact] })
+                    $status = $res.Status
+                }
+                if (-not (Test-SwSame $status 'ok' -IgnoreCase)) { $clean = $false; Write-Output "Kept $($row.Target): $status since this run checked it, nothing written there. Run global install again."; continue }
+                try { $known = Write-SwCentralReceipt $record $recordPath $known $row $res.Raw -Drop:(Test-SwIn $row.Action 'remove-link', 'forget-missing' -IgnoreCase) }
+                catch {
+                    if (Test-SwSame $row.Action 'create-link' -IgnoreCase) { throw "Created $($row.Target) but its receipt was not recorded; it is unrecorded, so later runs keep it and report it as unowned (remove only that link: cmd /c rmdir `"$($row.Target)`", then run global install again): $($_.Exception.Message)" }
+                    throw
+                }
+                Write-Output "OK $($row.Action) $($row.Target) (receipt recorded)"
+                continue
+            }
             if (-not $was -or (-not (Test-SwSame $was.Action $row.Action)) -or (-not (Test-SwSame $was.Observation.State $row.Observation.State)) -or (-not (Test-SwSame $was.Observation.Text $row.Observation.Text))) { $status = 'changed' }
             elseif (Test-SwSame $row.Action 'preserve' -IgnoreCase) {
                 $clean = $false
@@ -1706,8 +1796,8 @@ function Invoke-SwCentralRules {
             $known = Write-SwCentralReceipt $record $recordPath $known $row -Drop:(Test-SwIn $row.Action 'remove-block', 'forget-missing' -IgnoreCase)
             Write-Output "OK $($row.Action) $($row.Target) (receipt recorded)"
         }
-        if ($clean) { $global:LASTEXITCODE = 0 } else { Write-Warning 'PARTIAL: some central rules blocks were kept; see the lines above.'; $global:LASTEXITCODE = 1 }
-    } catch { Write-Output "FAILED central rules: $($_.Exception.Message)"; $global:LASTEXITCODE = 1 }
+        if ($clean) { $global:LASTEXITCODE = 0 } else { Write-Warning 'PARTIAL: some central artifacts were kept; see the lines above.'; $global:LASTEXITCODE = 1 }
+    } catch { Write-Output "FAILED central delivery: $($_.Exception.Message)"; $global:LASTEXITCODE = 1 }
     finally { $lock.Dispose() }
 }
 
@@ -1730,9 +1820,9 @@ function Invoke-SwGlobal {
     elseif ($InstallRtk -and (-not (Test-SwSame $Action 'install' -IgnoreCase))) { '-InstallRtk is install-only' }
     if ($usage) { Write-Output "Usage: $usage"; $global:LASTEXITCODE = 2; return }
     if ($Delivery) {
-        # Hard boundary before home resolution, source reads, locks, backups or legacy dispatch: only rules effects exist.
-        if ((-not (Test-SwSame $Action 'check' -IgnoreCase)) -and -not $WhatIfPreference -and -not ((Test-SwSame $Component 'rules' -IgnoreCase) -and (Test-SwIn $Action 'install', 'remove' -IgnoreCase))) {
-            Write-Output "Central $Action effects are not implemented except -Component rules install/remove. Use -WhatIf or global check -Delivery central-v1 -Harness $Harness."
+        # Hard boundary before home resolution, source reads, locks or legacy dispatch: central backup has no effects yet.
+        if ((Test-SwSame $Action 'backup' -IgnoreCase) -and -not $WhatIfPreference) {
+            Write-Output "Central backup effects are not implemented. Use -WhatIf or global check -Delivery central-v1 -Harness $Harness."
             $global:LASTEXITCODE = 1; return
         }
         $options = @{ Action=$Action; Harness=$Harness; Component=$Component }
@@ -1752,7 +1842,7 @@ function Invoke-SwGlobal {
             else { Write-Output '  Live source content is not version-frozen; link ownership compares metadata, not a directory hash.' }
             if ($row.Refusal) { Write-Output "  refusal=$($row.Refusal)" }
         }
-        if ((Test-SwIn $Action 'install', 'remove' -IgnoreCase) -and -not $WhatIfPreference -and -not $plan.ExitCode) { Invoke-SwCentralRules $plan $options; return }
+        if ((Test-SwIn $Action 'install', 'remove' -IgnoreCase) -and -not $WhatIfPreference -and -not $plan.ExitCode) { Invoke-SwCentralEffects $plan $options; return }
         $global:LASTEXITCODE = $plan.ExitCode; return
     }
     $homes = @{ ClaudeConfigDir = $ClaudeConfigDir; CodexHome = $CodexHome }
