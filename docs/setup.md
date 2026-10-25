@@ -187,6 +187,10 @@ follows into the source.
   link with `cmd /c rmdir "<leaf>"` (never `/s`), then run `install` again;
 - a recorded link whose type or target changed (`Recorded link type/target
   changed`): fix or remove that link by hand;
+- a recorded link whose source is missing or moved (`Owned link is broken`;
+  `check` reports it the same way): it is kept and never re-pointed by name;
+  clear it with `global remove` (the moved source survives) or
+  `cmd /c rmdir "<leaf>"`, then run `install` again;
 - a product and personal skill with the same ID (`collision`), naming both
   sources and the target; IDs are compared case-insensitively, and a
   case-only duplicate in one list is a usage error (exit 2);

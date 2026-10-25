@@ -1322,6 +1322,8 @@ function Get-SwCentralLinkObservation([string]$Path, $Entry) {
         try { $matches = (Get-SwPathComparer).Equals((ConvertFrom-SwCentralReparseTarget $targets[0]), $Entry.normalizedTarget) } catch { }
     }
     if (-not $matches) { return [pscustomobject]@{ State='tampered'; Error="Recorded link type/target changed: $Path" } }
+    # Only the recorded source path is probed, never the leaf. A dangling owned link is not current.
+    if (-not [IO.Directory]::Exists($Entry.normalizedTarget)) { return [pscustomobject]@{ State='broken'; Error="Owned link is broken, its source is missing or moved: $Path -> $($Entry.normalizedTarget). It is kept and never re-pointed by name; clear it with sw.ps1 global remove -Delivery central-v1 -Component skills and its -Harness, or remove only that link (cmd /c rmdir `"$Path`", never /s), then run global install again." } }
     [pscustomobject]@{ State='current'; Error=$null }
 }
 
@@ -1490,7 +1492,13 @@ function Get-SwCentralPlan {
         if (-not (Test-SwIn $Action 'remove', 'backup' -IgnoreCase)) {
             foreach ($tier in @('product', 'personal')) {
                 $name = if (Test-SwSame $tier 'product' -IgnoreCase) { 'productSkills' } else { 'personalSkills' }
-                foreach ($id in $selection[$name]) { $wanted["skills/$id"] = Get-SwCentralSkillSource $tier $id $product $personal }
+                foreach ($id in $selection[$name]) {
+                    # A selected source missing behind its broken owned link is reported on that link's row instead.
+                    $entry = if ($homeRecord) { $homeRecord.entries["skills/$id"] } else { $null }
+                    if ($entry -and -not (Test-Path -LiteralPath (Get-SwCentralSourcePath $tier $id $product $personal) -PathType Container) -and
+                        (Test-SwSame (Get-SwCentralLinkObservation (Join-Path $target.Dir "skills/$id") $entry).State 'broken')) { continue }
+                    $wanted["skills/$id"] = Get-SwCentralSkillSource $tier $id $product $personal
+                }
             }
         }
         # Include owned/out-of-selection leaves without scanning the native skills directory or the source catalogue.
@@ -1540,7 +1548,8 @@ function Get-SwCentralPlan {
         $entry = if ($null -ne $homeKey) { $record.homes[$homeKey].entries[$artifact.Artifact] } else { $null }
         $observation = Get-SwCentralLinkObservation $artifact.Target $entry
         $artifact.Current = $observation.State
-        if ($observation.Error) { $artifact.Refusal = $observation.Error }
+        # Remove and backup may still unlink or snapshot a broken owned link; install and check refuse it.
+        if ($observation.Error -and -not ((Test-SwSame $observation.State 'broken') -and (Test-SwIn $Action 'remove', 'backup' -IgnoreCase))) { $artifact.Refusal = $observation.Error }
         $rows.Add((Get-SwCentralDecision $artifact $Action))
     }
     # Check the whole requested graph, including cross-scope aliases. A native target may never edit/hide a source.
@@ -1675,7 +1684,8 @@ function Invoke-SwCentralLink($Row, $Entry) {
     $leaf = $Row.Target; $raw = if ($Entry) { $Entry.rawReparseTarget } else { $null }
     if (-not (Test-SwContained $Row.TargetHome $leaf)) { return [pscustomobject]@{ Status='leaf outside its home'; Raw=$null } }
     $seen = Get-SwCentralLinkObservation $leaf $Entry
-    $need = if (Test-SwIn $Row.Action 'create-link', 'forget-missing' -IgnoreCase) { @('missing-link') } elseif (Test-SwSame $Row.Action 'detach-owner' -IgnoreCase) { @('current', 'missing-link') } else { @('current') }
+    $need = if (Test-SwIn $Row.Action 'create-link', 'forget-missing' -IgnoreCase) { @('missing-link') } elseif (Test-SwSame $Row.Action 'detach-owner' -IgnoreCase) { @('current', 'broken', 'missing-link') }
+        elseif (Test-SwSame $Row.Action 'remove-link' -IgnoreCase) { @('current', 'broken') } else { @('current') }
     if (-not (Test-SwIn $seen.State $need)) { return [pscustomobject]@{ Status="changed ($($seen.State))"; Raw=$null } }
     if ($Entry -and (-not (Test-SwSame (@($Entry.scopeOwners) -join '+') (@($Row.ScopeOwners) -join '+')))) { return [pscustomobject]@{ Status='changed owners'; Raw=$null } }
     $unrecorded = "it is unrecorded, so later runs keep it and report it as unowned (remove only that link: cmd /c rmdir `"$leaf`", then run global install again)"

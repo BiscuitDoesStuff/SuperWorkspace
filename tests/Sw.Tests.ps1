@@ -976,10 +976,19 @@ Describe 'E3 central delivery (synthetic homes, read-only)' {
                 $out | Should -Match 'Recorded link type/target changed'
                 Link-Of $leaf | Should -BeLike "Junction|*$foreign"
             }
-            # Broken: the owned link is restored, then its source is renamed. Remove unlinks the leaf only.
+            # Broken: the owned link is restored, then its source is renamed. Check and install refuse it and name the
+            # exact clean-up; remove unlinks the leaf only.
             [IO.Directory]::Delete($leaf, $false)
             New-Item -ItemType Junction -Path $leaf -Value (Skill-Source mine) | Out-Null
             [IO.Directory]::Move((Skill-Source mine), (Skill-Source moved))
+            foreach ($action in 'check', 'install') {
+                $out = (Central-Links $action codex) -join "`n"
+                $global:LASTEXITCODE | Should -Be 1 -Because $out
+                $out | Should -Match 'Owned link is broken'
+                $out | Should -Match ([regex]::Escape("cmd /c rmdir `"$leaf`""))
+                $out | Should -Match 'global remove -Delivery central-v1'
+                Link-Of $leaf | Should -BeLike "Junction|*$(Skill-Source mine)"
+            }
             $out = Central-Links remove codex
             $global:LASTEXITCODE | Should -Be 0 -Because ($out -join "`n")
             Link-Of $leaf | Should -BeNullOrEmpty
