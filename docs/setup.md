@@ -150,6 +150,58 @@ shell's.
 prints how to install it; `-InstallRtk` (Windows) runs
 `winget install --id rtk-ai.rtk` instead.
 
+### Central skill links (central-v1)
+
+`global ... -Delivery central-v1 -Component skills` links each selected skill
+from one central source into each harness: product skills from the kit's
+`project/base/.agents/skills/<id>`, personal skills from
+`~/.sw/skills/<id>` (a `SKILL.md` whose `name` is `<id>`). Each skill gets one
+Windows junction at `<claude home>/skills/<id>` for every Claude home, and at
+`~/.agents/skills/<id>` for Codex (shared, whatever `-CodexHome` says). Nothing
+is copied, no whole directory is linked and nothing is elevated or installed.
+Each link's owner is recorded in `~/.sw/global.json`:
+
+```powershell
+# preview, then apply; the first install names its skills explicitly
+powershell -NoProfile -ExecutionPolicy Bypass -File sw.ps1 global install -Delivery central-v1 -Harness both -Component skills -Skills 'work,review' -PersonalSkills 'mine' -WhatIf
+powershell -NoProfile -ExecutionPolicy Bypass -File sw.ps1 global install -Delivery central-v1 -Harness both -Component skills -Skills 'work,review' -PersonalSkills 'mine'
+powershell -NoProfile -ExecutionPolicy Bypass -File sw.ps1 global check -Delivery central-v1 -Harness both -Component skills
+# remove every owned link, or only one harness's claim
+powershell -NoProfile -ExecutionPolicy Bypass -File sw.ps1 global remove -Delivery central-v1 -Harness both -Component skills
+powershell -NoProfile -ExecutionPolicy Bypass -File sw.ps1 global remove -Delivery central-v1 -Harness claude -Component skills -ClaudeConfigDir 'C:\one'
+```
+
+A repeat `install` of a current owned link changes nothing. When one leaf is
+shared by two scopes (a Claude home that is also `~/.agents`), a scoped
+`remove` drops only that scope's claim; the link is deleted once no owner
+remains. `remove` deletes only a recorded junction that still points at its
+recorded source, re-checked just before the unlink, and never deletes or
+follows into the source.
+
+`install` refuses, writes nothing there and exits 1 for:
+
+- a real folder or file at the skill leaf: it is kept; move it yourself if you
+  want the link;
+- a link not recorded as yours (`Unowned link cannot be adopted`), including
+  one created by a run whose receipt failed: if it is yours, remove only that
+  link with `cmd /c rmdir "<leaf>"` (never `/s`), then run `install` again;
+- a recorded link whose type or target changed (`Recorded link type/target
+  changed`): fix or remove that link by hand;
+- a recorded link whose source is missing or moved (`Owned link is broken`;
+  `check` reports it the same way): it is kept and never re-pointed by name;
+  clear it with `global remove` (the moved source survives) or
+  `cmd /c rmdir "<leaf>"`, then run `install` again;
+- a product and personal skill with the same ID (`collision`), naming both
+  sources and the target; IDs are compared case-insensitively, and a
+  case-only duplicate in one list is a usage error (exit 2);
+- a selected source that is missing, or that moved between the plan and the
+  write: it is never retargeted by name;
+- a skills directory or home reached through a link, or a source and target
+  that overlap.
+
+A failure to record a receipt after the link was created exits 1 and names
+the unrecorded link; later runs keep it and report it as unowned.
+
 ## New project
 
 From the kit clone, use a target outside that clone. These relative examples
