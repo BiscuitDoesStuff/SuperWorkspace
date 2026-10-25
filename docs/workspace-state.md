@@ -2,7 +2,7 @@
 
 ## Startup
 
-Observed 2026-10-22 UTC. Read this section for current state and authorization;
+Observed 2026-10-25 UTC. Read this section for current state and authorization;
 use the linked evidence only when the task needs it.
 
 - **Identity and authority:** this is the development checkout of the public
@@ -19,12 +19,17 @@ use the linked evidence only when the task needs it.
   Docs-only work may commit on main; code uses a T3 worktree and PR. A human
   publishes main. Product work is public-first: a `t3/` pull request to
   `origin`, then a merge of `origin/main` into private `main` (outline O13).
+  Latest public publications are origin PR #2 (47a98b4, public-first
+  publication flow) and PR #3 (eca549e, central rules delivery E5 and revised
+  skill drafts E2); `origin/main` was merged into private `main` after each.
 - **Accepted baseline:** the rebuild, A7 global preservation, Windows/both-shell
   runtime, native UTF-8 fix, CI local fallback, explicit owner commands, all
-  six audit fixes and central delivery E3 are integrated.
-  Latest public publication is origin PR #1 (merge 683e9a4, 2026-10-22); the
-  private and public histories are joined (merge-base 683e9a4). Global rules were installed in the owner's existing harness
-  homes on 2026-10-18; that observation does not authorize further deployment.
+  six audit fixes, central delivery E3, E2 (catalogue drafts and fixtures) and
+  E5 (central rules blocks written with per-artifact receipts, tested in
+  temporary homes) are integrated. Central skill links and project migration
+  are not implemented. Global rules were installed in the owner's existing
+  harness homes on 2026-10-18; that observation does not authorize further
+  deployment.
 - **Product audit closed (2026-10-22 UTC):** private-instance PRs merged P1,
   P2, P3a/P3b, P4 and the D1b/D1c prompt-time freshness repair; D1d documented
   the recovery and stale outcome in [setup](setup.md). Hosted Actions are
@@ -33,30 +38,40 @@ use the linked evidence only when the task needs it.
   checks) to G4, D2b (trials) waits for a selected trial budget, D2c waits for
   both, and E2-E9 stay with the central delivery plan. A local task record
   holds the evidence.
-- **Selected direction and gates (owner, 2026-10-22 UTC):** D10/D11 select
-  central product plus personal sources with preservation; D13 makes the
-  public repository the template. G1 is drafting and test fixtures only, with
-  no paid trials. G3 ships empty external plugin/MCP defaults; RTK is the first
-  named pilot candidate and needs source review, an adoption record, a budget
-  and install approval first. Nothing is installed. G4 native acceptance and
-  G5 adoption/publication remain unselected. Local task records own the
-  detail; [roadmap](central-delivery-roadmap.html) is the
-  visual view.
-- **Next:** E2 (catalogue drafting and fixtures) with E5 (rule wiring) scoped in
-  parallel under disjoint file ownership. Each needs an approved plan before a
-  worktree thread starts. The public-template handoff questions Q2-Q9 and the
-  P0 selection wait for a later owner sitting.
+- **Selected direction and gates (owner):** D10/D11 select central product plus
+  personal sources with preservation; D13 makes the public repository the
+  template. G1 is drafting and test fixtures only, with no paid trials. G3:
+  research is built in (changed from opt-in, 2026-10-24); external plugin/MCP
+  defaults stay empty; RTK stays an opt-in pilot needing source review, an
+  adoption record, a budget and install approval. G4 native acceptance is
+  decided after E6 and absorbs template Q8; G5 adoption/publication is decided
+  once E8 exists. Template Q2-Q9 were decided 2026-10-24 and the P0 product
+  contract approved 2026-10-25, keeping structured-debugging and
+  agent-documentation as defaults (outline D13). Each template package P1-P6
+  needs its own scope approval. [Roadmap](central-delivery-roadmap.html) is
+  the visual view.
+- **Next:** E4 (individual central skill links: apply/check/remove) is in
+  progress in a public-first worktree thread. E6 (project migration, including
+  the D1c move/stale-replacement cases) follows once E4 is published, then the
+  G4 decision, then E7-E9.
 - **Evidence limits:** E3 and the audit prove no real delivery, migration,
-  recovery effects or native loading (G4). Earlier bounded scratch checks do
-  not prove every real checkout, fresh-user behavior, compaction, security or
-  harness version. Group Policy blocking Bypass, a real no-console parent, the
-  file-symlink test skip and native memory loading remain unverified. No
-  probes, installations, sibling redeploys, global settings, corpus edits or
-  public publication are authorized by research or proposals.
+  recovery effects or native loading (G4). E5 rules effects are proven only in
+  temporary test homes: no real-home delivery followed the 2026-10-18 install
+  observation, and nothing proves native loading. Earlier bounded scratch
+  checks do not prove every real checkout, fresh-user behavior, compaction,
+  security or harness version. Group Policy blocking Bypass, a real no-console
+  parent, the file-symlink test skip and native memory loading remain
+  unverified. No probes, installations, sibling redeploys, global settings,
+  corpus edits or public publication are authorized by research or proposals.
 - **Records:** task records are ignored/local under `.sw/comms/tasks/` and
   `.sw/comms/archive/`; dated evidence below preserves earlier checkpoints.
 
 ## History (dated checkpoints)
+
+### Superseded Startup (preserved 2026-10-25 UTC)
+
+The 2026-10-22 Startup (Q2-Q9 and P0 open, E2/E5 next, latest publication
+origin PR #1) is superseded by the Startup above.
 
 ### Superseded Startup (preserved 2026-10-22 UTC)
 

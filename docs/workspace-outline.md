@@ -217,11 +217,40 @@ or publication is selected.
 **D13 - The public repository is the template (owner, 2026-10-22 UTC):**
 the public SuperWorkspace repository itself is what new users copy or install
 from (option A), rather than a separately generated template repository. This
-answers the public-template handoff's first question. Its remaining questions
-(maintenance home, minimal public instructions, skill and Git defaults, the
-upgrade contract, keeping the existing repository with a clean tree, trial
-budgets and a sanitized handoff) and the P0 selection stay open. No public
-publication or history rewrite is authorized by this decision.
+answers the public-template handoff's first question. The remaining questions
+were decided 2026-10-24 UTC:
+
+- Q2: sources and tests live in the public repository; development evidence
+  (`.sw/comms`) stays local and private.
+- Q3: public instructions are the README plus the generated `AGENTS.md`; each
+  project's identity and current state live in its own state file; no new
+  setup helper (`sw.ps1 init`).
+- Q4: default skills are work, resume, handoff, review, validate, status,
+  minimal-change, research, structured-debugging and agent-documentation.
+  Research is built in, not opt-in; no external plugin/MCP defaults.
+- Q5: a new project gets `main` only at the lowest tier; for an existing
+  project, init/update only detect and never change remotes, branches or Git
+  config.
+- Q6: upgrades use a documented manual `sw.ps1 update`, supported from the
+  previous release only; update-PR automation is deferred.
+- Q7: keep the existing public repository, with no history rewrite.
+- Q8: folded into G4.
+- Q9: deferred until there is a team user.
+
+P0 (owner, 2026-10-25 UTC) approves the product contract's ownership classes:
+template-owned (core skills and native copies, `.codex/` rules, `.sw/` runtime
+and guidance, the `sw:core` block, licensing; replaced by `sw.ps1 update` via
+the manifest), project-owned (identity and boundaries outside the core block,
+the state file, design docs, approvals, app files, Git workflow; never
+replaced), personal/local (credentials, model preferences, `.sw/comms/`
+records, backups, local leak patterns, user settings; never published) and
+mixed (`AGENTS.md`, `.gitignore`/`.gitattributes`, `.sw/config.json`,
+`t3.json`: only marked or manifest-recorded parts are updated; other conflicts
+are reported, or backed up with `-Adopt`). A new project supplies its
+name/profile, identity, a state file with a Startup section, its Git choice
+and a first approved task. No public publication or history rewrite beyond the
+approved public-first flow is authorized; packages P1-P6 each need their own
+approval.
 
 These supersede the earlier outline's preserve-base design premise. Preservation
 within a bounded task protects unrelated work; it does not make any component
