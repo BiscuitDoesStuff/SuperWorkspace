@@ -9,16 +9,20 @@ disable-model-invocation: true
 Use when the owner asks for a task to be planned or done. The request that
 invoked this skill is the task. `AGENTS.md` is canonical; this skill is the
 method, not extra scope or approval. Provenance per step: topic 12 R1
-(`docs/research/12-workflow-methods.md` in the SuperWorkspace kit).
+(`docs/research/12-workflow-methods.md` in the SuperWorkspace kit); proportional
+execution and approval reuse: topic 16 (`docs/research/16-public-capabilities.md`).
 
 ## Steps
 
 1. **Ground.** Run the `AGENTS.md` startup, inspect the relevant code, and
    find the task record in `.sw/comms/tasks/<task-id>/` if one exists. If an
-   approved plan exists, continue it (`resume`) instead of re-planning.
+   approved plan, package or dispatch covers the task, continue it (`resume`)
+   under that approval instead of re-planning or asking again. A prior command
+   with an unknown exit or effects is reconciled first; never retry it blind.
 2. **Route by size.**
    - Small and clear (one obvious change, inside approved scope): skip to
-     step 5 with the check stated in one line.
+     step 5 with the check stated in one line. No plan, plan approval, test
+     scaffold or delegation.
    - Normal: a short plan in chat; the owner approves it before step 5.
    - Large or multi-session: an ExecPlan file (below) in the task record; the
      owner approves it before step 5.
@@ -26,12 +30,15 @@ method, not extra scope or approval. Provenance per step: topic 12 R1
    questions that change scope, ownership or a consequential decision, and
    keep inspecting while waiting. Not a mandatory preamble.
 4. **Define the check before the change.** Name the command, test or
-   observation that proves each outcome. Where the project has tests, write or
-   extend the failing test first.
+   observation that proves each outcome, sized to the change. Where the
+   change alters tested behavior, write or extend the failing test first; a
+   docs or configuration edit uses the existing checks for its scope
+   (`validate`), not a new test.
 5. **Execute.** Inline by default, loading `minimal-change`; commit as you go
-   (`AGENTS.md` Git). For a long plan, give each package a fresh worker: a T3
-   worktree thread or subagent with the task, exact files owned, acceptance
-   criteria and validation owner. Run independent packages in parallel; bulk
+   (`AGENTS.md` Git). Delegate only packages that are independent and gain
+   from a fresh context or parallel run, never merely because a plan is long:
+   a T3 worktree thread or subagent with the task, exact files owned,
+   acceptance criteria and validation owner. Run independent packages in parallel; bulk
    sweeps, migrations or research may use a Claude dynamic workflow, bulk
    audits a Codex fan-out with one agent per area. Best-of-N attempts only on
    request, judged by tests and `review`.
@@ -64,6 +71,8 @@ Outcomes & Retrospective: what shipped, what did not, lessons line.
 ## Decisions
 
 - Size is unclear: treat as normal and plan in chat.
+- Installs, dependencies or new tools are outside any approval that does not
+  name them; ask first.
 - Scope, ownership or a requirement changes: stop and ask; record the answer
   in the Decision Log.
 - A check cannot run here: say so, keep the step open, and name who can run it.
