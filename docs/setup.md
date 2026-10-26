@@ -240,7 +240,8 @@ powershell -NoProfile -ExecutionPolicy Bypass -File sw.ps1 update 'C:\path\to\pr
 Both skill trees are checked before anything is removed. A copy converts only
 when every file is in the ownership record and unchanged; each converted copy
 is backed up under `.sw/backup/<operation>/` before removal, and
-`.sw/config.json` and the ownership record are written last. In a delivery
+`.sw/profile.json`, `.sw/config.json` and the ownership record are written
+last, after every removal. In a delivery
 change, or an update that removes retained copies, every prompt (removals,
 restorations, updates, additions and managed blocks) is answered before the
 first write; declining any of them writes nothing (no backup, removal,
