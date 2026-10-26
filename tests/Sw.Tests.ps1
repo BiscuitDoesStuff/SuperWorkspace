@@ -6513,7 +6513,7 @@ Describe 'E6 project skill delivery migration' {
         Get-E6Delivery $dir | Should -BeNullOrEmpty
     }
 
-    It 'review 5: a return interrupted at the ownership record recovers through its preview and apply' {
+    It 'review 7: a return interrupted at the ownership record refuses its restored copies until they are removed, then recovers' {
         $dir = New-E6Project rro; New-E6Central
         (Invoke-E6Update $dir @{ SkillDelivery = 'central-v1' }).ExitCode | Should -Be 0
         $manifestPath = Join-Path $dir '.sw/manifest.json'
@@ -6521,11 +6521,17 @@ Describe 'E6 project skill delivery migration' {
         [IO.File]::SetAttributes($manifestPath, [IO.FileAttributes]::ReadOnly)
         try { $r = Invoke-E6Update $dir @{ SkillDelivery = 'project-copy' } } finally { [IO.File]::SetAttributes($manifestPath, [IO.FileAttributes]::Normal) }
         $r.ExitCode | Should -Be 1 -Because $r.Output
-        $r.Output | Should -Match 'PARTIAL: skill delivery change interrupted'
+        $r.Output | Should -Match 'PARTIAL: skill delivery change interrupted.*remove those skill directories yourself and re-run'
         Get-E6Delivery $dir | Should -BeExactly 'central-v1'
         Get-SwByteHash ([IO.File]::ReadAllBytes($manifestPath)) | Should -Be $recorded
         Test-Path -LiteralPath (Join-Path $dir '.claude/skills/work/SKILL.md') | Should -BeTrue
-        # The restored copies are unrecorded but byte-identical to the generator output, so the retry completes them.
+        # The restored copies are unrecorded, so the retry refuses them as collisions and names the recovery.
+        $before = Get-E6Tree $dir
+        $e = { Update-SwProject -Path $dir -SkillDelivery project-copy -WhatIf } | Should -Throw -PassThru
+        $e.Exception.Message | Should -Match '\.claude/skills/work/SKILL\.md \(collision: project-owned entry, identical to the kit copy: if an earlier return to project-copy was interrupted, remove \.claude/skills/work yourself and re-run; otherwise it is project-owned'
+        $e.Exception.Message | Should -Match '\.agents/skills/review/SKILL\.md \(collision: project-owned entry, identical to the kit copy: if an earlier return to project-copy was interrupted, remove \.agents/skills/review yourself'
+        Get-E6Tree $dir | Should -Be $before
+        foreach ($d in '.agents/skills', '.claude/skills') { foreach ($id in $E6Core) { Remove-Item -LiteralPath (Join-Path $dir "$d/$id") -Recurse -Force } }
         $r = Invoke-E6Update $dir @{ SkillDelivery = 'project-copy'; WhatIf = $true }
         $r.ExitCode | Should -Be 0 -Because $r.Output
         $r.Output | Should -Not -Match 'collision'
@@ -6537,7 +6543,24 @@ Describe 'E6 project skill delivery migration' {
         $v = Test-SwValidate $dir; $v.ExitCode | Should -Be 0 -Because ($v.Output -join "`n")
     }
 
-    It 'review 5: an unrecorded copy that differs by any byte from the generator output still refuses as a collision' {
+    It 'review 7: an independently created copy identical to the kit output is never claimed on a return' {
+        $dir = New-E6Project rid; New-E6Central
+        $skill = Join-Path $dir '.agents/skills/work/SKILL.md'
+        $bytes = [IO.File]::ReadAllBytes($skill)
+        (Invoke-E6Update $dir @{ SkillDelivery = 'central-v1' }).ExitCode | Should -Be 0
+        Test-Path -LiteralPath $skill | Should -BeFalse
+        New-Item -ItemType Directory -Path (Split-Path $skill -Parent) -Force | Out-Null
+        [IO.File]::WriteAllBytes($skill, $bytes)
+        $before = Get-E6Tree $dir
+        $e = { Update-SwProject -Path $dir -SkillDelivery project-copy } | Should -Throw -PassThru
+        $e.Exception.Message | Should -Match 'Skill delivery change blocked; nothing was written'
+        $e.Exception.Message | Should -Match '\.agents/skills/work/SKILL\.md \(collision: project-owned entry, identical to the kit copy: if an earlier return to project-copy was interrupted, remove \.agents/skills/work yourself and re-run; otherwise it is project-owned'
+        Get-E6Tree $dir | Should -Be $before
+        Get-E6Delivery $dir | Should -BeExactly 'central-v1'
+        (Read-SwJson (Join-Path $dir '.sw/manifest.json'))['files'].Contains('.agents/skills/work/SKILL.md') | Should -BeFalse
+    }
+
+    It 'review 5: an unrecorded copy that differs by any byte from the generator output refuses without the removal advice' {
         $dir = New-E6Project rrb; New-E6Central
         (Invoke-E6Update $dir @{ SkillDelivery = 'central-v1' }).ExitCode | Should -Be 0
         $manifestPath = Join-Path $dir '.sw/manifest.json'
@@ -6549,11 +6572,30 @@ Describe 'E6 project skill delivery migration' {
         [IO.File]::WriteAllText($skill, [IO.File]::ReadAllText($skill).Replace("`n", "`r`n"))
         $before = Get-E6Tree $dir
         $e = { Update-SwProject -Path $dir -SkillDelivery project-copy -WhatIf } | Should -Throw -PassThru
-        $e.Exception.Message | Should -Match '\.claude/skills/work/SKILL\.md \(collision: project-owned entry'
-        $e.Exception.Message | Should -Not -Match '\.agents/skills/work/SKILL\.md|review/SKILL\.md'
+        $e.Exception.Message | Should -Match '\.claude/skills/work/SKILL\.md \(collision: project-owned entry; never replaced'
+        # A skill directory holding any differing file is never offered for removal.
+        $e.Exception.Message | Should -Not -Match 'remove \.claude/skills/work yourself'
+        $e.Exception.Message | Should -Match 'remove \.agents/skills/work yourself'
         { Update-SwProject -Path $dir -SkillDelivery project-copy } | Should -Throw '*collision: project-owned entry*'
         Get-E6Tree $dir | Should -Be $before
         Get-E6Delivery $dir | Should -BeExactly 'central-v1'
+    }
+
+    It 'review 7: a delivery change with <Label> blocks before any effect' -ForEach @(
+        @{ Label = 'a profile edited while the kit changes it'; Edited = '.sw/profile.json'; Profile = 'research'; Options = @{ SkillDelivery = 'central-v1'; Capabilities = '' } }
+        @{ Label = 'a locally edited profile'; Edited = '.sw/profile.json'; Profile = $null; Options = @{ SkillDelivery = 'central-v1' } }
+        @{ Label = 'a locally edited selection catalogue'; Edited = '.sw/selection.json'; Profile = $null; Options = @{ SkillDelivery = 'central-v1' } }
+    ) {
+        $dir = if ($Profile) { New-E6Project pfb -Capabilities $Profile } else { New-E6Project pfb }
+        New-E6Central
+        $edited = Join-Path $dir $Edited
+        [IO.File]::AppendAllText($edited, ' ')
+        $before = Get-E6Tree $dir
+        $e = { Update-SwProject -Path $dir @Options } | Should -Throw -PassThru
+        $e.Exception.Message | Should -Match "Skill delivery change blocked; nothing was written.*$([regex]::Escape($Edited))"
+        Get-E6Tree $dir | Should -Be $before
+        Get-E6Delivery $dir | Should -BeNullOrEmpty
+        (Get-E6Backups $dir).Count | Should -Be 0
     }
 
     It 'review 5: a conversion interrupted at the ownership record recovers through its preview and apply' {
