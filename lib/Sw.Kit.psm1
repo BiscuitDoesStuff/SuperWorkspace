@@ -483,13 +483,28 @@ function Sync-SwProject {
         }
         return $plan
     }
-    # All removal consent precedes the first backup or removal; one decline leaves the project untouched.
+    # A delivery change, or a repair that removes copies, asks for every effect before the first write; one decline
+    # leaves the project untouched. Ordinary updates keep asking at each effect.
     $consented = [Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal)
-    foreach ($p in $converting) {
-        if ($PSCmdlet.ShouldProcess($p.Path, 'remove (dropped from kit)')) { $null = $consented.Add($p.Path); continue }
-        $p.Action = 'declined'; $global:LASTEXITCODE = 1
-        Write-Warning 'PARTIAL: skill delivery removal declined; nothing was written (no backup, removal, ownership record or configuration).'
-        return $plan
+    if ($converting.Count -or ($FromDelivery -and -not (Test-SwSame $render.Delivery $FromDelivery))) {
+        $asks = [Collections.Generic.List[object]]::new()
+        foreach ($p in $plan) {
+            if ($movedFrom.Contains($p.Path)) { $asks.Add([pscustomobject]@{ Item = $p; Target = $p.Path; Op = "move from $($movedFrom[$p.Path])" }) }
+            if (Test-SwIn $p.Action 'add', 'update', 'adopt' -IgnoreCase) { $asks.Add([pscustomobject]@{ Item = $p; Target = $p.Path; Op = $p.Action }) }
+            elseif ((Test-SwSame $p.Action 'skip-modified') -and (Split-Path $p.Path -Leaf) -notmatch $script:SecretName) { $asks.Add([pscustomobject]@{ Item = $p; Target = ".sw/backup/$opId/incoming/$($p.Path)"; Op = 'write incoming kit version' }) }
+            elseif (Test-SwSame $p.Action 'remove') { $asks.Add([pscustomobject]@{ Item = $p; Target = $p.Path; Op = 'remove (dropped from kit)' }) }
+        }
+        foreach ($b in $managed.Blocks.GetEnumerator()) {
+            $t = Join-Path $Root $b.Key
+            if (-not ((Test-Path -LiteralPath $t) -and (Test-SwSame (Read-SwText $t) $b.Value))) { $asks.Add([pscustomobject]@{ Item = $null; Target = $b.Key; Op = 'set managed block' }) }
+        }
+        foreach ($a in $asks) {
+            if ($PSCmdlet.ShouldProcess($a.Target, $a.Op)) { $null = $consented.Add("$($a.Target)`n$($a.Op)"); continue }
+            if ($a.Item) { $a.Item.Action = 'declined' }
+            $global:LASTEXITCODE = 1
+            Write-Warning 'PARTIAL: skill delivery change declined; nothing was written (no backup, removal, restore, ownership record or configuration).'
+            return $plan
+        }
     }
     foreach ($p in $converting) {
         if (-not $reserved) { $null = New-SwSnapshotDir $backupRoot; $reserved = $true }
@@ -501,7 +516,7 @@ function Sync-SwProject {
         $target = Resolve-SwManagedPath $Root $p.Path
         if ($movedFrom.Contains($p.Path)) {
             $sourceRel = $movedFrom[$p.Path]
-            if (-not $PSCmdlet.ShouldProcess($p.Path, "move from $sourceRel")) { $p.Action = 'declined'; $partial = $true; continue }
+            if (-not ($consented.Contains("$($p.Path)`nmove from $sourceRel") -or $PSCmdlet.ShouldProcess($p.Path, "move from $sourceRel"))) { $p.Action = 'declined'; $partial = $true; continue }
             $moveNote = $p.Note; $p.Note = $null
             if (-not (Test-SwConsentFreshness $Root @($sourceRel, $p.Path) $observed $p)) { $partial = $true; continue }
             $source = Resolve-SwManagedPath $Root $sourceRel
@@ -514,7 +529,7 @@ function Sync-SwProject {
         }
         switch ($p.Action) {
             { Test-SwIn $_ 'add', 'update', 'adopt' -IgnoreCase } {
-                if ($PSCmdlet.ShouldProcess($p.Path, $p.Action)) {
+                if ($consented.Contains("$($p.Path)`n$($p.Action)") -or $PSCmdlet.ShouldProcess($p.Path, $p.Action)) {
                     if (-not (Test-SwConsentFreshness $Root @($p.Path) $observed $p)) { $partial = $true; break }
                     if (Test-SwSame $p.Action 'adopt' -IgnoreCase) {
                         # A failed recovery copy throws here, before the replacement below.
@@ -535,7 +550,7 @@ function Sync-SwProject {
                 # Hand over the kit's new version to diff against; credential-like names are never copied.
                 if ((Split-Path $p.Path -Leaf) -notmatch $script:SecretName) {
                     $incoming = ".sw/backup/$opId/incoming/$($p.Path)"
-                    if ($PSCmdlet.ShouldProcess($incoming, 'write incoming kit version')) {
+                    if ($consented.Contains("$incoming`nwrite incoming kit version") -or $PSCmdlet.ShouldProcess($incoming, 'write incoming kit version')) {
                         if (-not $reserved) { $null = New-SwSnapshotDir $backupRoot; $reserved = $true }
                         Write-SwNewFile (Join-Path $Root $incoming) $render.Files[$p.Path]
                     }
@@ -543,7 +558,7 @@ function Sync-SwProject {
                 }
             }
             'remove' {
-                if ($consented.Contains($p.Path) -or $PSCmdlet.ShouldProcess($p.Path, 'remove (dropped from kit)')) {
+                if ($consented.Contains("$($p.Path)`nremove (dropped from kit)") -or $PSCmdlet.ShouldProcess($p.Path, 'remove (dropped from kit)')) {
                     if (-not (Test-SwConsentFreshness $Root @($p.Path) $observed $p)) { $partial = $true; break }
                     $null = Resolve-SwManagedPath $Root $p.Path; Remove-Item -LiteralPath $target -Force -Confirm:$false; $manifest.files.Remove($p.Path)
                 }
@@ -563,7 +578,7 @@ function Sync-SwProject {
         $item = [pscustomobject]@{ Path = $b.Key; Action = $(if ($same) { 'same' } else { 'block' }); Hash = $null; Note = $(if (Test-SwSame $b.Key 'AGENTS.md' -IgnoreCase) { $agentsNote } else { $null }) }
         $plan.Add($item)
         if (-not $same) {
-            if ($PSCmdlet.ShouldProcess($b.Key, 'set managed block')) {
+            if ($consented.Contains("$($b.Key)`nset managed block") -or $PSCmdlet.ShouldProcess($b.Key, 'set managed block')) {
                 if (-not (Test-SwConsentFreshness $Root @($b.Key) $observed $item)) { $partial = $true; continue }
                 $null = Resolve-SwManagedPath $Root $b.Key; Write-SwFile $t $b.Value
             }
