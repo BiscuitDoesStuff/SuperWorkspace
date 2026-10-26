@@ -245,7 +245,9 @@ last, after every removal. If any removal, restore or other effect does not
 complete (a file changed while its prompt was open, or the run is
 interrupted), the managed blocks, profile, configuration and ownership record
 are not written, the affected files are left as found, and the run exits 1
-with `PARTIAL` and the next safe step. In a delivery
+with `PARTIAL` and the next safe step. The managed blocks and profile are
+rechecked together and written only when every one is still as it was when
+its prompt was answered; otherwise none of them is written. In a delivery
 change, or an update that removes retained copies, every prompt (removals,
 restorations, updates, additions and managed blocks) is answered before the
 first write; declining any of them writes nothing (no backup, removal,
@@ -256,7 +258,9 @@ or contains one (`nested link`), or is a project-owned skill with the same
 name. `-Adopt` and `-Force` cannot bypass this; resolve the named paths
 yourself, then re-run. The return path refuses the same way when a
 project-owned entry already sits where a copy would be restored
-(`collision`).
+(`collision`). A retried return accepts an unrecorded copy that is
+byte-identical to what the kit would write there (a restore whose ownership
+record was not committed); any byte difference is still a `collision`.
 
 The two routes are not equivalent: with `project-copy`, a skill that is also
 linked centrally is loaded twice (`duplicate risk`, reported by the update);
