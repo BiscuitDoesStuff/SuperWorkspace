@@ -514,31 +514,40 @@ function Sync-SwProject {
     $partial = $false
     $manifest = [ordered]@{ kitVersion = $kitVersion; kitCommit = Get-SwKitCommit; files = $original }
     # In a delivery change or repair the managed blocks and profile follow every other effect, with config and manifest
-    # last; once any effect did not complete they are held with the ownership record, so nothing claims the new state.
+    # last; they are written together only when every effect completed and each is still as observed, otherwise all are
+    # held with the ownership record, so nothing claims the new state.
     $order = if ($transition) { @($plan | Where-Object { -not (Test-SwSame $_.Path '.sw/profile.json') }) + @($plan | Where-Object { Test-SwSame $_.Path '.sw/profile.json' }) } else { $plan }
     # Managed blocks in files the project also owns (content validated above).
     $agentsNote = $managed.AgentsNote
     $setBlocks = {
+        $changed = [Collections.Generic.List[object]]::new(); $values = @{}
         foreach ($b in $managed.Blocks.GetEnumerator()) {
             $t = Join-Path $Root $b.Key
             $same = (Test-Path -LiteralPath $t) -and (Test-SwSame (Read-SwText $t) $b.Value)
             $item = [pscustomobject]@{ Path = $b.Key; Action = $(if ($same) { 'same' } else { 'block' }); Hash = $null; Note = $(if (Test-SwSame $b.Key 'AGENTS.md' -IgnoreCase) { $agentsNote } else { $null }) }
             $plan.Add($item)
-            if (-not $same) {
-                if ($transition -and $partial) { $item.Action = 'held'; continue }
-                if ($consented.Contains("$($b.Key)`nset managed block") -or $PSCmdlet.ShouldProcess($b.Key, 'set managed block')) {
-                    if (-not (Test-SwConsentFreshness $Root @($b.Key) $observed $item)) { $partial = $true; continue }
-                    $null = Resolve-SwManagedPath $Root $b.Key; Write-SwFile $t $b.Value
-                }
-                else { $partial = $true }
+            if ($same) { continue }
+            if ($consented.Contains("$($b.Key)`nset managed block") -or $PSCmdlet.ShouldProcess($b.Key, 'set managed block')) {
+                if ($transition) { $changed.Add($item); $values[$b.Key] = $b.Value; continue }
+                if (-not (Test-SwConsentFreshness $Root @($b.Key) $observed $item)) { $partial = $true; continue }
+                $null = Resolve-SwManagedPath $Root $b.Key; Write-SwFile $t $b.Value
             }
+            else { $partial = $true }
+        }
+        if ($transition) {
+            # Every changed block and the profile are rechecked before any is written; one stale effect, or any earlier
+            # incomplete one, holds all of them with the ownership record.
+            $pending = @($changed) + @($plan | Where-Object { (Test-SwSame $_.Path '.sw/profile.json') -and (Test-SwIn $_.Action 'add', 'update', 'adopt' -IgnoreCase) })
+            if (-not $partial) { foreach ($m in $pending) { if (-not (Test-SwConsentFreshness $Root @($m.Path) $observed $m)) { $partial = $true } } }
+            if ($partial) { foreach ($m in $pending) { if (-not (Test-SwSame $m.Action 'stale')) { $m.Action = 'held' } } }
+            else { foreach ($m in $changed) { $null = Resolve-SwManagedPath $Root $m.Path; Write-SwFile (Join-Path $Root $m.Path) $values[$m.Path] } }
         }
     }
     $blocksSet = $false
     foreach ($p in $order) {
         if ($transition -and (Test-SwSame $p.Path '.sw/profile.json')) {
             if (-not $blocksSet) { . $setBlocks; $blocksSet = $true }
-            if ($partial -and (Test-SwIn $p.Action 'add', 'update', 'adopt' -IgnoreCase)) { $p.Action = 'held'; continue }
+            if (Test-SwIn $p.Action 'held', 'stale' -IgnoreCase) { continue }
         }
         $target = Resolve-SwManagedPath $Root $p.Path
         if ($movedFrom.Contains($p.Path)) {
