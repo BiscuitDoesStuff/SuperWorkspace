@@ -616,7 +616,10 @@ function Format-SwDelivery([string]$Root, $Plan, $Render, [string]$From, [string
     if (Test-SwSame $to 'central-v1') {
         foreach ($p in $Plan | Where-Object { Test-SwCentralCopy $_.Path $central }) {
             if (Test-SwSame $p.Action 'gone') { "missing copy: $($p.Path) (removed before the ownership record was committed, or deleted locally); its ownership entry is dropped" }
-            elseif (Test-SwSame $p.Action 'remove') { "$(if ($Preview) { 'retained copy' } else { 'converted copy' }): $($p.Path) (owned and unchanged; backed up under .sw/backup/ before removal)" }
+            elseif (-not (Test-SwSame $p.Action 'remove')) { }
+            elseif (-not (Test-Path -LiteralPath (Join-Path $Root $p.Path))) { "converted copy: $($p.Path) (owned and unchanged; backed up under .sw/backup/ before removal)" }
+            elseif ($Preview) { "retained copy: $($p.Path) (owned and unchanged; would be backed up under .sw/backup/ and removed on apply)" }
+            else { "retained copy: $($p.Path) (owned and unchanged; not removed)" }
         }
     }
     foreach ($dir in '.agents/skills', '.claude/skills') {
@@ -788,7 +791,7 @@ function Update-SwProject {
     $syncExit = $global:LASTEXITCODE
     Format-SwPlan $plan $from
     Format-SwSelection $render
-    if ($deliveryBound -or $changing) { Format-SwDelivery $Root $plan $render $fromDelivery $userHome -Partial:($syncExit -ne 0) }
+    if ($deliveryBound -or $changing) { Format-SwDelivery $Root $plan $render $fromDelivery $userHome -Preview:$WhatIfPreference -Partial:($syncExit -ne 0) }
     # Explicit config choices are recorded only after a successful sync.
     if ($syncExit -ne 0) { $global:LASTEXITCODE = $syncExit; return }
     if ($configChanged -and -not $WhatIfPreference) { Write-SwFile (Resolve-SwManagedPath $Root '.sw/config.json') (ConvertTo-SwJson $config) }
