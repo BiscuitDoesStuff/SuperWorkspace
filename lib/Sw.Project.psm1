@@ -1717,7 +1717,7 @@ function Get-SwContext {
     $global:LASTEXITCODE = 0
 }
 
-Export-ModuleMember -Function Resolve-SwRoot, Write-SwFile, Read-SwText, Read-SwJson, ConvertTo-SwJson, Get-SwHash, Get-SwGitPolicy,
+Export-ModuleMember -Function Resolve-SwRoot, Write-SwFile, Get-SwTextBytes, Read-SwText, Read-SwJson, ConvertTo-SwJson, Get-SwHash, Get-SwGitPolicy,
     Get-SwConfig, Read-SwFrontmatter, Test-SwProject, Invoke-SwComms, Add-SwUser, Invoke-SwGitHub, Get-SwUsage, Test-SwLocalOnly,
     Get-SwToolVersion, Get-SwToolProbe, Get-SwGhAuth, Format-SwProbe, Test-SwDoctor, Get-SwCodexTrust,
     Get-SwOperationId, Test-SwContained, New-SwSnapshotDir, Copy-SwNew, Write-SwNewFile, Get-SwByteHash,

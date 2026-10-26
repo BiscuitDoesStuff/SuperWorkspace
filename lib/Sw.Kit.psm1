@@ -261,6 +261,8 @@ function Assert-SwDeliveryTransition([string]$Root, $Render, [string]$From) {
                 if ($owned.Contains($f)) {
                     if (-not (Test-SwSame (Get-SwHash (Read-SwText (Join-Path $Root $f))) $owned[$f] -IgnoreCase)) { $blocked.Add("$f (changed baseline: differs from its ownership record)") }
                 }
+                # A restore whose ownership record was not committed: byte-identical to the generator output, so recording it is a no-op.
+                elseif ($restore -and $Render.Files.Contains($f) -and (Test-SwSame (Get-SwByteHash ([IO.File]::ReadAllBytes((Join-Path $Root $f)))) (Get-SwByteHash (Get-SwTextBytes $Render.Files[$f])))) { }
                 elseif ($restore) { $blocked.Add("$f (collision: project-owned entry; never replaced, renamed or overridden)") }
                 elseif (-not $mine.Count) { $blocked.Add("$f (project-owned skill with the same name; never renamed or overridden)") }
                 else { $blocked.Add("$f (extra: not in the ownership record)") }
