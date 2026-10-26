@@ -6063,9 +6063,10 @@ Describe 'E6 project skill delivery migration' {
             [pscustomobject]@{ Output = $out; ExitCode = $global:LASTEXITCODE }
         }
         function Get-E6Delivery([string]$Root) { $c = Get-SwConfig $Root; if ($c.Contains('skillDelivery')) { $c['skillDelivery'] } else { $null } }
-        function Invoke-E6Declined([string]$Root, [string]$Deny, [hashtable]$Options) {
+        function Invoke-E6Declined([string]$Root, [string]$Deny, [hashtable]$Options, [string]$EditOn, [string]$EditPath, [string]$EditText) {
             # Declines every prompt matching $Deny through an in-memory host in a fresh runspace (no Pester mocks there).
-            $fixtureHost = [SwAuditPromptHost]::new($Host, $Deny)
+            # With $EditOn, appends $EditText to $EditPath while the first matching prompt is open (D1b prompt-time edit).
+            $fixtureHost = if ($EditOn) { [SwAuditPromptHost]::new($Host, $Deny, $EditOn, $EditPath, $EditText) } else { [SwAuditPromptHost]::new($Host, $Deny) }
             $space = [Management.Automation.Runspaces.RunspaceFactory]::CreateRunspace($fixtureHost)
             $space.Open(); $ps = [Management.Automation.PowerShell]::Create(); $ps.Runspace = $space
             try {
@@ -6079,7 +6080,7 @@ Describe 'E6 project skill delivery migration' {
                 }.ToString()).AddArgument((Join-Path $RepoRoot 'lib')).AddArgument($global:SwCentralHome).AddArgument($Root).AddArgument($Options)
                 $values = @($ps.Invoke())
                 if ($ps.HadErrors) { throw ($ps.Streams.Error -join "`n") }
-                [pscustomobject]@{ Output = [string]$values[-2]; ExitCode = $values[-1]; Denied = $fixtureHost.Denied }
+                [pscustomobject]@{ Output = [string]$values[-2]; ExitCode = $values[-1]; Denied = $fixtureHost.Denied; Edited = $fixtureHost.Edited }
             } finally { $ps.Dispose(); $space.Dispose() }
         }
     }
@@ -6475,6 +6476,20 @@ Describe 'E6 project skill delivery migration' {
         $r.Output | Should -Match 'PARTIAL: skill delivery change interrupted \(interrupted\)'
         & $state | Should -Be $before
         Test-Path -LiteralPath (Join-Path $dir '.agents/skills/research/SKILL.md') | Should -BeTrue
+        Get-E6Delivery $dir | Should -BeNullOrEmpty
+    }
+
+    It 'review 4: a removal made stale at the consent prompt leaves profile.json, config and manifest unchanged' {
+        $dir = New-E6Project stl -Capabilities research; New-E6Central
+        $state = { foreach ($f in 'profile.json', 'config.json', 'manifest.json') { Get-SwByteHash ([IO.File]::ReadAllBytes((Join-Path $dir ".sw/$f"))) } }
+        $before = & $state
+        $skill = Join-Path $dir '.agents/skills/research/SKILL.md'
+        $r = Invoke-E6Declined $dir '(?!)' @{ SkillDelivery = 'central-v1'; Capabilities = '' } 'remove.*\.agents/skills/research/SKILL\.md' $skill "`nlocal edit`n"
+        $r.Edited | Should -Be 1
+        $r.ExitCode | Should -Be 1 -Because $r.Output
+        $r.Output | Should -Match 'PARTIAL'
+        & $state | Should -Be $before
+        [IO.File]::ReadAllText($skill) | Should -Match 'local edit'
         Get-E6Delivery $dir | Should -BeNullOrEmpty
     }
 
