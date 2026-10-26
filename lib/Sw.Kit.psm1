@@ -136,6 +136,14 @@ function Get-SwRender([Collections.IDictionary]$Config) {
         }
     }
 
+    # central-v1 stops generating only the selected product skill copies (Central); profile skills and everything else stay.
+    $delivery = Get-SwSkillDelivery $Config
+    $central = @(if ($selection) { Get-SwCentralSkillIds $selection $profileData })
+    if (Test-SwSame $delivery 'central-v1') {
+        if (-not $selection) { throw 'skillDelivery central-v1 needs selection v1; run update <path> -SelectionV1 first. Nothing was written.' }
+        foreach ($rel in @($files.Keys)) { if ($rel -match '^\.agents/skills/([^/]+)/' -and (Test-SwIn $Matches[1] $central)) { $files.Remove($rel) } }
+    }
+
     # Tracked harness files: Claude loads AGENTS.md through one import and skills from its own directory (a byte copy,
     # no links); both harnesses get the hard limits as their native blocks.
     foreach ($rel in @($files.Keys | Where-Object { $_ -match '^\.agents/skills/' })) { $files[".claude/skills/$($rel.Substring('.agents/skills/'.Length))"] = $files[$rel] }
@@ -175,6 +183,8 @@ function Get-SwRender([Collections.IDictionary]$Config) {
         GitAttributes  = $attrs
         Selection      = $selection
         Known          = $known
+        Delivery       = $delivery
+        Central        = $central
     }
 }
 
@@ -221,6 +231,48 @@ function Assert-SwSelectionTransition([string]$Root, $Render) {
     }
     if ($blocked.Count) {
         throw "Selection change blocked; nothing was written. Resolve these deselected components yourself (separately authorized), then re-run; -Force and -Adopt cannot bypass this:`n  $((Get-SwUnique $blocked) -join "`n  ")"
+    }
+}
+
+function Test-SwCentralCopy([string]$Path, [string[]]$Ids) {
+    # A kit copy of a central-eligible skill in either generated skill directory (never project/ sources).
+    ($Path -match '^\.(agents|claude)/skills/([^/]+)/') -and (Test-SwIn $Matches[2] $Ids)
+}
+
+function Assert-SwDeliveryTransition([string]$Root, $Render, [string]$From) {
+    # Preflight in both skill trees before anything is removed or restored: only complete, unchanged, owned copies may
+    # convert. Edited, unowned, extra, linked or nested-link content blocks the whole run. -Force/-Adopt never reach this.
+    $restore = (Test-SwSame $From 'central-v1') -and -not (Test-SwSame $Render.Delivery 'central-v1')
+    if (-not ($restore -or (Test-SwSame $Render.Delivery 'central-v1'))) { return }
+    $blocked = [Collections.Generic.List[string]]::new()
+    $manifestPath = Join-Path $Root '.sw/manifest.json'
+    $owned = if (Test-Path -LiteralPath $manifestPath -PathType Leaf) { (Read-SwJson $manifestPath)['files'] } else { $null }
+    if ($owned -isnot [Collections.IDictionary]) { $owned = @{} }
+    foreach ($dir in '.agents/skills', '.claude/skills') {
+        foreach ($id in $Render.Central) {
+            $rel = "$dir/$id"
+            if (Test-SwLinkedPath $Root $rel) { $blocked.Add("$rel (linked: ownerless link; left as found)"); continue }
+            $full = Join-Path $Root $rel
+            if (-not (Test-Path -LiteralPath $full)) { continue }
+            $found = try { @(Get-SwPhysicalFiles $full) } catch { $blocked.Add("$rel (nested link)"); continue }
+            $files = @($found | ForEach-Object { "$rel/$((Get-SwRelativePath $full $_.FullName).Replace('\', '/'))" })
+            $mine = @($files | Where-Object { $owned.Contains($_) })
+            # Identical bytes prove content, not ownership: such a copy is still a collision, but may be what an
+            # interrupted return left behind, so the line names the recovery. Any differing file withholds the advice.
+            $kitCopy = $restore -and -not $mine.Count -and -not @($files | Where-Object { -not ($Render.Files.Contains($_) -and (Test-SwSame (Get-SwByteHash ([IO.File]::ReadAllBytes((Join-Path $Root $_)))) (Get-SwByteHash (Get-SwTextBytes $Render.Files[$_])))) }).Count
+            foreach ($f in $files | Sort-Object) {
+                if ($owned.Contains($f)) {
+                    if (-not (Test-SwSame (Get-SwHash (Read-SwText (Join-Path $Root $f))) $owned[$f] -IgnoreCase)) { $blocked.Add("$f (changed baseline: differs from its ownership record)") }
+                }
+                elseif ($kitCopy) { $blocked.Add("$f (collision: project-owned entry, identical to the kit copy: if an earlier return to project-copy was interrupted, remove $rel yourself and re-run; otherwise it is project-owned; never replaced, renamed or overridden)") }
+                elseif ($restore) { $blocked.Add("$f (collision: project-owned entry; never replaced, renamed or overridden)") }
+                elseif (-not $mine.Count) { $blocked.Add("$f (project-owned skill with the same name; never renamed or overridden)") }
+                else { $blocked.Add("$f (extra: not in the ownership record)") }
+            }
+        }
+    }
+    if ($blocked.Count) {
+        throw "Skill delivery change blocked; nothing was written. Resolve these yourself (separately authorized), then re-run; -Force and -Adopt cannot bypass this:`n  $((Get-SwUnique $blocked) -join "`n  ")"
     }
 }
 
@@ -325,11 +377,13 @@ function Sync-SwProject {
     [CmdletBinding(SupportsShouldProcess)]
     param([string]$Root, [Collections.IDictionary]$Config, [switch]$Adopt,
         # Allow running an older kit over a project a newer kit last updated.
-        [switch]$Force, [switch]$Preflight)
+        [switch]$Force, [switch]$Preflight, [string]$FromDelivery)
     $render = Get-SwRender $Config
     Assert-SwPhysicalPath $Root
     foreach ($rel in @($render.Files.Keys) + @('AGENTS.md', '.gitignore', '.gitattributes', '.sw/config.json', '.sw/profile.json', '.claude/.sw-generated')) { $null = Resolve-SwManagedPath $Root $rel }
     $manifestPath = Resolve-SwManagedPath $Root '.sw/manifest.json'
+    # Before the manifest's own path checks, so a linked or changed skill copy is named as a delivery blocker.
+    Assert-SwDeliveryTransition $Root $render $FromDelivery
     $prev = Read-SwManifest $Root (Get-SwKitOwnedPaths $render)
     # The retired opt-in adapter wrote its own .claude/ files; its installed copy removes exactly what it owns.
     if (Test-Path -LiteralPath (Join-Path $Root '.claude/.sw-generated')) {
@@ -406,7 +460,20 @@ function Sync-SwProject {
     $managed = Get-SwManagedContent $Root $render $observed
     $opId = Get-SwOperationId
     $backupRoot = Join-Path $Root ".sw/backup/$opId"
-    if (@($plan | Where-Object { Test-SwIn $_.Action 'adopt', 'skip-modified' -IgnoreCase }).Count) { Assert-SwPhysicalPath $backupRoot }
+    # Converting to central-v1 backs up every proven kit copy before the first removal.
+    $converting = @(if (Test-SwSame $render.Delivery 'central-v1') { $plan | Where-Object { (Test-SwSame $_.Action 'remove') -and (Test-SwCentralCopy $_.Path $render.Central) } })
+    # Any conversion or repair that removes copies, same-mode included, first proves central delivery.
+    if ($converting.Count) { Assert-SwCentralReady $render.Central (Get-SwUserHome) }
+    $transition = $converting.Count -or ($FromDelivery -and -not (Test-SwSame $render.Delivery $FromDelivery))
+    # A delivery change must leave the profile and selection catalogue at their planned content, or validation fails
+    # once the new mode is recorded; a locally edited one blocks the run before any effect.
+    if ($transition) {
+        $edited = @($plan | Where-Object { (Test-SwIn $_.Path '.sw/profile.json', '.sw/selection.json') -and (Test-SwIn $_.Action 'kept-local', 'skip-modified' -IgnoreCase) })
+        if ($edited.Count) {
+            throw "Skill delivery change blocked; nothing was written. These kit files were edited locally and would not reach their planned content, so the new mode would fail validation: $(($edited.Path) -join ', '). Keep a copy of your edits, remove each file so the kit writes it afresh, then re-run; -Force and -Adopt cannot bypass this."
+        }
+    }
+    if (@($plan | Where-Object { Test-SwIn $_.Action 'adopt', 'skip-modified' -IgnoreCase }).Count -or $converting.Count) { Assert-SwPhysicalPath $backupRoot }
     # The same read-only plan guards init before directory creation or git init.
     if ($Preflight) {
         foreach ($b in $managed.Blocks.GetEnumerator()) {
@@ -429,13 +496,76 @@ function Sync-SwProject {
         }
         return $plan
     }
+    # A delivery change, or a repair that removes copies, asks for every effect before the first write; one decline
+    # leaves the project untouched. Ordinary updates keep asking at each effect.
+    $consented = [Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal)
+    if ($transition) {
+        $asks = [Collections.Generic.List[object]]::new()
+        foreach ($p in $plan) {
+            if ($movedFrom.Contains($p.Path)) { $asks.Add([pscustomobject]@{ Item = $p; Target = $p.Path; Op = "move from $($movedFrom[$p.Path])" }) }
+            if (Test-SwIn $p.Action 'add', 'update', 'adopt' -IgnoreCase) { $asks.Add([pscustomobject]@{ Item = $p; Target = $p.Path; Op = $p.Action }) }
+            elseif ((Test-SwSame $p.Action 'skip-modified') -and (Split-Path $p.Path -Leaf) -notmatch $script:SecretName) { $asks.Add([pscustomobject]@{ Item = $p; Target = ".sw/backup/$opId/incoming/$($p.Path)"; Op = 'write incoming kit version' }) }
+            elseif (Test-SwSame $p.Action 'remove') { $asks.Add([pscustomobject]@{ Item = $p; Target = $p.Path; Op = 'remove (dropped from kit)' }) }
+        }
+        foreach ($b in $managed.Blocks.GetEnumerator()) {
+            $t = Join-Path $Root $b.Key
+            if (-not ((Test-Path -LiteralPath $t) -and (Test-SwSame (Read-SwText $t) $b.Value))) { $asks.Add([pscustomobject]@{ Item = $null; Target = $b.Key; Op = 'set managed block' }) }
+        }
+        foreach ($a in $asks) {
+            if ($PSCmdlet.ShouldProcess($a.Target, $a.Op)) { $null = $consented.Add("$($a.Target)`n$($a.Op)"); continue }
+            if ($a.Item) { $a.Item.Action = 'declined' }
+            $global:LASTEXITCODE = 1
+            Write-Warning 'PARTIAL: skill delivery change declined; nothing was written (no backup, removal, restore, ownership record or configuration).'
+            return $plan
+        }
+    }
+    foreach ($p in $converting) {
+        if (-not $reserved) { $null = New-SwSnapshotDir $backupRoot; $reserved = $true }
+        Copy-SwNew (Resolve-SwManagedPath $Root $p.Path) (Join-Path $backupRoot $p.Path)
+    }
     $partial = $false
     $manifest = [ordered]@{ kitVersion = $kitVersion; kitCommit = Get-SwKitCommit; files = $original }
-    foreach ($p in $plan) {
+    # In a delivery change or repair the managed blocks and profile follow every other effect, with config and manifest
+    # last. They are rechecked together and written only when every effect completed and each is still as observed,
+    # otherwise all are held with the ownership record, so nothing claims the new state. The writes themselves are
+    # sequential (AGENTS.md, .gitignore, .gitattributes, then the profile): one that fails leaves the earlier ones written.
+    $order = if ($transition) { @($plan | Where-Object { -not (Test-SwSame $_.Path '.sw/profile.json') }) + @($plan | Where-Object { Test-SwSame $_.Path '.sw/profile.json' }) } else { $plan }
+    # Managed blocks in files the project also owns (content validated above).
+    $agentsNote = $managed.AgentsNote
+    $setBlocks = {
+        $changed = [Collections.Generic.List[object]]::new(); $values = @{}
+        foreach ($b in $managed.Blocks.GetEnumerator()) {
+            $t = Join-Path $Root $b.Key
+            $same = (Test-Path -LiteralPath $t) -and (Test-SwSame (Read-SwText $t) $b.Value)
+            $item = [pscustomobject]@{ Path = $b.Key; Action = $(if ($same) { 'same' } else { 'block' }); Hash = $null; Note = $(if (Test-SwSame $b.Key 'AGENTS.md' -IgnoreCase) { $agentsNote } else { $null }) }
+            $plan.Add($item)
+            if ($same) { continue }
+            if ($consented.Contains("$($b.Key)`nset managed block") -or $PSCmdlet.ShouldProcess($b.Key, 'set managed block')) {
+                if ($transition) { $changed.Add($item); $values[$b.Key] = $b.Value; continue }
+                if (-not (Test-SwConsentFreshness $Root @($b.Key) $observed $item)) { $partial = $true; continue }
+                $null = Resolve-SwManagedPath $Root $b.Key; Write-SwFile $t $b.Value
+            }
+            else { $partial = $true }
+        }
+        if ($transition) {
+            # Every changed block and the profile are rechecked before any is written; one stale effect, or any earlier
+            # incomplete one, holds all of them with the ownership record. The blocks are written here, the profile next.
+            $pending = @($changed) + @($plan | Where-Object { (Test-SwSame $_.Path '.sw/profile.json') -and (Test-SwIn $_.Action 'add', 'update', 'adopt' -IgnoreCase) })
+            if (-not $partial) { foreach ($m in $pending) { if (-not (Test-SwConsentFreshness $Root @($m.Path) $observed $m)) { $partial = $true } } }
+            if ($partial) { foreach ($m in $pending) { if (-not (Test-SwSame $m.Action 'stale')) { $m.Action = 'held' } } }
+            else { foreach ($m in $changed) { $null = Resolve-SwManagedPath $Root $m.Path; Write-SwFile (Join-Path $Root $m.Path) $values[$m.Path] } }
+        }
+    }
+    $blocksSet = $false
+    foreach ($p in $order) {
+        if ($transition -and (Test-SwSame $p.Path '.sw/profile.json')) {
+            if (-not $blocksSet) { . $setBlocks; $blocksSet = $true }
+            if (Test-SwIn $p.Action 'held', 'stale' -IgnoreCase) { continue }
+        }
         $target = Resolve-SwManagedPath $Root $p.Path
         if ($movedFrom.Contains($p.Path)) {
             $sourceRel = $movedFrom[$p.Path]
-            if (-not $PSCmdlet.ShouldProcess($p.Path, "move from $sourceRel")) { $p.Action = 'declined'; $partial = $true; continue }
+            if (-not ($consented.Contains("$($p.Path)`nmove from $sourceRel") -or $PSCmdlet.ShouldProcess($p.Path, "move from $sourceRel"))) { $p.Action = 'declined'; $partial = $true; continue }
             $moveNote = $p.Note; $p.Note = $null
             if (-not (Test-SwConsentFreshness $Root @($sourceRel, $p.Path) $observed $p)) { $partial = $true; continue }
             $source = Resolve-SwManagedPath $Root $sourceRel
@@ -448,7 +578,7 @@ function Sync-SwProject {
         }
         switch ($p.Action) {
             { Test-SwIn $_ 'add', 'update', 'adopt' -IgnoreCase } {
-                if ($PSCmdlet.ShouldProcess($p.Path, $p.Action)) {
+                if ($consented.Contains("$($p.Path)`n$($p.Action)") -or $PSCmdlet.ShouldProcess($p.Path, $p.Action)) {
                     if (-not (Test-SwConsentFreshness $Root @($p.Path) $observed $p)) { $partial = $true; break }
                     if (Test-SwSame $p.Action 'adopt' -IgnoreCase) {
                         # A failed recovery copy throws here, before the replacement below.
@@ -469,7 +599,7 @@ function Sync-SwProject {
                 # Hand over the kit's new version to diff against; credential-like names are never copied.
                 if ((Split-Path $p.Path -Leaf) -notmatch $script:SecretName) {
                     $incoming = ".sw/backup/$opId/incoming/$($p.Path)"
-                    if ($PSCmdlet.ShouldProcess($incoming, 'write incoming kit version')) {
+                    if ($consented.Contains("$incoming`nwrite incoming kit version") -or $PSCmdlet.ShouldProcess($incoming, 'write incoming kit version')) {
                         if (-not $reserved) { $null = New-SwSnapshotDir $backupRoot; $reserved = $true }
                         Write-SwNewFile (Join-Path $Root $incoming) $render.Files[$p.Path]
                     }
@@ -477,7 +607,7 @@ function Sync-SwProject {
                 }
             }
             'remove' {
-                if ($PSCmdlet.ShouldProcess($p.Path, 'remove (dropped from kit)')) {
+                if ($consented.Contains("$($p.Path)`nremove (dropped from kit)") -or $PSCmdlet.ShouldProcess($p.Path, 'remove (dropped from kit)')) {
                     if (-not (Test-SwConsentFreshness $Root @($p.Path) $observed $p)) { $partial = $true; break }
                     $null = Resolve-SwManagedPath $Root $p.Path; Remove-Item -LiteralPath $target -Force -Confirm:$false; $manifest.files.Remove($p.Path)
                 }
@@ -488,25 +618,15 @@ function Sync-SwProject {
         }
     }
 
-    # Managed blocks in files the project also owns (content validated above).
-    $blocks = $managed.Blocks
-    $agentsNote = $managed.AgentsNote
-    foreach ($b in $blocks.GetEnumerator()) {
-        $t = Join-Path $Root $b.Key
-        $same = (Test-Path -LiteralPath $t) -and (Test-SwSame (Read-SwText $t) $b.Value)
-        $item = [pscustomobject]@{ Path = $b.Key; Action = $(if ($same) { 'same' } else { 'block' }); Hash = $null; Note = $(if (Test-SwSame $b.Key 'AGENTS.md' -IgnoreCase) { $agentsNote } else { $null }) }
-        $plan.Add($item)
-        if (-not $same) {
-            if ($PSCmdlet.ShouldProcess($b.Key, 'set managed block')) {
-                if (-not (Test-SwConsentFreshness $Root @($b.Key) $observed $item)) { $partial = $true; continue }
-                $null = Resolve-SwManagedPath $Root $b.Key; Write-SwFile $t $b.Value
-            }
-            else { $partial = $true }
-        }
+    if (-not $blocksSet) { . $setBlocks }
+    $global:LASTEXITCODE = $(if ($partial) { 1 } else { 0 })
+    if ($transition -and $partial) {
+        $open = @($plan | Where-Object { Test-SwIn $_.Action 'stale', 'declined', 'orphan-kept' -IgnoreCase } | ForEach-Object Path)
+        Write-Warning "PARTIAL: skill delivery change incomplete; $($open.Count) effect(s) did not complete and were left as found ($($open -join ', ')), so the managed blocks, profile, ownership record and configuration were not written.$(if ((Test-SwSame $FromDelivery 'central-v1') -and -not (Test-SwSame $render.Delivery 'central-v1')) { ' If a retry refuses restored copies as collisions identical to the kit copy, remove those skill directories yourself and re-run.' })"
+        return $plan
     }
     $null = Resolve-SwManagedPath $Root '.sw/manifest.json'
     Write-SwFile $manifestPath (ConvertTo-SwJson $manifest)
-    $global:LASTEXITCODE = $(if ($partial) { 1 } else { 0 })
     if ($partial) { Write-Warning 'PARTIAL: unresolved/declined effects retained in ownership; configuration and adapter continuation must stop.' }
     $plan
 }
@@ -526,6 +646,47 @@ function Format-SwPlan($Plan, [string]$From, [string]$To = (Get-SwKitVersion)) {
     if ($orphans.Count) { Write-Output "Dropped from the kit but locally modified, so left in place: $(($orphans.Path) -join ', ')" }
     if (@($Plan | Where-Object { Test-SwSame $_.Action 'skip-modified' }).Count) { Write-Output 'Locally modified files the kit changed were left alone. Compare with the kit version from the project root:' }
     foreach ($p in $Plan | Where-Object Note) { Write-Output "  $($p.Note)" }
+}
+
+function Format-SwDelivery([string]$Root, $Plan, $Render, [string]$From, [string]$UserHome, [switch]$Preview, [switch]$Partial) {
+    # What a delivery change converted, kept and could not claim; never which route a native command uses.
+    $to = $Render.Delivery
+    $central = @($Render.Central)
+    if (Test-SwSame $to 'central-v1') {
+        foreach ($p in $Plan | Where-Object { Test-SwCentralCopy $_.Path $central }) {
+            if (Test-SwSame $p.Action 'gone') { "missing copy: $($p.Path) (removed before the ownership record was committed, or deleted locally); its ownership entry is dropped" }
+            elseif (-not (Test-SwSame $p.Action 'remove')) { }
+            elseif (-not (Test-Path -LiteralPath (Join-Path $Root $p.Path))) { "converted copy: $($p.Path) (owned and unchanged; backed up under .sw/backup/ before removal)" }
+            elseif ($Preview) { "retained copy: $($p.Path) (owned and unchanged; would be backed up under .sw/backup/ and removed on apply)" }
+            else { "retained copy: $($p.Path) (owned and unchanged; not removed)" }
+        }
+    }
+    foreach ($dir in '.agents/skills', '.claude/skills') {
+        $full = Join-Path $Root $dir
+        if (-not (Test-Path -LiteralPath $full -PathType Container)) { continue }
+        $kept = @(Get-ChildItem -LiteralPath $full -Directory -Force | Where-Object { -not (Test-SwIn $_.Name $central) } | ForEach-Object Name | Sort-Object)
+        if ($kept.Count) { "project skills kept in ${dir}: $($kept -join ', ') (not converted)" }
+    }
+    if (Test-SwSame $to 'project-copy') {
+        $record = $null
+        $recordPath = Join-Path $UserHome '.sw/global.json'
+        if (Test-Path -LiteralPath $recordPath -PathType Leaf) { try { $record = Read-SwJson $recordPath } catch { } }
+        $homes = if ($record -is [Collections.IDictionary] -and $record['homes'] -is [Collections.IDictionary]) { $record['homes'] } else { @{} }
+        foreach ($h in $homes.Keys) {
+            $entries = $homes[$h]['entries']
+            if ($entries -isnot [Collections.IDictionary]) { continue }
+            foreach ($id in $central) { if ($entries.Contains("skills/$id")) { "duplicate risk: $id is also linked centrally ($(Join-Path $h "skills/$id")); both routes can reach discovery and which one a native command uses is not asserted" } }
+        }
+    }
+    if ($Partial) { "Skill delivery: not changed ($From); no central availability is claimed. Next safe step: update '$Root' -SkillDelivery $to -WhatIf, then apply." }
+    elseif ($Preview) { "Skill delivery preview: $From -> $to; nothing was written. Next safe step: re-run without -WhatIf to apply." }
+    elseif (Test-SwSame $to 'central-v1') {
+        # Re-read after the change: availability is reported as found, never assumed from the preflight.
+        $problems = @(Get-SwCentralAvailability $central $UserHome)
+        if ($problems.Count) { $problems; 'Skill delivery: central-v1; central availability is not confirmed (above). Fix it, then run validate.' }
+        else { "Skill delivery: central-v1. Central availability (local record, claude and codex-skills): $($central -join ', '). Check it any time with validate." }
+    }
+    else { "Skill delivery: project-copy; kit skill copies are generated in .agents/skills and .claude/skills." }
 }
 
 function Remove-SwRetiredConfig([Collections.IDictionary]$Config) {
@@ -608,33 +769,68 @@ function Initialize-SwProject {
     Write-Output "Next: fill the project sections of AGENTS.md, then run 'powershell -NoProfile -ExecutionPolicy Bypass -File .sw/sw.ps1 validate'. Models are chosen per thread in T3 Code."
 }
 
+function Assert-SwCentralReady([string[]]$Ids, [string]$UserHome) {
+    # Central prerequisites are checked before any effect; a conversion or repair never relies on links it cannot see.
+    $problems = @(try { $null = Read-SwCentralRecord (Join-Path $UserHome '.sw/global.json') $script:Kit (Join-Path $UserHome '.sw'); Get-SwCentralAvailability $Ids $UserHome }
+        catch { "central prerequisites missing: $($_.Exception.Message)" })
+    if ($problems.Count) { throw "Skill delivery change blocked; nothing was written:`n  $($problems -join "`n  ")" }
+}
+
 function Update-SwProject {
     [CmdletBinding(SupportsShouldProcess)]
     param([Parameter(Position = 0)][string]$Path, [switch]$Adopt, [switch]$Force,
         [switch]$SelectionV1, [AllowEmptyCollection()][AllowEmptyString()][string[]]$Capabilities,
-        [ValidateScript({ Test-SwIn $_ 'local', 'tracked' -IgnoreCase })][string]$Records, [ValidateScript({ Test-SwIn $_ 'host', 'workspace' -IgnoreCase })][string]$GitPolicy)
+        [ValidateScript({ Test-SwIn $_ 'local', 'tracked' -IgnoreCase })][string]$Records, [ValidateScript({ Test-SwIn $_ 'host', 'workspace' -IgnoreCase })][string]$GitPolicy,
+        # Physical delivery of the selected kit skills; absent keeps the current mode.
+        [string]$SkillDelivery)
     $Root = Resolve-SwRoot $Path
     $from = Get-SwManifestKit $Root
     $config = Get-SwConfig $Root
     $before = ConvertTo-SwJson $config
+    $fromDelivery = Get-SwSkillDelivery $config
+    $deliveryBound = $PSBoundParameters.ContainsKey('SkillDelivery')
+    if ($deliveryBound -and -not (Test-SwIn $SkillDelivery 'project-copy', 'central-v1')) { throw "-SkillDelivery must be 'project-copy' or 'central-v1' (exact case). Nothing was written." }
+    if ($deliveryBound -and -not $config.Contains('selection')) { throw 'Skill delivery needs selection v1; this legacy project has none. Run update <path> -SelectionV1 first, then re-run with -SkillDelivery. Nothing was written.' }
     $retired = @(Remove-SwRetiredConfig $config)
     if ($PSBoundParameters.ContainsKey('Records')) { $config['records'] = $Records.ToLowerInvariant() }
     if ($PSBoundParameters.ContainsKey('GitPolicy')) { $config['gitPolicy'] = $GitPolicy.ToLowerInvariant() }
     Set-SwSelectionOption $config $SelectionV1 $PSBoundParameters
+    if ($deliveryBound -and -not (Test-SwSame $SkillDelivery $fromDelivery)) { $config['skillDelivery'] = $SkillDelivery }
+    $render = Get-SwRender $config
+    $changing = -not (Test-SwSame $render.Delivery $fromDelivery)
+    $userHome = if ($deliveryBound -or $changing) { Get-SwUserHome }
+    if ($changing -and (Test-SwSame $render.Delivery 'central-v1')) { Assert-SwCentralReady $render.Central $userHome }
     $configChanged = (-not (Test-SwSame (ConvertTo-SwJson $config) $before))
     if ($configChanged -and -not $PSCmdlet.ShouldProcess('.sw/config.json', 'write configuration after completed sync')) {
         if ($WhatIfPreference) {
-            $preview = Sync-SwProject -Root $Root -Config $config -Adopt:$Adopt -Force:$Force -Preflight
+            $preview = Sync-SwProject -Root $Root -Config $config -Adopt:$Adopt -Force:$Force -Preflight -FromDelivery $fromDelivery
             Format-SwPlan $preview $from
-            Format-SwSelection (Get-SwRender $config)
+            Format-SwSelection $render
+            if ($deliveryBound) { Format-SwDelivery $Root $preview $render $fromDelivery $userHome -Preview }
             $retired
         } else { Write-Warning 'PARTIAL: configuration declined; no update effects performed.' }
         $global:LASTEXITCODE = $(if ($WhatIfPreference) { 0 } else { 1 }); return
     }
-    $plan = Sync-SwProject -Root $Root -Config $config -Adopt:$Adopt -Force:$Force
+    if ($changing) {
+        # Refusals throw here, before the first backup or removal; anything thrown later is an interruption.
+        $null = Sync-SwProject -Root $Root -Config $config -Adopt:$Adopt -Force:$Force -Preflight -FromDelivery $fromDelivery
+        # The mode is recorded last; any failure up to and including that write is an interruption with no central claim.
+        $unwritten = 'configuration and ownership record were not written'
+        try {
+            $plan = Sync-SwProject -Root $Root -Config $config -Adopt:$Adopt -Force:$Force -FromDelivery $fromDelivery
+            if ($global:LASTEXITCODE -eq 0) {
+                $unwritten = 'the ownership record was committed but configuration was not written'
+                Write-SwFile (Resolve-SwManagedPath $Root '.sw/config.json') (ConvertTo-SwJson $config); $configChanged = $false
+            }
+        } catch {
+            Write-Warning "PARTIAL: skill delivery change interrupted ($($_.Exception.Message)); $unwritten, so no central availability is claimed. Next safe step: update '$Root' -SkillDelivery $($render.Delivery) -WhatIf, then apply$(if ((Test-SwSame $fromDelivery 'central-v1') -and -not (Test-SwSame $render.Delivery 'central-v1')) { '; if the preview refuses restored copies as collisions identical to the kit copy, remove those skill directories yourself and re-run' })."
+            $global:LASTEXITCODE = 1; return
+        }
+    } else { $plan = Sync-SwProject -Root $Root -Config $config -Adopt:$Adopt -Force:$Force -FromDelivery $fromDelivery }
     $syncExit = $global:LASTEXITCODE
     Format-SwPlan $plan $from
-    Format-SwSelection (Get-SwRender $config)
+    Format-SwSelection $render
+    if ($deliveryBound -or $changing) { Format-SwDelivery $Root $plan $render $fromDelivery $userHome -Preview:$WhatIfPreference -Partial:($syncExit -ne 0) }
     # Explicit config choices are recorded only after a successful sync.
     if ($syncExit -ne 0) { $global:LASTEXITCODE = $syncExit; return }
     if ($configChanged -and -not $WhatIfPreference) { Write-SwFile (Resolve-SwManagedPath $Root '.sw/config.json') (ConvertTo-SwJson $config) }

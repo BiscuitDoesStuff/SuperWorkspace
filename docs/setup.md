@@ -202,6 +202,97 @@ follows into the source.
 A failure to record a receipt after the link was created exits 1 and names
 the unrecorded link; later runs keep it and report it as unowned.
 
+### Project migration (skill delivery)
+
+A project's `.sw/config.json` field `skillDelivery` picks how its selected kit
+skills physically arrive: `project-copy` (the default when the field is
+missing) generates copies in `.agents/skills` and `.claude/skills`;
+`central-v1` stops generating the copies of the selected shared skills and
+relies on the central links above. Values are exact-case. Only physical
+delivery changes: the logical selection, `AGENTS.md` guidance, validation
+checks, project-specific skills, profile skills (such as
+`unreal-validation`, which stay copies) and a kit checkout's `project/` tree
+are left as they are. Projects that never set the field keep working
+unchanged.
+
+Prerequisites: the project uses selection v1 (`update <path> -SelectionV1`
+first; a legacy project is refused with that instruction), and
+`global install -Delivery central-v1 -Harness both -Component skills` has
+linked every selected skill for both Claude and Codex skills. The update reads
+only the local record `~/.sw/global.json` and its links; it never scans the
+machine and never installs anything. A missing record or link reports
+`central prerequisites missing`, `central link missing` or
+`central source missing`, and nothing is written. Each link must be the
+recorded junction to the product skill: a personal skill of the same name does
+not count (`central source is not the product skill`), and a source reached
+through another link or junction is refused (`central source redirected`).
+
+```powershell
+# From the kit clone, with the project's absolute root; preview, then apply.
+# Without -SkillDelivery the current mode is kept.
+powershell -NoProfile -ExecutionPolicy Bypass -File sw.ps1 update 'C:\path\to\project' -SkillDelivery central-v1 -WhatIf
+powershell -NoProfile -ExecutionPolicy Bypass -File sw.ps1 update 'C:\path\to\project' -SkillDelivery central-v1
+powershell -NoProfile -ExecutionPolicy Bypass -File 'C:\path\to\project\.sw\sw.ps1' validate
+# return path: regenerate the project copies
+powershell -NoProfile -ExecutionPolicy Bypass -File sw.ps1 update 'C:\path\to\project' -SkillDelivery project-copy
+```
+
+Both skill trees are checked before anything is removed. A copy converts only
+when every file is in the ownership record and unchanged; each converted copy
+is backed up under `.sw/backup/<operation>/` before removal, and
+`.sw/profile.json`, `.sw/config.json` and the ownership record are written
+last, after every removal. If any removal, restore or other effect does not
+complete (a file changed while its prompt was open, or the run is
+interrupted), the managed blocks, profile, configuration and ownership record
+are not written, the affected files are left as found, and the run exits 1
+with `PARTIAL` and the next safe step. The managed blocks and profile are
+rechecked together and written only when every one is still as it was when
+its prompt was answered; otherwise none of them is written. After that
+recheck they are written one at a time: `AGENTS.md`, `.gitignore`,
+`.gitattributes`, then `.sw/profile.json`. If one of those writes fails, the
+earlier ones stay written, the configuration and ownership record are not
+written, and the run exits 1 with `PARTIAL`. A delivery change is refused
+before any effect, with nothing written, when `.sw/profile.json` or
+`.sw/selection.json` was edited locally and so would not reach its planned
+content; keep a copy of your edits, remove the file so the kit writes it
+afresh, then re-run. In a delivery
+change, or an update that removes retained copies, every prompt (removals,
+restorations, updates, additions and managed blocks) is answered before the
+first write; declining any of them writes nothing (no backup, removal,
+restore, ownership record or configuration). The run is
+refused, with nothing written, when a copy is edited (`changed baseline`),
+holds a file the record does not own (`extra`), is a link (`ownerless link`)
+or contains one (`nested link`), or is a project-owned skill with the same
+name. `-Adopt` and `-Force` cannot bypass this; resolve the named paths
+yourself, then re-run. The return path refuses the same way when a
+project-owned entry already sits where a copy would be restored
+(`collision`), even when that entry is byte-identical to what the kit would
+write: identical content does not prove the kit wrote it. Such a collision
+says so; if an earlier return to `project-copy` was interrupted, remove the
+named skill directory yourself and re-run, otherwise it is project-owned. The
+`PARTIAL` message of an interrupted return names the same step.
+
+The two routes are not equivalent: with `project-copy`, a skill that is also
+linked centrally is loaded twice (`duplicate risk`, reported by the update);
+with `central-v1`, availability depends on the central links, which
+`validate` re-checks. `validate` also fails on a kit copy retained under
+`central-v1` (`Stray kit copy retained`); an explicit
+`update <path> -SkillDelivery central-v1` converts owned copies with a backup.
+Any update that would remove such copies, including one that keeps the
+current mode, runs the same central prerequisite checks first and is refused
+with nothing written if they fail. Its `-WhatIf` preview lists each such copy
+as one that would be backed up and removed on apply, then the next safe step.
+
+An interrupted change exits 1, prints `PARTIAL`, writes neither the
+configuration nor the ownership record and claims no central availability.
+If only the final configuration write fails, the removals and the ownership
+record are already committed but the mode is still the old one; the
+`PARTIAL` line says so, and the same preview then apply finishes the change.
+Re-run the preview: it names each copy already removed (`missing copy`),
+each retained copy and any link or source problem, then the next safe step.
+There is no automatic cleanup and no background service; empty skill folders
+left behind are yours to remove.
+
 ## New project
 
 From the kit clone, use a target outside that clone. These relative examples

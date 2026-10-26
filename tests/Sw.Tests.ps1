@@ -5645,7 +5645,7 @@ Describe 'D1b C1/C2 prompt-time edit protection (selected contract, evidence onl
                 Copy-Item -LiteralPath (Join-Path $RepoRoot $rel) -Destination (Join-Path $kit $rel) -Recurse
             }
             $shared = $Case -eq 'C2 host text changes'
-            $migration = $Case -eq 'C1 migration source changes'
+            $migration = $Case -like '*migration*'
             $legacy = '.opencode/skills/minimal-change/d1b-target.txt'
             $relative = if ($shared) { 'AGENTS.md' } elseif ($migration) { '.agents/skills/minimal-change/d1b-target.txt' } else { 'd1b-target.txt' }
             $action = if ($migration) { "move from $legacy" } elseif ($shared) { 'set managed block' } elseif ($Case -eq 'C1 absent becomes present') { 'add' }
@@ -5654,11 +5654,14 @@ Describe 'D1b C1/C2 prompt-time edit protection (selected contract, evidence onl
                 'C1 absent becomes present' { 'create' }
                 'C1 present disappears' { 'remove' }
                 'C1 present moves' { 'move' }
+                'D1c migration destination changes' { 'create' }
                 default { 'append' }
             }
-            $target = Join-Path $root $(if ($migration) { $legacy } else { $relative }); $moved = Join-Path $root 'd1b-moved.txt'
+            $target = Join-Path $root $(if ($migration -and $Case -notlike 'D1c*') { $legacy } else { $relative }); $moved = Join-Path $root 'd1b-moved.txt'
             $editText = if ($mode -eq 'move') { $moved } else { 'LATE' }
             $editOn = [regex]::Escape(('operation "{0}" on target "{1}"' -f $action,$relative))
+            # After the move the plan has no replacement prompt; the next prompt is the incoming copy for this path.
+            if ($Case -eq 'D1c migration target changes after move') { $editOn = [regex]::Escape('operation "write incoming kit version" on target ".sw/backup/') + '[^"]+' + [regex]::Escape("/incoming/$relative`"") }
             $fixtureHost = [SwAuditPromptHost]::new($Host, '(?!)', $editOn, $target, $editText, $mode, $root)
             $space = [Management.Automation.Runspaces.RunspaceFactory]::CreateRunspace($fixtureHost)
             $space.Open(); $ps = [Management.Automation.PowerShell]::Create(); $ps.Runspace = $space
@@ -5737,7 +5740,7 @@ Describe 'D1b C1/C2 prompt-time edit protection (selected contract, evidence onl
                         # Keep this exact path in the kit allowlist via an unselected profile, but drop its output.
                         Move-Item -LiteralPath $source -Destination (Join-Path $Kit "project/profiles/unreal/files/$Relative")
                     }
-                    $migration = $Case -eq 'C1 migration source changes'
+                    $migration = $Case -like '*migration*'
                     $destinationBefore = $null
                     if ($migration) {
                         $legacy = '.opencode/skills/minimal-change/d1b-target.txt'
@@ -5944,6 +5947,714 @@ Describe 'D1b C1/C2 prompt-time edit protection (selected contract, evidence onl
         $d.EarlierAfter.LfHash | Should -Be (Get-SwHash "EARLIER-2`n")
         $d.ManifestAfter.files[$d.EarlierPath] | Should -Be $d.EarlierAfter.LfHash
         @($d.Output | Where-Object { $_.PSObject.Properties['Action'] -and $_.Path -ceq $d.EarlierPath -and $_.Action -ceq 'update' }).Count | Should -Be 1
+    }
+    It 'D1c migration destination changes' {
+        # The move destination appears while move consent is pending: the move is stale and nothing advances.
+        $r = Invoke-D1bFixture 'D1c migration destination changes'; $d = $r.Data
+        $legacy = '.opencode/skills/minimal-change/d1b-target.txt'
+        $item = @($d.Output | Where-Object { $_.PSObject.Properties['Action'] -and $_.Path -ceq $r.Relative })
+        $item.Count | Should -Be 1
+        $item[0].Action | Should -BeExactly 'stale'
+        $item[0].Note | Should -BeExactly "$($r.Relative) changed while consent was pending and was left as found."
+        $d.Before.Exists | Should -BeTrue
+        $d.After.RawBase64 | Should -BeExactly $d.Before.RawBase64
+        $d.DestinationBefore.Exists | Should -BeFalse
+        $d.DestinationAfter.RawBase64 | Should -BeExactly ([Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes('LATE')))
+        foreach ($rel in $legacy,$r.Relative) { $d.ManifestAfter.files[$rel] | Should -BeExactly $d.ManifestBefore.files[$rel] }
+        $d.ManifestAfter.files.Contains($r.Relative) | Should -BeFalse
+        $d.InProcessLastExitCode | Should -Be 1
+        $r.Warnings | Should -Contain 'PARTIAL: unresolved/declined effects retained in ownership; configuration and adapter continuation must stop.'
+        $d.ConfigAfter.RawBase64 | Should -BeExactly $d.ConfigBefore.RawBase64
+        $d.TreeAfter.Contains('.sw/backup') | Should -BeFalse
+        $r.Host.Edited | Should -Be 1
+        $r.Host.EditedPrompt | Should -Match ([regex]::Escape(('operation "move from {0}" on target "{1}"' -f $legacy,$r.Relative)))
+        $d.SeedExit | Should -Be 0
+        $d.ForbiddenReach.Count | Should -Be 0
+        $d.LoadedKitRoot | Should -BeExactly $d.Kit
+        $r.Errors | Should -BeNullOrEmpty
+        $d.Caught | Should -BeNullOrEmpty
+        $d.PreviewPrompts | Should -Be 0
+        ConvertTo-SwJson $d.PreviewTree | Should -BeExactly (ConvertTo-SwJson $d.TreeBefore)
+    }
+    It 'D1c migration target changes after move' {
+        # Observed behavior, recorded as evidence: a moved source is always locally edited, so its plan action is
+        # skip-modified and no add/update replacement prompt exists. The next prompt is the incoming copy; an edit
+        # there is retained, the move is recorded and no replacement happens.
+        $r = Invoke-D1bFixture 'D1c migration target changes after move'; $d = $r.Data
+        $legacy = '.opencode/skills/minimal-change/d1b-target.txt'
+        $item = @($d.Output | Where-Object { $_.PSObject.Properties['Action'] -and $_.Path -ceq $r.Relative })
+        $item.Count | Should -Be 1
+        $item[0].Action | Should -BeExactly 'skip-modified'
+        $d.After.Exists | Should -BeFalse
+        $legacyBytes = [Convert]::FromBase64String($d.Before.RawBase64)
+        $d.DestinationAfter.RawBase64 | Should -BeExactly ([Convert]::ToBase64String([byte[]]($legacyBytes + [Text.Encoding]::UTF8.GetBytes('LATE'))))
+        $d.ManifestAfter.files.Contains($legacy) | Should -BeFalse
+        $d.ManifestAfter.files[$r.Relative] | Should -BeExactly $d.ManifestBefore.files[$legacy]
+        $r.Host.Edited | Should -Be 1
+        $r.Host.EditedPrompt | Should -Match 'write incoming kit version'
+        @($r.Host.Prompts | Where-Object { $_ -match ('operation "(add|update)" on target "' + [regex]::Escape($r.Relative) + '"') }).Count | Should -Be 0
+        @($d.TreeAfter.Keys | Where-Object { $_ -like ".sw/backup/*/incoming/$($r.Relative)" }).Count | Should -Be 1
+        $d.ConfigAfter.RawBase64 | Should -BeExactly $d.ConfigBefore.RawBase64
+        $d.SeedExit | Should -Be 0
+        $d.ForbiddenReach.Count | Should -Be 0
+        $r.Errors | Should -BeNullOrEmpty
+        $d.Caught | Should -BeNullOrEmpty
+    }
+}
+
+Describe 'E6 project skill delivery migration' {
+    # Temp projects and a synthetic central home only; the real profile and this checkout are never written.
+    BeforeAll {
+        $script:E6SavedProviderHomes = @{ CLAUDE_CONFIG_DIR=$env:CLAUDE_CONFIG_DIR; CODEX_HOME=$env:CODEX_HOME }
+        $script:E6Core = @('agent-documentation', 'handoff', 'minimal-change', 'resume', 'review', 'status', 'structured-debugging', 'validate', 'work')
+        $global:E6Links = [Collections.Generic.List[string]]::new()
+        function New-E6Project {
+            param([string]$Name, [string]$Profile = 'generic', [string[]]$Capabilities)
+            $dir = Join-Path $TestDrive "$Name$(New-Id)"
+            $extra = if ($PSBoundParameters.ContainsKey('Capabilities')) { @{ Capabilities = $Capabilities } } else { @{} }
+            Initialize-SwProject -Path $dir -Profile $Profile -Name $Name @extra | Out-Null
+            git -C $dir config user.name tester
+            git -C $dir config user.email tester@example.com
+            $dir
+        }
+        function Get-E6Tree([string]$Root) {
+            # Every file's bytes: proof that a refused, declined or WhatIf run wrote nothing.
+            $map = [ordered]@{}
+            foreach ($f in Get-ChildItem -LiteralPath $Root -Recurse -File -Force | Sort-Object FullName) { $map[(Get-SwRelativePath $Root $f.FullName)] = Get-SwByteHash ([IO.File]::ReadAllBytes($f.FullName)) }
+            $map | ConvertTo-Json -Compress
+        }
+        function Get-E6Files([string]$Root, [string]$Rel) { @(Get-ChildItem -LiteralPath (Join-Path $Root $Rel) -Recurse -File -Force -ErrorAction Ignore) }
+        function Get-E6Backups([string]$Root) { @(Get-ChildItem -LiteralPath (Join-Path $Root '.sw/backup') -Directory -Force -ErrorAction Ignore) }
+        function New-E6Link([string]$Path, [string]$Target) {
+            New-Item -ItemType Directory -Path (Split-Path $Path -Parent) -Force | Out-Null
+            New-Item -ItemType Junction -Path $Path -Target $Target | Out-Null
+            $global:E6Links.Add($Path)
+        }
+        function New-E6Product {
+            # A temp product root holding only the product skill sources, so a source can be removed safely.
+            $product = Join-Path $TestDrive "product$(New-Id)"
+            New-Item -ItemType Directory -Path (Join-Path $product 'project/base/.agents') -Force | Out-Null
+            Copy-Item -LiteralPath (Join-Path $RepoRoot 'project/base/.agents/skills') -Destination (Join-Path $product 'project/base/.agents') -Recurse
+            $product
+        }
+        function New-E6Central {
+            # A valid schema 2 record plus one junction per id, as global install -Delivery central-v1 leaves them.
+            param([string[]]$Ids = $script:E6Core, [string]$ProductRoot = $RepoRoot, [string[]]$Unrecorded = @())
+            $artifactHome = Join-Path $global:SwCentralHome '.agents'
+            $entries = [ordered]@{ 'AGENTS.md#global' = [ordered]@{ kind = 'rules-block'; sourceMode = 'literal'; bodySha256 = ('a' * 64); hashFormat = 'a7-lf-utf8'; inputs = @() } }
+            foreach ($id in $Ids) {
+                $source = Join-Path $ProductRoot "project/base/.agents/skills/$id"
+                New-E6Link (Join-Path $artifactHome "skills/$id") $source
+                if (Test-SwIn $id $Unrecorded) { continue }
+                $entries["skills/$id"] = [ordered]@{ kind = 'skill-link'; scopeOwners = @('claude', 'codex-skills'); sourceTier = 'product'; sourceId = $id; sourcePath = $source; linkType = 'junction'; normalizedTarget = $source; rawReparseTarget = $source }
+            }
+            $recorded = @($Ids | Where-Object { -not (Test-SwIn $_ $Unrecorded) })
+            $r = [ordered]@{ schema = 2; kitVersion = 'test'; kitCommit = $null; productRoot = $ProductRoot; personalRoot = (Join-Path $global:SwCentralHome '.sw'); homes = [ordered]@{
+                $artifactHome = [ordered]@{ kind = 'claude+codex+codex-skills'; delivery = [ordered]@{ claude = 'central-v1'; codex = 'rules'; 'codex-skills' = 'central-v1' }; selection = [ordered]@{
+                    claude = [ordered]@{ productSkills = $recorded; personalSkills = @(); personalRules = @() }
+                    codex = [ordered]@{ productSkills = @(); personalSkills = @(); personalRules = @() }
+                    'codex-skills' = [ordered]@{ productSkills = $recorded; personalSkills = @(); personalRules = @() }
+                }; entries = $entries }
+            } }
+            Write-SwFile (Join-Path $global:SwCentralHome '.sw/global.json') (ConvertTo-SwJson $r)
+        }
+        function Invoke-E6Update([string]$Root, [hashtable]$Options = @{}) {
+            $out = @(Update-SwProject -Path $Root @Options 3>&1) -join "`n"
+            [pscustomobject]@{ Output = $out; ExitCode = $global:LASTEXITCODE }
+        }
+        function Get-E6Delivery([string]$Root) { $c = Get-SwConfig $Root; if ($c.Contains('skillDelivery')) { $c['skillDelivery'] } else { $null } }
+        function Invoke-E6Declined([string]$Root, [string]$Deny, [hashtable]$Options, [string]$EditOn, [string]$EditPath, [string]$EditText) {
+            # Declines every prompt matching $Deny through an in-memory host in a fresh runspace (no Pester mocks there).
+            # With $EditOn, appends $EditText to $EditPath while the first matching prompt is open (D1b prompt-time edit).
+            $fixtureHost = if ($EditOn) { [SwAuditPromptHost]::new($Host, $Deny, $EditOn, $EditPath, $EditText) } else { [SwAuditPromptHost]::new($Host, $Deny) }
+            $space = [Management.Automation.Runspaces.RunspaceFactory]::CreateRunspace($fixtureHost)
+            $space.Open(); $ps = [Management.Automation.PowerShell]::Create(); $ps.Runspace = $space
+            try {
+                $null = $ps.AddScript({
+                    param($Lib, $UserHome, $Root, $Options)
+                    Import-Module (Join-Path $Lib 'Sw.Project.psm1') -Force -DisableNameChecking
+                    Import-Module (Join-Path $Lib 'Sw.Kit.psm1') -Force -DisableNameChecking
+                    & (Get-Module Sw.Kit) { param($u) $script:SwTestUserHome = $u; function script:Get-SwUserHome { $script:SwTestUserHome } } $UserHome
+                    @(Update-SwProject -Path $Root @Options -Confirm 3>&1) -join "`n"
+                    $global:LASTEXITCODE
+                }.ToString()).AddArgument((Join-Path $RepoRoot 'lib')).AddArgument($global:SwCentralHome).AddArgument($Root).AddArgument($Options)
+                $values = @($ps.Invoke())
+                if ($ps.HadErrors) { throw ($ps.Streams.Error -join "`n") }
+                [pscustomobject]@{ Output = [string]$values[-2]; ExitCode = $values[-1]; Denied = $fixtureHost.Denied; Edited = $fixtureHost.Edited }
+            } finally { $ps.Dispose(); $space.Dispose() }
+        }
+    }
+    BeforeEach {
+        Remove-Item Env:CLAUDE_CONFIG_DIR, Env:CODEX_HOME -ErrorAction Ignore
+        $global:SwCentralHome = Join-Path $TestDrive "central$(New-Id)"
+        New-Item -ItemType Directory -Path $global:SwCentralHome | Out-Null
+        Mock -ModuleName Sw.Kit Get-SwUserHome { $global:SwCentralHome }
+        Mock -ModuleName Sw.Project Get-SwProfileHome { $global:SwCentralHome }
+        Mock -ModuleName Sw.Kit Get-SwToolProbe { throw 'native probe forbidden in delivery migration' }
+        Mock -ModuleName Sw.Kit Get-SwToolVersion { throw 'native probe forbidden in delivery migration' }
+        Mock -ModuleName Sw.Kit Get-SwGhAuth { throw 'auth forbidden in delivery migration' }
+    }
+    AfterEach {
+        # Junctions are unlinked without descending, so no cleanup follows them into a source.
+        foreach ($p in $global:E6Links) { if ([IO.Directory]::Exists($p) -and ([IO.File]::GetAttributes($p) -band [IO.FileAttributes]::ReparsePoint)) { [IO.Directory]::Delete($p, $false) } }
+        $global:E6Links.Clear()
+    }
+    AfterAll {
+        Remove-Variable SwCentralHome, E6Links, E6Interrupt, E6Removes -Scope Global -ErrorAction Ignore
+        Remove-Item Env:CLAUDE_CONFIG_DIR, Env:CODEX_HOME -ErrorAction Ignore
+        foreach ($key in $script:E6SavedProviderHomes.Keys) { if ($null -ne $script:E6SavedProviderHomes[$key]) { Set-Item "Env:$key" $script:E6SavedProviderHomes[$key] } }
+    }
+
+    It 'A1 a preview, a declined prompt or an invalid flag writes nothing, config included' {
+        $dir = New-E6Project a1; New-E6Central
+        $recordPath = Join-Path $global:SwCentralHome '.sw/global.json'
+        $before = Get-E6Tree $dir; $record = (Get-FileHash -LiteralPath $recordPath).Hash; $backups = (Get-E6Backups $dir).Count
+        $r = Invoke-E6Update $dir @{ SkillDelivery = 'central-v1'; WhatIf = $true }
+        $r.ExitCode | Should -Be 0 -Because $r.Output
+        $r.Output | Should -Match 'retained copy: \.claude/skills/work/SKILL\.md'
+        $r.Output | Should -Match 'Skill delivery preview: project-copy -> central-v1; nothing was written'
+        Get-E6Tree $dir | Should -Be $before
+        # Declined consent, answered by an in-memory host in a fresh runspace (no Pester mocks there): the first
+        # prompt, and a later removal prompt after the configuration and ownership prompts were accepted.
+        foreach ($deny in 'write configuration after completed sync', '\.claude/skills/work/SKILL\.md') {
+            $fixtureHost = [SwAuditPromptHost]::new($Host, $deny)
+            $space = [Management.Automation.Runspaces.RunspaceFactory]::CreateRunspace($fixtureHost)
+            $space.Open(); $ps = [Management.Automation.PowerShell]::Create(); $ps.Runspace = $space
+            try {
+                $null = $ps.AddScript({
+                    param($Lib, $UserHome, $Root)
+                    Import-Module (Join-Path $Lib 'Sw.Project.psm1') -Force -DisableNameChecking
+                    Import-Module (Join-Path $Lib 'Sw.Kit.psm1') -Force -DisableNameChecking
+                    & (Get-Module Sw.Kit) { param($u) $script:SwTestUserHome = $u; function script:Get-SwUserHome { $script:SwTestUserHome } } $UserHome
+                    Update-SwProject -Path $Root -SkillDelivery central-v1 -Confirm 3>$null | Out-Null
+                    $global:LASTEXITCODE
+                }.ToString()).AddArgument((Join-Path $RepoRoot 'lib')).AddArgument($global:SwCentralHome).AddArgument($dir)
+                $values = @($ps.Invoke())
+                if ($ps.HadErrors) { throw ($ps.Streams.Error -join "`n") }
+                $values[-1] | Should -Be 1 -Because $deny
+                $fixtureHost.Denied | Should -Be 1 -Because $deny
+            } finally { $ps.Dispose(); $space.Dispose() }
+            Get-E6Tree $dir | Should -Be $before -Because $deny
+        }
+        foreach ($bad in 'Central-V1', 'central', 'PROJECT-COPY', '') {
+            { Update-SwProject -Path $dir -SkillDelivery $bad } | Should -Throw '*exact case*'
+        }
+        Get-E6Tree $dir | Should -Be $before
+        (Get-E6Backups $dir).Count | Should -Be $backups
+        (Get-FileHash -LiteralPath $recordPath).Hash | Should -Be $record
+    }
+
+    It 'A2 a missing record, a missing central source or a malformed baseline refuses with the project unchanged' {
+        $dir = New-E6Project a2; $before = Get-E6Tree $dir
+        { Update-SwProject -Path $dir -SkillDelivery central-v1 } | Should -Throw '*central prerequisites missing*'
+        Get-E6Tree $dir | Should -Be $before
+        $product = New-E6Product; New-E6Central -ProductRoot $product
+        $source = Join-Path $product 'project/base/.agents/skills/work/SKILL.md'; $bytes = [IO.File]::ReadAllBytes($source)
+        Remove-Item -LiteralPath $source
+        { Update-SwProject -Path $dir -SkillDelivery central-v1 } | Should -Throw '*central source missing: work*'
+        Get-E6Tree $dir | Should -Be $before
+        [IO.File]::WriteAllBytes($source, $bytes)
+        $manifestPath = Join-Path $dir '.sw/manifest.json'
+        $m = Read-SwJson $manifestPath; $m['files']['.claude/skills/work/SKILL.md'] = 'zz'; Write-SwFile $manifestPath (ConvertTo-SwJson $m)
+        $before = Get-E6Tree $dir
+        { Update-SwProject -Path $dir -SkillDelivery central-v1 -Adopt -Force } | Should -Throw '*.claude/skills/work/SKILL.md (changed baseline*'
+        Get-E6Tree $dir | Should -Be $before
+        (Get-E6Backups $dir).Count | Should -Be 0
+    }
+
+    It 'A11 converts only unchanged owned copies, backs up first, keeps unrelated skills and records the mode last' {
+        $dir = New-E6Project a11; New-E6Central
+        Write-SwFile (Join-Path $dir '.agents/skills/my-skill/SKILL.md') "---`nname: my-skill`ndescription: Local.`n---`n"
+        $mine = Get-E6Tree (Join-Path $dir '.agents/skills/my-skill')
+        $r = Invoke-E6Update $dir @{ SkillDelivery = 'central-v1' }
+        $r.ExitCode | Should -Be 0 -Because $r.Output
+        $r.Output | Should -Match 'converted copy: \.agents/skills/work/SKILL\.md \(owned and unchanged; backed up'
+        $r.Output | Should -Match 'project skills kept in \.agents/skills: my-skill \(not converted\)'
+        $r.Output | Should -Match 'Skill delivery: central-v1\. Central availability \(local record, claude and codex-skills\): agent-documentation'
+        $backups = Get-E6Backups $dir
+        $backups.Count | Should -Be 1
+        foreach ($d in '.agents/skills', '.claude/skills') {
+            Test-Path -LiteralPath (Join-Path $backups[0].FullName "$d/work/SKILL.md") -PathType Leaf | Should -BeTrue
+            foreach ($id in $E6Core) { (Get-E6Files $dir "$d/$id").Count | Should -Be 0 -Because "$d/$id" }
+        }
+        Get-E6Tree (Join-Path $dir '.agents/skills/my-skill') | Should -Be $mine
+        Get-E6Delivery $dir | Should -BeExactly 'central-v1'
+        @((Read-SwJson (Join-Path $dir '.sw/manifest.json'))['files'].Keys | Where-Object { $_ -match '^\.(agents|claude)/skills/' }) | Should -BeNullOrEmpty
+    }
+
+    It 'A11 edited, extra, nested-link, ownerless-link and unowned same-name copies block, delete nothing and name the blocker' {
+        $dir = New-E6Project a11b; New-E6Central
+        $work = Join-Path $dir '.claude/skills/work/SKILL.md'; $original = [IO.File]::ReadAllBytes($work)
+        $manifestPath = Join-Path $dir '.sw/manifest.json'; $manifest = [IO.File]::ReadAllBytes($manifestPath)
+        $status = Join-Path $dir '.claude/skills/status'; $parked = Join-Path $TestDrive "parked$(New-Id)"
+        $inner = Join-Path $dir '.agents/skills/review/inner'
+        $cases = @(
+            @{ Blocker = '*.claude/skills/work/SKILL.md (changed baseline: differs from its ownership record)*'
+                Do = { Add-Content -LiteralPath $work 'local edit' }; Undo = { [IO.File]::WriteAllBytes($work, $original) } }
+            @{ Blocker = '*.agents/skills/work/notes.md (extra: not in the ownership record)*'
+                Do = { Write-SwFile (Join-Path $dir '.agents/skills/work/notes.md') 'x' }; Undo = { Remove-Item -LiteralPath (Join-Path $dir '.agents/skills/work/notes.md') } }
+            @{ Blocker = '*.agents/skills/review (nested link)*'
+                Do = { New-E6Link $inner (Join-Path $RepoRoot 'project/base/.agents/skills/review') }; Undo = { [IO.Directory]::Delete($inner, $false) } }
+            @{ Blocker = '*.claude/skills/status (linked: ownerless link; left as found)*'
+                Do = { Move-Item -LiteralPath $status -Destination $parked; New-E6Link $status (Join-Path $RepoRoot 'project/base/.agents/skills/status') }
+                Undo = { [IO.Directory]::Delete($status, $false); Move-Item -LiteralPath $parked -Destination $status } }
+            @{ Blocker = '*.agents/skills/handoff/SKILL.md (project-owned skill with the same name; never renamed or overridden)*'
+                Do = { $m = Read-SwJson $manifestPath; foreach ($k in @($m['files'].Keys | Where-Object { $_ -like '.agents/skills/handoff/*' })) { $m['files'].Remove($k) }; Write-SwFile $manifestPath (ConvertTo-SwJson $m) }
+                Undo = { [IO.File]::WriteAllBytes($manifestPath, $manifest) } }
+        )
+        foreach ($case in $cases) {
+            & $case.Do
+            $before = Get-E6Tree $dir
+            { Update-SwProject -Path $dir -SkillDelivery central-v1 -Adopt -Force } | Should -Throw $case.Blocker
+            { Update-SwProject -Path $dir -SkillDelivery central-v1 } | Should -Throw '*-Force and -Adopt cannot bypass this*'
+            Get-E6Tree $dir | Should -Be $before -Because $case.Blocker
+            (Get-E6Backups $dir).Count | Should -Be 0
+            Get-E6Delivery $dir | Should -BeNullOrEmpty
+            & $case.Undo
+        }
+        # With every blocker resolved, the same project converts.
+        (Invoke-E6Update $dir @{ SkillDelivery = 'central-v1' }).ExitCode | Should -Be 0
+    }
+
+    It 'A12 <Label> keeps its selection, guidance and checks under central-v1' -TestCases @(
+        @{ Label = 'generic'; Profile = 'generic'; Capabilities = @(); Extra = @(); Kept = @() }
+        @{ Label = 'research'; Profile = 'research'; Capabilities = @('research'); Extra = @('research'); Kept = @() }
+        @{ Label = 'unreal'; Profile = 'unreal'; Capabilities = @(); Extra = @(); Kept = @('unreal-validation') }
+    ) {
+        param($Label, $Profile, $Capabilities, $Extra, $Kept)
+        $splat = if ($Capabilities.Count) { @{ Capabilities = $Capabilities } } else { @{} }
+        $dir = New-E6Project "a12$Label" -Profile $Profile @splat
+        $ids = @(Get-ChildItem -LiteralPath (Join-Path $dir '.agents/skills') -Directory | ForEach-Object Name | Where-Object { -not (Test-SwIn $_ $Kept) } | Sort-Object)
+        $ids | Should -Be @(@($E6Core) + @($Extra) | Sort-Object)
+        New-E6Central -Ids $ids
+        $guidance = (Get-FileHash -LiteralPath (Join-Path $dir 'AGENTS.md')).Hash
+        $selection = ConvertTo-SwJson (Read-SwJson (Join-Path $dir '.sw/profile.json'))['effectiveSelection']
+        $r = Invoke-E6Update $dir @{ SkillDelivery = 'central-v1' }
+        $r.ExitCode | Should -Be 0 -Because $r.Output
+        foreach ($d in '.agents/skills', '.claude/skills') {
+            foreach ($id in $ids) { (Get-E6Files $dir "$d/$id").Count | Should -Be 0 -Because "$d/$id" }
+            foreach ($k in $Kept) { Test-Path -LiteralPath (Join-Path $dir "$d/$k/SKILL.md") -PathType Leaf | Should -BeTrue -Because "$d/$k" }
+        }
+        (Get-FileHash -LiteralPath (Join-Path $dir 'AGENTS.md')).Hash | Should -Be $guidance
+        ConvertTo-SwJson (Read-SwJson (Join-Path $dir '.sw/profile.json'))['effectiveSelection'] | Should -Be $selection
+        $v = Test-SwValidate $dir
+        $v.ExitCode | Should -Be 0 -Because ($v.Output -join "`n")
+    }
+
+    It 'A12 a legacy project keeps its skills on update and is refused with a -SelectionV1 instruction' {
+        $dir = New-SwProject "legacy$(New-Id)" -Legacy
+        $before = Get-E6Tree $dir
+        foreach ($mode in 'central-v1', 'project-copy') {
+            { Update-SwProject -Path $dir -SkillDelivery $mode } | Should -Throw '*legacy project*-SelectionV1 first*Nothing was written*'
+        }
+        Get-E6Tree $dir | Should -Be $before
+        Update-SwProject -Path $dir | Out-Null
+        $global:LASTEXITCODE | Should -Be 0
+        foreach ($d in '.agents/skills', '.claude/skills') { foreach ($id in $E6Core) { Test-Path -LiteralPath (Join-Path $dir "$d/$id/SKILL.md") -PathType Leaf | Should -BeTrue -Because "$d/$id" } }
+        Get-E6Delivery $dir | Should -BeNullOrEmpty
+    }
+
+    It 'A12 validate passes a correct central-v1 project and flags stray copies or missing availability' {
+        $product = New-E6Product; $dir = New-E6Project a12v; New-E6Central -ProductRoot $product
+        (Invoke-E6Update $dir @{ SkillDelivery = 'central-v1' }).ExitCode | Should -Be 0
+        $v = Test-SwValidate $dir; $v.ExitCode | Should -Be 0 -Because ($v.Output -join "`n")
+        Write-SwFile (Join-Path $dir '.claude/skills/work/SKILL.md') 'stray'
+        $v = Test-SwValidate $dir; $v.ExitCode | Should -Not -Be 0
+        ($v.Output -join "`n") | Should -Match 'Stray kit copy retained in central-v1: \.claude/skills/work/ \(duplicate risk'
+        Remove-Item -LiteralPath (Join-Path $dir '.claude/skills/work') -Recurse -Force
+        $link = Join-Path $global:SwCentralHome '.agents/skills/work'
+        [IO.Directory]::Delete($link, $false)
+        $v = Test-SwValidate $dir; $v.ExitCode | Should -Not -Be 0
+        ($v.Output -join "`n") | Should -Match 'central link missing: work'
+        New-E6Link $link (Join-Path $product 'project/base/.agents/skills/work')
+        $source = Join-Path $product 'project/base/.agents/skills/review/SKILL.md'; $bytes = [IO.File]::ReadAllBytes($source)
+        Remove-Item -LiteralPath $source
+        $v = Test-SwValidate $dir; $v.ExitCode | Should -Not -Be 0
+        ($v.Output -join "`n") | Should -Match 'central source missing: review'
+        [IO.File]::WriteAllBytes($source, $bytes)
+        Remove-Item -LiteralPath (Join-Path $global:SwCentralHome '.sw/global.json')
+        $v = Test-SwValidate $dir; $v.ExitCode | Should -Not -Be 0
+        ($v.Output -join "`n") | Should -Match 'central prerequisites missing: no valid central delivery record'
+    }
+
+    It 'A12 project-copy parity: an explicit project-copy on a project-copy project changes nothing' {
+        $dir = New-E6Project par
+        Update-SwProject -Path $dir | Out-Null
+        $before = Get-E6Tree $dir
+        $r = Invoke-E6Update $dir @{ SkillDelivery = 'project-copy' }
+        $r.ExitCode | Should -Be 0 -Because $r.Output
+        $r.Output | Should -Match 'Skill delivery: project-copy; kit skill copies are generated'
+        Get-E6Tree $dir | Should -Be $before
+        Get-E6Delivery $dir | Should -BeNullOrEmpty
+    }
+
+    It 'transitions: central-v1 to central-v1 is a no-op and a case variant is refused' {
+        $dir = New-E6Project tr; New-E6Central
+        (Invoke-E6Update $dir @{ SkillDelivery = 'central-v1' }).ExitCode | Should -Be 0
+        $before = Get-E6Tree $dir
+        $r = Invoke-E6Update $dir @{ SkillDelivery = 'central-v1' }
+        $r.ExitCode | Should -Be 0 -Because $r.Output
+        $r.Output | Should -Match 'Skill delivery: central-v1\. Central availability'
+        Get-E6Tree $dir | Should -Be $before
+        { Update-SwProject -Path $dir -SkillDelivery 'Project-Copy' } | Should -Throw '*exact case*'
+        Get-E6Tree $dir | Should -Be $before
+    }
+
+    It 'return path: project-copy restores the kit copies and discloses the duplicate risk' {
+        $dir = New-E6Project ret; New-E6Central
+        (Invoke-E6Update $dir @{ SkillDelivery = 'central-v1' }).ExitCode | Should -Be 0
+        $r = Invoke-E6Update $dir @{ SkillDelivery = 'project-copy' }
+        $r.ExitCode | Should -Be 0 -Because $r.Output
+        foreach ($d in '.agents/skills', '.claude/skills') { foreach ($id in $E6Core) { Test-Path -LiteralPath (Join-Path $dir "$d/$id/SKILL.md") -PathType Leaf | Should -BeTrue -Because "$d/$id" } }
+        $r.Output | Should -Match 'duplicate risk: work is also linked centrally'
+        $r.Output | Should -Not -Match 'Central availability'
+        Get-E6Delivery $dir | Should -BeExactly 'project-copy'
+        $v = Test-SwValidate $dir; $v.ExitCode | Should -Be 0 -Because ($v.Output -join "`n")
+    }
+
+    It 'return path refuses a collision with a project-owned entry' {
+        $dir = New-E6Project col; New-E6Central
+        (Invoke-E6Update $dir @{ SkillDelivery = 'central-v1' }).ExitCode | Should -Be 0
+        Write-SwFile (Join-Path $dir '.agents/skills/work/SKILL.md') "---`nname: work`ndescription: Mine.`n---`n"
+        $before = Get-E6Tree $dir
+        { Update-SwProject -Path $dir -SkillDelivery project-copy -Adopt -Force } | Should -Throw '*.agents/skills/work/SKILL.md (collision: project-owned entry*'
+        Get-E6Tree $dir | Should -Be $before
+        Get-E6Delivery $dir | Should -BeExactly 'central-v1'
+    }
+
+    It 'kit checkout: only the root generated copies convert; project/ stays intact' {
+        $dir = New-E6Project kit
+        Copy-Item -LiteralPath (Join-Path $RepoRoot 'project') -Destination $dir -Recurse
+        $kit = Get-E6Tree (Join-Path $dir 'project')
+        New-E6Central
+        (Invoke-E6Update $dir @{ SkillDelivery = 'central-v1' }).ExitCode | Should -Be 0
+        Get-E6Tree (Join-Path $dir 'project') | Should -Be $kit
+        foreach ($d in '.agents/skills', '.claude/skills') { foreach ($id in $E6Core) { (Get-E6Files $dir "$d/$id").Count | Should -Be 0 -Because "$d/$id" } }
+    }
+
+    It 'partial: an interruption exits nonzero, claims nothing, and a re-preview names the next safe step' {
+        $dir = New-E6Project part; New-E6Central
+        $global:E6Removes = 0; $global:E6Interrupt = $true
+        Mock -ModuleName Sw.Kit Remove-Item { if ($global:E6Interrupt -and ++$global:E6Removes -ge 2) { throw 'interrupted' }; Microsoft.PowerShell.Management\Remove-Item -LiteralPath $LiteralPath -Force -Confirm:$false } -ParameterFilter { "$LiteralPath" -match 'skills' }
+        $r = Invoke-E6Update $dir @{ SkillDelivery = 'central-v1' }
+        $r.ExitCode | Should -Be 1 -Because $r.Output
+        $r.Output | Should -Match 'PARTIAL: skill delivery change interrupted \(interrupted\); configuration and ownership record were not written, so no central availability is claimed'
+        $r.Output | Should -Match "Next safe step: update '.+' -SkillDelivery central-v1 -WhatIf, then apply"
+        $r.Output | Should -Not -Match 'Central availability \('
+        Get-E6Delivery $dir | Should -BeNullOrEmpty
+        $r = Invoke-E6Update $dir @{ SkillDelivery = 'central-v1'; WhatIf = $true }
+        $r.ExitCode | Should -Be 0 -Because $r.Output
+        $r.Output | Should -Match 'missing copy: \.(agents|claude)/skills/[^ ]+ \(removed before the ownership record was committed'
+        $r.Output | Should -Match 'Next safe step: re-run without -WhatIf to apply'
+        $global:E6Interrupt = $false
+        $r = Invoke-E6Update $dir @{ SkillDelivery = 'central-v1' }
+        $r.ExitCode | Should -Be 0 -Because $r.Output
+        Get-E6Delivery $dir | Should -BeExactly 'central-v1'
+    }
+
+    It 'partial: retained copies under central-v1 are flagged by validate and converted by an explicit update' {
+        $dir = New-E6Project keep; New-E6Central
+        $c = Get-SwConfig $dir; $c['skillDelivery'] = 'central-v1'; Write-SwFile (Join-Path $dir '.sw/config.json') (ConvertTo-SwJson $c)
+        $v = Test-SwValidate $dir; $v.ExitCode | Should -Not -Be 0
+        ($v.Output -join "`n") | Should -Match 'Stray kit copy retained in central-v1: \.agents/skills/work/'
+        $r = Invoke-E6Update $dir @{ SkillDelivery = 'central-v1' }
+        $r.ExitCode | Should -Be 0 -Because $r.Output
+        $r.Output | Should -Match 'converted copy: \.claude/skills/work/SKILL\.md'
+        (Get-E6Backups $dir).Count | Should -Be 1
+        $v = Test-SwValidate $dir; $v.ExitCode | Should -Be 0 -Because ($v.Output -join "`n")
+    }
+
+    It 'partial: an ownerless central link refuses with its own diagnostic and changes nothing' {
+        $dir = New-E6Project own; New-E6Central -Unrecorded work
+        $before = Get-E6Tree $dir
+        { Update-SwProject -Path $dir -SkillDelivery central-v1 } | Should -Throw '*ownerless central link:*work (no record entry; left as found)*'
+        Get-E6Tree $dir | Should -Be $before
+    }
+
+    It 'review: a repair of retained copies under central-v1 runs the central preflight and refuses with no writes' {
+        $dir = New-E6Project rep
+        $c = Get-SwConfig $dir; $c['skillDelivery'] = 'central-v1'; Write-SwFile (Join-Path $dir '.sw/config.json') (ConvertTo-SwJson $c)
+        $before = Get-E6Tree $dir
+        { Update-SwProject -Path $dir -SkillDelivery central-v1 } | Should -Throw '*central prerequisites missing*'
+        Get-E6Tree $dir | Should -Be $before
+        { Update-SwProject -Path $dir } | Should -Throw '*central prerequisites missing*'
+        Get-E6Tree $dir | Should -Be $before
+    }
+
+    It 'review: a product source behind a redirected ancestor junction refuses' {
+        $dir = New-E6Project redir; $product = New-E6Product; New-E6Central -ProductRoot $product
+        $skills = Join-Path $product 'project/base/.agents/skills'; $outside = Join-Path $TestDrive "outside$(New-Id)"
+        Move-Item -LiteralPath $skills -Destination $outside
+        New-E6Link $skills $outside
+        $before = Get-E6Tree $dir
+        { Update-SwProject -Path $dir -SkillDelivery central-v1 } | Should -Throw '*central source redirected: *'
+        Get-E6Tree $dir | Should -Be $before
+    }
+
+    It 'review: a personal namesake does not satisfy a selected product skill' {
+        $dir = New-E6Project name; New-E6Central
+        $recordPath = Join-Path $global:SwCentralHome '.sw/global.json'
+        $personal = Join-Path $global:SwCentralHome '.sw/skills/work'
+        New-Item -ItemType Directory -Path (Split-Path $personal -Parent) | Out-Null
+        Copy-Item -LiteralPath (Join-Path $RepoRoot 'project/base/.agents/skills/work') -Destination $personal -Recurse
+        Add-Content -LiteralPath (Join-Path $personal 'SKILL.md') "`nDifferent personal instructions."
+        $leaf = Join-Path $global:SwCentralHome '.agents/skills/work'
+        [IO.Directory]::Delete($leaf, $false); New-E6Link $leaf $personal
+        $r = Read-SwJson $recordPath
+        $h = $r['homes'][(Join-Path $global:SwCentralHome '.agents')]
+        $e = $h['entries']['skills/work']
+        $e['sourceTier'] = 'personal'; $e['sourcePath'] = $personal; $e['normalizedTarget'] = $personal; $e['rawReparseTarget'] = $personal
+        foreach ($s in 'claude', 'codex-skills') { $h['selection'][$s]['productSkills'] = @($h['selection'][$s]['productSkills'] | Where-Object { $_ -ne 'work' }); $h['selection'][$s]['personalSkills'] = @('work') }
+        Write-SwFile $recordPath (ConvertTo-SwJson $r)
+        $before = Get-E6Tree $dir
+        { Update-SwProject -Path $dir -SkillDelivery central-v1 } | Should -Throw '*not the product skill: work*'
+        Get-E6Tree $dir | Should -Be $before
+    }
+
+    It 'review: a configuration write failure after the removals exits nonzero, claims nothing and recovers' {
+        $dir = New-E6Project ro; New-E6Central
+        $config = Join-Path $dir '.sw/config.json'
+        $owned = [ordered]@{}
+        foreach ($id in $script:E6Core) { foreach ($rel in ".agents/skills/$id", ".claude/skills/$id") { foreach ($f in Get-E6Files $dir $rel) { $owned[(Get-SwRelativePath $dir $f.FullName)] = Get-SwByteHash ([IO.File]::ReadAllBytes($f.FullName)) } } }
+        $owned.Count | Should -BeGreaterThan 0
+        $earlier = @((Get-E6Backups $dir).FullName)
+        [IO.File]::SetAttributes($config, [IO.FileAttributes]::ReadOnly)
+        try { $r = Invoke-E6Update $dir @{ SkillDelivery = 'central-v1' } } finally { [IO.File]::SetAttributes($config, [IO.FileAttributes]::Normal) }
+        $r.ExitCode | Should -Be 1 -Because $r.Output
+        $r.Output | Should -Match 'PARTIAL: skill delivery change interrupted \(.+\); the ownership record was committed but configuration was not written, so no central availability is claimed'
+        $r.Output | Should -Not -Match 'Central availability \('
+        Get-E6Delivery $dir | Should -BeNullOrEmpty
+        # The removals happened, their ownership entries were committed, and the backup holds every removed file byte for byte.
+        foreach ($k in $owned.Keys) { Test-Path -LiteralPath (Join-Path $dir $k) | Should -BeFalse -Because $k }
+        $files = (Read-SwJson (Join-Path $dir '.sw/manifest.json'))['files']
+        @($files.Keys | Where-Object { $_ -match "^\.(agents|claude)/skills/($($script:E6Core -join '|'))/" }) | Should -BeNullOrEmpty
+        $backup = @(Get-E6Backups $dir | Where-Object { $_.FullName -notin $earlier })
+        $backup.Count | Should -Be 1
+        foreach ($k in $owned.Keys) { Get-SwByteHash ([IO.File]::ReadAllBytes((Join-Path $backup[0].FullName $k))) | Should -Be $owned[$k] -Because $k }
+        $r = Invoke-E6Update $dir @{ SkillDelivery = 'central-v1'; WhatIf = $true }
+        $r.ExitCode | Should -Be 0 -Because $r.Output
+        $r.Output | Should -Match 'Next safe step: re-run without -WhatIf to apply'
+        $r = Invoke-E6Update $dir @{ SkillDelivery = 'central-v1' }
+        $r.ExitCode | Should -Be 0 -Because $r.Output
+        $r.Output | Should -Match 'Skill delivery: central-v1\. Central availability'
+        Get-E6Delivery $dir | Should -BeExactly 'central-v1'
+    }
+
+    It 'review 2: declining <Label> during a delivery transition writes nothing' -ForEach @(
+        @{ Label = 'an ordinary generated-file update'; Case = 'update'; Deny = 'update.*\.sw/onboarding\.md'; Options = @{ SkillDelivery = 'central-v1' }; Delivery = $null }
+        @{ Label = 'a research deselection removal'; Case = 'deselect'; Deny = '\.agents/skills/research/SKILL\.md'; Options = @{ SkillDelivery = 'central-v1'; Capabilities = '' }; Delivery = $null }
+        @{ Label = 'one return-path restore'; Case = 'return'; Deny = '\.claude/skills/work/SKILL\.md'; Options = @{ SkillDelivery = 'project-copy' }; Delivery = 'central-v1' }
+    ) {
+        $dir = if ($Case -eq 'deselect') { New-E6Project dec -Capabilities research } else { New-E6Project dec }
+        New-E6Central
+        if ($Case -eq 'update') {
+            # A stale owned generated file, so the transition also plans an ordinary update.
+            Write-SwFile (Join-Path $dir '.sw/onboarding.md') "old onboarding`n"
+            $m = Read-SwJson (Join-Path $dir '.sw/manifest.json'); $m['files']['.sw/onboarding.md'] = Get-SwHash "old onboarding`n"
+            Write-SwFile (Join-Path $dir '.sw/manifest.json') (ConvertTo-SwJson $m)
+        }
+        if ($Case -eq 'return') { $r = Invoke-E6Update $dir @{ SkillDelivery = 'central-v1' }; $r.ExitCode | Should -Be 0 -Because $r.Output }
+        $before = Get-E6Tree $dir; $backups = (Get-E6Backups $dir).Count
+        $r = Invoke-E6Declined $dir $Deny $Options
+        (Get-E6Backups $dir).Count | Should -Be $backups
+        Get-E6Tree $dir | Should -Be $before
+        Get-E6Delivery $dir | Should -Be $Delivery
+        $r.ExitCode | Should -Be 1 -Because $r.Output
+        $r.Denied | Should -Be 1
+        $r.Output | Should -Match 'PARTIAL: skill delivery change declined; nothing was written'
+        $r.Output | Should -Not -Match 'converted copy|restored copy'
+    }
+
+    It 'review 3: an interrupted compound transition leaves profile.json, config and manifest unchanged' {
+        $dir = New-E6Project cmp -Capabilities research; New-E6Central
+        $state = { foreach ($f in 'profile.json', 'config.json', 'manifest.json') { Get-SwByteHash ([IO.File]::ReadAllBytes((Join-Path $dir ".sw/$f"))) } }
+        $before = & $state
+        Test-Path -LiteralPath (Join-Path $dir '.agents/skills/research/SKILL.md') | Should -BeTrue
+        Mock -ModuleName Sw.Kit Remove-Item { throw 'interrupted' } -ParameterFilter { "$LiteralPath" -match 'skills' }
+        $r = Invoke-E6Update $dir @{ SkillDelivery = 'central-v1'; Capabilities = '' }
+        $r.ExitCode | Should -Be 1 -Because $r.Output
+        $r.Output | Should -Match 'PARTIAL: skill delivery change interrupted \(interrupted\)'
+        & $state | Should -Be $before
+        Test-Path -LiteralPath (Join-Path $dir '.agents/skills/research/SKILL.md') | Should -BeTrue
+        Get-E6Delivery $dir | Should -BeNullOrEmpty
+    }
+
+    It 'review 4: a removal made stale at the consent prompt leaves profile.json, AGENTS.md, config and manifest unchanged' {
+        $dir = New-E6Project stl -Capabilities research; New-E6Central
+        $state = { foreach ($f in '.sw/profile.json', 'AGENTS.md', '.sw/config.json', '.sw/manifest.json') { Get-SwByteHash ([IO.File]::ReadAllBytes((Join-Path $dir $f))) } }
+        $before = & $state
+        $skill = Join-Path $dir '.agents/skills/research/SKILL.md'
+        $r = Invoke-E6Declined $dir '(?!)' @{ SkillDelivery = 'central-v1'; Capabilities = '' } 'remove.*\.agents/skills/research/SKILL\.md' $skill "`nlocal edit`n"
+        $r.Edited | Should -Be 1
+        $r.ExitCode | Should -Be 1 -Because $r.Output
+        $r.Output | Should -Match 'PARTIAL: skill delivery change incomplete; 1 effect\(s\) did not complete.*research/SKILL\.md'
+        & $state | Should -Be $before
+        [IO.File]::ReadAllText($skill) | Should -Match 'local edit'
+        Get-E6Delivery $dir | Should -BeNullOrEmpty
+    }
+    It 'review 5: <Label> made stale at its consent prompt holds every managed block and the profile' -ForEach @(
+        @{ Label = 'the profile'; EditOn = 'update.*\.sw/profile\.json'; Edited = '.sw/profile.json'; EditText = ' '; Prepare = $null }
+        @{ Label = 'a later managed block'; EditOn = 'set managed block.*\.gitignore'; Edited = '.gitignore'; EditText = "`nmine`n"; Prepare = "local-only`n" }
+    ) {
+        $dir = New-E6Project mta -Capabilities research; New-E6Central
+        # Without its managed block, .gitignore is set after AGENTS.md, so a stale .gitignore follows a pending AGENTS.md write.
+        if ($Prepare) { Write-SwFile (Join-Path $dir $Edited) $Prepare }
+        $files = @('.sw/profile.json', 'AGENTS.md', '.gitignore', '.sw/config.json', '.sw/manifest.json')
+        $state = { foreach ($f in $files) { if (-not (Test-SwSame $f $Edited)) { Get-SwByteHash ([IO.File]::ReadAllBytes((Join-Path $dir $f))) } } }
+        $before = & $state
+        $editedPath = Join-Path $dir $Edited
+        $editedBefore = [IO.File]::ReadAllText($editedPath)
+        $r = Invoke-E6Declined $dir '(?!)' @{ SkillDelivery = 'central-v1'; Capabilities = '' } $EditOn $editedPath $EditText
+        $r.Edited | Should -Be 1
+        $r.ExitCode | Should -Be 1 -Because $r.Output
+        $r.Output | Should -Match "PARTIAL: skill delivery change incomplete; 1 effect\(s\) did not complete and were left as found \($([regex]::Escape($Edited))\), so the managed blocks, profile, ownership record and configuration were not written"
+        & $state | Should -Be $before
+        [IO.File]::ReadAllText($editedPath) | Should -BeExactly ($editedBefore + $EditText)
+        Get-E6Delivery $dir | Should -BeNullOrEmpty
+    }
+
+    It 'review 7: a return interrupted at the ownership record refuses its restored copies until they are removed, then recovers' {
+        $dir = New-E6Project rro; New-E6Central
+        (Invoke-E6Update $dir @{ SkillDelivery = 'central-v1' }).ExitCode | Should -Be 0
+        $manifestPath = Join-Path $dir '.sw/manifest.json'
+        $recorded = Get-SwByteHash ([IO.File]::ReadAllBytes($manifestPath))
+        [IO.File]::SetAttributes($manifestPath, [IO.FileAttributes]::ReadOnly)
+        try { $r = Invoke-E6Update $dir @{ SkillDelivery = 'project-copy' } } finally { [IO.File]::SetAttributes($manifestPath, [IO.FileAttributes]::Normal) }
+        $r.ExitCode | Should -Be 1 -Because $r.Output
+        $r.Output | Should -Match 'PARTIAL: skill delivery change interrupted.*remove those skill directories yourself and re-run'
+        Get-E6Delivery $dir | Should -BeExactly 'central-v1'
+        Get-SwByteHash ([IO.File]::ReadAllBytes($manifestPath)) | Should -Be $recorded
+        Test-Path -LiteralPath (Join-Path $dir '.claude/skills/work/SKILL.md') | Should -BeTrue
+        # The restored copies are unrecorded, so the retry refuses them as collisions and names the recovery.
+        $before = Get-E6Tree $dir
+        $e = { Update-SwProject -Path $dir -SkillDelivery project-copy -WhatIf } | Should -Throw -PassThru
+        $e.Exception.Message | Should -Match '\.claude/skills/work/SKILL\.md \(collision: project-owned entry, identical to the kit copy: if an earlier return to project-copy was interrupted, remove \.claude/skills/work yourself and re-run; otherwise it is project-owned'
+        $e.Exception.Message | Should -Match '\.agents/skills/review/SKILL\.md \(collision: project-owned entry, identical to the kit copy: if an earlier return to project-copy was interrupted, remove \.agents/skills/review yourself'
+        Get-E6Tree $dir | Should -Be $before
+        foreach ($d in '.agents/skills', '.claude/skills') { foreach ($id in $E6Core) { Remove-Item -LiteralPath (Join-Path $dir "$d/$id") -Recurse -Force } }
+        $r = Invoke-E6Update $dir @{ SkillDelivery = 'project-copy'; WhatIf = $true }
+        $r.ExitCode | Should -Be 0 -Because $r.Output
+        $r.Output | Should -Not -Match 'collision'
+        $r = Invoke-E6Update $dir @{ SkillDelivery = 'project-copy' }
+        $r.ExitCode | Should -Be 0 -Because $r.Output
+        Get-E6Delivery $dir | Should -BeExactly 'project-copy'
+        $files = (Read-SwJson $manifestPath)['files']
+        foreach ($d in '.agents/skills', '.claude/skills') { foreach ($id in $E6Core) { $files.Contains("$d/$id/SKILL.md") | Should -BeTrue -Because "$d/$id" } }
+        $v = Test-SwValidate $dir; $v.ExitCode | Should -Be 0 -Because ($v.Output -join "`n")
+    }
+
+    It 'review 7: an independently created copy identical to the kit output is never claimed on a return' {
+        $dir = New-E6Project rid; New-E6Central
+        $skill = Join-Path $dir '.agents/skills/work/SKILL.md'
+        $bytes = [IO.File]::ReadAllBytes($skill)
+        (Invoke-E6Update $dir @{ SkillDelivery = 'central-v1' }).ExitCode | Should -Be 0
+        Test-Path -LiteralPath $skill | Should -BeFalse
+        New-Item -ItemType Directory -Path (Split-Path $skill -Parent) -Force | Out-Null
+        [IO.File]::WriteAllBytes($skill, $bytes)
+        $before = Get-E6Tree $dir
+        $e = { Update-SwProject -Path $dir -SkillDelivery project-copy } | Should -Throw -PassThru
+        $e.Exception.Message | Should -Match 'Skill delivery change blocked; nothing was written'
+        $e.Exception.Message | Should -Match '\.agents/skills/work/SKILL\.md \(collision: project-owned entry, identical to the kit copy: if an earlier return to project-copy was interrupted, remove \.agents/skills/work yourself and re-run; otherwise it is project-owned'
+        Get-E6Tree $dir | Should -Be $before
+        Get-E6Delivery $dir | Should -BeExactly 'central-v1'
+        (Read-SwJson (Join-Path $dir '.sw/manifest.json'))['files'].Contains('.agents/skills/work/SKILL.md') | Should -BeFalse
+    }
+
+    It 'review 5: an unrecorded copy that differs by any byte from the generator output refuses without the removal advice' {
+        $dir = New-E6Project rrb; New-E6Central
+        (Invoke-E6Update $dir @{ SkillDelivery = 'central-v1' }).ExitCode | Should -Be 0
+        $manifestPath = Join-Path $dir '.sw/manifest.json'
+        [IO.File]::SetAttributes($manifestPath, [IO.FileAttributes]::ReadOnly)
+        try { $r = Invoke-E6Update $dir @{ SkillDelivery = 'project-copy' } } finally { [IO.File]::SetAttributes($manifestPath, [IO.FileAttributes]::Normal) }
+        $r.ExitCode | Should -Be 1 -Because $r.Output
+        # Line endings alone: the normalized text hash still matches, the bytes do not.
+        $skill = Join-Path $dir '.claude/skills/work/SKILL.md'
+        [IO.File]::WriteAllText($skill, [IO.File]::ReadAllText($skill).Replace("`n", "`r`n"))
+        $before = Get-E6Tree $dir
+        $e = { Update-SwProject -Path $dir -SkillDelivery project-copy -WhatIf } | Should -Throw -PassThru
+        $e.Exception.Message | Should -Match '\.claude/skills/work/SKILL\.md \(collision: project-owned entry; never replaced'
+        # A skill directory holding any differing file is never offered for removal.
+        $e.Exception.Message | Should -Not -Match 'remove \.claude/skills/work yourself'
+        $e.Exception.Message | Should -Match 'remove \.agents/skills/work yourself'
+        { Update-SwProject -Path $dir -SkillDelivery project-copy } | Should -Throw '*collision: project-owned entry*'
+        Get-E6Tree $dir | Should -Be $before
+        Get-E6Delivery $dir | Should -BeExactly 'central-v1'
+    }
+
+    It 'review 7: a delivery change with <Label> blocks before any effect' -ForEach @(
+        @{ Label = 'a profile edited while the kit changes it'; Edited = '.sw/profile.json'; Profile = 'research'; Options = @{ SkillDelivery = 'central-v1'; Capabilities = '' } }
+        @{ Label = 'a locally edited profile'; Edited = '.sw/profile.json'; Profile = $null; Options = @{ SkillDelivery = 'central-v1' } }
+        @{ Label = 'a locally edited selection catalogue'; Edited = '.sw/selection.json'; Profile = $null; Options = @{ SkillDelivery = 'central-v1' } }
+    ) {
+        $dir = if ($Profile) { New-E6Project pfb -Capabilities $Profile } else { New-E6Project pfb }
+        New-E6Central
+        [IO.File]::AppendAllText((Join-Path $dir $Edited), ' ')
+        $before = Get-E6Tree $dir
+        $e = { Update-SwProject -Path $dir @Options } | Should -Throw -PassThru
+        $e.Exception.Message | Should -Match "Skill delivery change blocked; nothing was written.*$([regex]::Escape($Edited))"
+        Get-E6Tree $dir | Should -Be $before
+        Get-E6Delivery $dir | Should -BeNullOrEmpty
+        (Get-E6Backups $dir).Count | Should -Be 0
+    }
+
+    It 'review 5: a conversion interrupted at the ownership record recovers through its preview and apply' {
+        $dir = New-E6Project fro; New-E6Central
+        $manifestPath = Join-Path $dir '.sw/manifest.json'
+        [IO.File]::SetAttributes($manifestPath, [IO.FileAttributes]::ReadOnly)
+        try { $r = Invoke-E6Update $dir @{ SkillDelivery = 'central-v1' } } finally { [IO.File]::SetAttributes($manifestPath, [IO.FileAttributes]::Normal) }
+        $r.ExitCode | Should -Be 1 -Because $r.Output
+        Get-E6Delivery $dir | Should -BeNullOrEmpty
+        (Get-E6Files $dir '.claude/skills/work').Count | Should -Be 0
+        # The old record still lists the removed copies; they are missing, never collisions, so the retry completes.
+        $r = Invoke-E6Update $dir @{ SkillDelivery = 'central-v1'; WhatIf = $true }
+        $r.ExitCode | Should -Be 0 -Because $r.Output
+        $r.Output | Should -Match 'missing copy: \.(agents|claude)/skills/'
+        $r = Invoke-E6Update $dir @{ SkillDelivery = 'central-v1' }
+        $r.ExitCode | Should -Be 0 -Because $r.Output
+        Get-E6Delivery $dir | Should -BeExactly 'central-v1'
+    }
+
+
+    It 'review 2: a same-mode repair -WhatIf reports retained copies as a preview and the next safe step' {
+        $dir = New-E6Project rwi; New-E6Central
+        $c = Get-SwConfig $dir; $c['skillDelivery'] = 'central-v1'; Write-SwFile (Join-Path $dir '.sw/config.json') (ConvertTo-SwJson $c)
+        $before = Get-E6Tree $dir
+        $r = Invoke-E6Update $dir @{ SkillDelivery = 'central-v1'; WhatIf = $true }
+        $r.ExitCode | Should -Be 0 -Because $r.Output
+        $r.Output | Should -Match 'retained copy: \.claude/skills/work/SKILL\.md \(owned and unchanged; would be backed up under \.sw/backup/ and removed on apply\)'
+        $r.Output | Should -Not -Match 'converted copy|backed up under \.sw/backup/ before removal'
+        $r.Output | Should -Not -Match 'Central availability \('
+        $r.Output | Should -Match 'Next safe step: re-run without -WhatIf to apply'
+        Get-E6Tree $dir | Should -Be $before
+        (Get-E6Backups $dir).Count | Should -Be 0
+    }
+
+    It 'review 2: a central leaf that is a link but not a junction refuses (mocked symbolic link; creating one needs privilege)' {
+        $dir = New-E6Project sym; New-E6Central
+        $global:E6Source = Join-Path $RepoRoot 'project/base/.agents/skills/work'
+        Mock -ModuleName Sw.Project Get-Item { [pscustomobject]@{ Attributes = [IO.FileAttributes]'Directory, ReparsePoint'; Target = @($global:E6Source); LinkType = 'SymbolicLink' } } -ParameterFilter { "$LiteralPath".StartsWith($global:SwCentralHome) -and "$LiteralPath" -match '[\\/]skills[\\/]work$' }
+        $before = Get-E6Tree $dir
+        { Update-SwProject -Path $dir -SkillDelivery central-v1 } | Should -Throw '*central link changed: work (*is not a junction)*'
+        Get-E6Tree $dir | Should -Be $before
+    }
+
+    It 'review 2: a product SKILL.md that is a link refuses (mocked; a file cannot be a junction and a symbolic link needs privilege)' {
+        $dir = New-E6Project skl; $product = New-E6Product; New-E6Central -ProductRoot $product
+        $global:E6SkillFile = Join-Path $product 'project/base/.agents/skills/work/SKILL.md'
+        Mock -ModuleName Sw.Project Assert-SwPhysicalPath { throw "Participating path traverses a link or junction: $Path" } -ParameterFilter { "$Path" -and [IO.Path]::GetFullPath("$Path") -eq [IO.Path]::GetFullPath($global:E6SkillFile) }
+        $before = Get-E6Tree $dir
+        { Update-SwProject -Path $dir -SkillDelivery central-v1 } | Should -Throw '*central source redirected: work*SKILL.md*'
+        Get-E6Tree $dir | Should -Be $before
+    }
+
+    It 'review 2: a product agents/openai.yaml behind a junction refuses (real junction)' {
+        $dir = New-E6Project yml; $product = New-E6Product; New-E6Central -ProductRoot $product
+        $agents = Join-Path $product 'project/base/.agents/skills/work/agents'; $outside = Join-Path $TestDrive "agents$(New-Id)"
+        Move-Item -LiteralPath $agents -Destination $outside
+        New-E6Link $agents $outside
+        $before = Get-E6Tree $dir
+        { Update-SwProject -Path $dir -SkillDelivery central-v1 } | Should -Throw '*central source redirected: work*'
+        Get-E6Tree $dir | Should -Be $before
     }
 }
 

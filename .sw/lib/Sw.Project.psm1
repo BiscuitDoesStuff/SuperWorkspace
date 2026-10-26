@@ -331,6 +331,74 @@ function Get-SwGitPolicy([Collections.IDictionary]$Config) {
     $Config['gitPolicy']
 }
 
+function Get-SwSkillDelivery([Collections.IDictionary]$Config) {
+    # Physical delivery of the selected kit skills only; logical selection is unchanged. Missing keeps project copies.
+    if (-not $Config.Contains('skillDelivery')) { return 'project-copy' }
+    $mode = $Config['skillDelivery']
+    if ($mode -isnot [string] -or -not (Test-SwIn $mode ('project-copy', 'central-v1'))) { throw "Config 'skillDelivery' must be 'project-copy' or 'central-v1'." }
+    $mode
+}
+
+function Get-SwCentralSkillIds($Selection, $ProfileData) {
+    # central-v1 covers the selected product skills only; profile skills have no central source and stay project copies.
+    @($Selection.skills | Where-Object { -not (Test-SwIn $_ @($ProfileData['skills'])) })
+}
+
+function Get-SwProfileHome { [Environment]::GetFolderPath('UserProfile') }
+
+function Get-SwCentralAvailability([string[]]$Ids, [string]$UserHome) {
+    # Read-only: the installed local central record (schema 2) and the links and sources it names. Never scans
+    # other homes and never installs. Availability is not a claim of which route a native command uses.
+    $recordPath = Join-Path $UserHome '.sw/global.json'
+    $install = "run sw.ps1 global install -Delivery central-v1 -Harness both -Component skills -Skills $($Ids -join ',')"
+    $record = $null
+    if (Test-Path -LiteralPath $recordPath -PathType Leaf) { try { $record = Read-SwJson $recordPath } catch { } }
+    if ($record -isnot [Collections.IDictionary] -or $record['schema'] -ne 2 -or $record['homes'] -isnot [Collections.IDictionary]) {
+        return "central prerequisites missing: no valid central delivery record ($recordPath); $install"
+    }
+    $owners = @{}
+    foreach ($homeDir in $record['homes'].Keys) {
+        $entries = $record['homes'][$homeDir]['entries']
+        if ($entries -isnot [Collections.IDictionary]) { continue }
+        foreach ($id in $Ids) {
+            $leaf = Join-Path $homeDir "skills/$id"
+            $item = Get-Item -LiteralPath $leaf -Force -ErrorAction SilentlyContinue
+            $linked = $item -and ($item.Attributes -band [IO.FileAttributes]::ReparsePoint)
+            $e = $entries["skills/$id"]
+            if ($e -isnot [Collections.IDictionary]) {
+                if ($linked) { "ownerless central link: $leaf (no record entry; left as found)" }
+                continue
+            }
+            if (-not $linked) { "central link missing: $id ($leaf)"; continue }
+            $target = [string]$e['normalizedTarget']
+            if (-not $target -or -not (Test-SwIn ([string]@($item.Target)[0]) @([string]$e['rawReparseTarget']) -IgnoreCase)) { "central link changed: $id ($leaf)"; continue }
+            if (-not (Test-SwSame ([string]$item.LinkType) 'Junction' -IgnoreCase)) { "central link changed: $id ($leaf is not a junction)"; continue }
+            # Only the product source satisfies a selected kit skill; a personal namesake carries other instructions.
+            $expected = if (Test-SwSame $id 'unreal-validation' -IgnoreCase) { 'project/profiles/unreal/files/.agents/skills/unreal-validation' } else { "project/base/.agents/skills/$id" }
+            $productRoot = [string]$record['productRoot']
+            $source = [string]$e['sourcePath']
+            if (-not $productRoot -or -not $source -or -not (Test-SwSame ([string]$e['sourceTier']) 'product') -or
+                -not (Test-SwSame ([IO.Path]::GetFullPath($source)) ([IO.Path]::GetFullPath((Join-Path $productRoot $expected))) -IgnoreCase) -or
+                -not (Test-SwSame ([IO.Path]::GetFullPath($target)) ([IO.Path]::GetFullPath($source)) -IgnoreCase)) { "central source is not the product skill: $id ($target; a personal namesake does not count)"; continue }
+            # The recorded leaf junction is the only link allowed; a redirected ancestor or source path is refused before any source is read.
+            $redirect = try { Assert-SwPhysicalPath (Split-Path $leaf -Parent); Assert-SwPhysicalPath (Join-Path $target 'SKILL.md'); Assert-SwPhysicalPath (Join-Path $target 'agents/openai.yaml'); $null } catch { $_.Exception.Message }
+            if ($redirect) { "central source redirected: $id ($redirect)"; continue }
+            if (-not (Test-Path -LiteralPath (Join-Path $target 'SKILL.md') -PathType Leaf)) { "central source missing: $id ($target)"; continue }
+            if (Test-SwIn $id $script:UserInvoked) {
+                $data = try { Read-SwFrontmatter (Join-Path $target 'SKILL.md') @('name', 'description', 'disable-model-invocation') } catch { @{} }
+                $meta = Join-Path $target 'agents/openai.yaml'
+                $explicit = (Test-Path -LiteralPath $meta -PathType Leaf) -and (Read-SwText $meta) -cmatch '(?m)^policy:[ \t]*\n[ \t]+allow_implicit_invocation:[ \t]*false[ \t]*$'
+                if (-not ((Test-SwSame $data['disable-model-invocation'] 'true') -and $explicit)) { "central invocation metadata missing: $id must stay user-invoked and explicit-only ($target)"; continue }
+            }
+            $owners[$id] = @($owners[$id]) + @($e['scopeOwners']) | Where-Object { $_ }
+        }
+    }
+    foreach ($id in $Ids) {
+        $lacking = @('claude', 'codex-skills' | Where-Object { -not (Test-SwIn $_ @($owners[$id])) })
+        if ($lacking.Count) { "central prerequisites missing: $id not available for $($lacking -join ', '); $install" }
+    }
+}
+
 function Get-SwUtc { [DateTime]::UtcNow.ToString('yyyy-MM-ddTHHmmssZ') }
 
 # Diagnostics touch installed tools only through these two functions, so tests can replace them.
@@ -965,6 +1033,7 @@ function Test-SwProject {
         $Root = Resolve-SwRoot $Path
         $config = Get-SwConfig $Root
         $null = Get-SwGitPolicy $config
+        $delivery = Get-SwSkillDelivery $config
         foreach ($key in 'context7', 'watcherIgnore') { if ($config.Contains($key)) { $warnings += "Retired config key '$key' (OpenCode) is ignored; run sw update to remove it" } }
         $profileData = Read-SwJson (Join-Path $Root '.sw/profile.json')
         # Selection v1 (config opt-in) recomputes the installed set from the catalogue; legacy keeps the all-base contract.
@@ -977,6 +1046,12 @@ function Test-SwProject {
             $known = Get-SwSelectionKnown $catalogue $profileData
             Require (Test-SwSame (ConvertTo-SwJson $profileData['effectiveSelection']) (ConvertTo-SwJson $selection)) '.sw/profile.json effectiveSelection does not match config, profile and .sw/selection.json; run sw update'
         }
+        # central-v1: the selected kit skills come from the local central record, not project copies; project-owned skills stay here.
+        $central = @()
+        if (Test-SwSame $delivery 'central-v1') {
+            if (-not $selection) { throw 'skillDelivery central-v1 needs selection v1; run sw update <path> -SelectionV1' }
+            $central = Get-SwCentralSkillIds $selection $profileData
+        }
         if (Test-Path -LiteralPath (Join-Path $Root '.claude/.sw-generated')) { $warnings += 'Retired local Claude adapter present (.claude/.sw-generated); remove it with the previous kit, which needs PowerShell 7 (pwsh .sw/sw.ps1 claude disable), before sw update' }
         # Per-user files stay untracked and ignored (checked even when absent, so the ignore entry is proven).
         foreach ($rel in '.claude/settings.local.json', '.sw/models.local.md') { Require (Test-SwLocalOnly $Root $rel) "Per-user file must be untracked and git-ignored: $rel" }
@@ -984,7 +1059,7 @@ function Test-SwProject {
         $skills = @{}
         $hygiene = [Collections.Generic.List[string]]::new()
         $skillDir = Join-Path $Root '.agents/skills'
-        if (-not (Test-Path -LiteralPath $skillDir)) { $problems.Add('Missing directory: .agents/skills') }
+        if (-not (Test-Path -LiteralPath $skillDir)) { if (-not $central.Count) { $problems.Add('Missing directory: .agents/skills') } }
         else {
             foreach ($flat in Get-ChildItem -LiteralPath $skillDir -Filter *.md -File -Force) { Require $false "Unsupported flat skill: $($flat.Name)" }
             foreach ($file in @(Get-ChildItem -LiteralPath $skillDir -Recurse -Filter SKILL.md -File -Force)) {
@@ -1005,7 +1080,7 @@ function Test-SwProject {
         # Do not manufacture dependent failures after a parser/layout failure.
         if ($problems.Count) { throw 'Definition validation failed; dependent contract checks were skipped' }
 
-        $requiredSkills = if ($selection) { $selection.skills } else { @($script:Skills) + @($profileData['skills']) }
+        $requiredSkills = @(if ($selection) { $selection.skills | Where-Object { -not (Test-SwIn $_ $central) } } else { @($script:Skills) + @($profileData['skills']) })
         if ($selection) {
             # Known deselected kit skills must be gone; unknown project-owned ones are kept and disclosed, not adopted.
             foreach ($id in $skills.Keys | Sort-Object) {
@@ -1024,7 +1099,7 @@ function Test-SwProject {
             }
         }
         # Claude reads project skills from .claude/skills only: each installed kit skill has a byte-equal copy there.
-        foreach ($name in $skills.Keys | Sort-Object) {
+        foreach ($name in $skills.Keys | Sort-Object | Where-Object { -not (Test-SwIn $_ $central) }) {
             $src = Join-Path $skillDir $name
             foreach ($f in Get-SwPhysicalFiles $src) {
                 $rel = (Get-SwRelativePath $src $f.FullName).Replace('\', '/')
@@ -1034,6 +1109,15 @@ function Test-SwProject {
                 elseif (-not $same) { $warnings += "Project-owned skill without a matching Claude copy: .claude/skills/$name/$rel (Claude threads do not see it)" }
             }
         }
+        foreach ($id in $central) {
+            foreach ($rel in ".agents/skills/$id", ".claude/skills/$id") {
+                if (Test-SwLinkedPath $Root $rel) { Require $false "Ownerless link at $rel in central-v1 (neither a project copy nor the recorded central link; left as found)"; continue }
+                $files = try { @(Get-SwPhysicalFiles (Join-Path $Root $rel)).Count } catch { -1 }
+                # Both routes would be discoverable; which one a native command uses is not asserted.
+                if ($files) { Require $false "Stray kit copy retained in central-v1: $rel/$(if ($files -lt 0) { ' (contains a nested link)' }) (duplicate risk; remove it with update <path> -SkillDelivery central-v1)" }
+            }
+        }
+        if ($central.Count) { foreach ($p in @(Get-SwCentralAvailability $central (Get-SwProfileHome))) { Require $false $p } }
 
         # Claude loads the canonical rules through one import; no rules copy.
         $importFile = Join-Path $Root '.claude/CLAUDE.md'
@@ -1633,7 +1717,7 @@ function Get-SwContext {
     $global:LASTEXITCODE = 0
 }
 
-Export-ModuleMember -Function Resolve-SwRoot, Write-SwFile, Read-SwText, Read-SwJson, ConvertTo-SwJson, Get-SwHash, Get-SwGitPolicy,
+Export-ModuleMember -Function Resolve-SwRoot, Write-SwFile, Get-SwTextBytes, Read-SwText, Read-SwJson, ConvertTo-SwJson, Get-SwHash, Get-SwGitPolicy,
     Get-SwConfig, Read-SwFrontmatter, Test-SwProject, Invoke-SwComms, Add-SwUser, Invoke-SwGitHub, Get-SwUsage, Test-SwLocalOnly,
     Get-SwToolVersion, Get-SwToolProbe, Get-SwGhAuth, Format-SwProbe, Test-SwDoctor, Get-SwCodexTrust,
     Get-SwOperationId, Test-SwContained, New-SwSnapshotDir, Copy-SwNew, Write-SwNewFile, Get-SwByteHash,
@@ -1641,4 +1725,4 @@ Export-ModuleMember -Function Resolve-SwRoot, Write-SwFile, Read-SwText, Read-Sw
     Get-SwClaudeDeny, Get-SwClaudeSettings, Get-SwCodexRules, Get-SwCodexRuleBlocks, Read-SwCodexRules, Test-SwClaudeRule, Test-SwCodexRule, Get-SwHardLimitCases,
     Assert-SwRelativePath, Assert-SwPhysicalPath, Resolve-SwManagedPath, Get-SwPhysicalFiles, Get-SwConfiguredTier,
     Get-SwRelativePath, Test-SwFullyQualified, Invoke-SwNative, ConvertFrom-SwJson,
-    Test-SwSame, Test-SwIn, Get-SwUnique
+    Test-SwSame, Test-SwIn, Get-SwUnique, Get-SwSkillDelivery, Get-SwCentralSkillIds, Get-SwProfileHome, Get-SwCentralAvailability
