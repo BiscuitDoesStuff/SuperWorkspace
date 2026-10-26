@@ -458,6 +458,8 @@ function Sync-SwProject {
     $backupRoot = Join-Path $Root ".sw/backup/$opId"
     # Converting to central-v1 backs up every proven kit copy before the first removal.
     $converting = @(if (Test-SwSame $render.Delivery 'central-v1') { $plan | Where-Object { (Test-SwSame $_.Action 'remove') -and (Test-SwCentralCopy $_.Path $render.Central) } })
+    # Any conversion or repair that removes copies, same-mode included, first proves central delivery.
+    if ($converting.Count) { Assert-SwCentralReady $render.Central (Get-SwUserHome) }
     if (@($plan | Where-Object { Test-SwIn $_.Action 'adopt', 'skip-modified' -IgnoreCase }).Count -or $converting.Count) { Assert-SwPhysicalPath $backupRoot }
     # The same read-only plan guards init before directory creation or git init.
     if ($Preflight) {
@@ -479,6 +481,14 @@ function Sync-SwProject {
             $same = (Test-Path -LiteralPath $t) -and (Test-SwSame (Read-SwText $t) $b.Value)
             $plan.Add([pscustomobject]@{ Path = $b.Key; Action = $(if ($same) { 'same' } else { 'block' }); Hash = $null; Note = $null })
         }
+        return $plan
+    }
+    # All removal consent precedes the first backup or removal; one decline leaves the project untouched.
+    $consented = [Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal)
+    foreach ($p in $converting) {
+        if ($PSCmdlet.ShouldProcess($p.Path, 'remove (dropped from kit)')) { $null = $consented.Add($p.Path); continue }
+        $p.Action = 'declined'; $global:LASTEXITCODE = 1
+        Write-Warning 'PARTIAL: skill delivery removal declined; nothing was written (no backup, removal, ownership record or configuration).'
         return $plan
     }
     foreach ($p in $converting) {
@@ -533,7 +543,7 @@ function Sync-SwProject {
                 }
             }
             'remove' {
-                if ($PSCmdlet.ShouldProcess($p.Path, 'remove (dropped from kit)')) {
+                if ($consented.Contains($p.Path) -or $PSCmdlet.ShouldProcess($p.Path, 'remove (dropped from kit)')) {
                     if (-not (Test-SwConsentFreshness $Root @($p.Path) $observed $p)) { $partial = $true; break }
                     $null = Resolve-SwManagedPath $Root $p.Path; Remove-Item -LiteralPath $target -Force -Confirm:$false; $manifest.files.Remove($p.Path)
                 }
@@ -702,6 +712,13 @@ function Initialize-SwProject {
     Write-Output "Next: fill the project sections of AGENTS.md, then run 'powershell -NoProfile -ExecutionPolicy Bypass -File .sw/sw.ps1 validate'. Models are chosen per thread in T3 Code."
 }
 
+function Assert-SwCentralReady([string[]]$Ids, [string]$UserHome) {
+    # Central prerequisites are checked before any effect; a conversion or repair never relies on links it cannot see.
+    $problems = @(try { $null = Read-SwCentralRecord (Join-Path $UserHome '.sw/global.json') $script:Kit (Join-Path $UserHome '.sw'); Get-SwCentralAvailability $Ids $UserHome }
+        catch { "central prerequisites missing: $($_.Exception.Message)" })
+    if ($problems.Count) { throw "Skill delivery change blocked; nothing was written:`n  $($problems -join "`n  ")" }
+}
+
 function Update-SwProject {
     [CmdletBinding(SupportsShouldProcess)]
     param([Parameter(Position = 0)][string]$Path, [switch]$Adopt, [switch]$Force,
@@ -725,12 +742,7 @@ function Update-SwProject {
     $render = Get-SwRender $config
     $changing = -not (Test-SwSame $render.Delivery $fromDelivery)
     $userHome = if ($deliveryBound -or $changing) { Get-SwUserHome }
-    # Central prerequisites are checked before any effect; a conversion never relies on links it cannot see.
-    if ($changing -and (Test-SwSame $render.Delivery 'central-v1')) {
-        $problems = @(try { $null = Read-SwCentralRecord (Join-Path $userHome '.sw/global.json') $script:Kit (Join-Path $userHome '.sw'); Get-SwCentralAvailability $render.Central $userHome }
-            catch { "central prerequisites missing: $($_.Exception.Message)" })
-        if ($problems.Count) { throw "Skill delivery change blocked; nothing was written:`n  $($problems -join "`n  ")" }
-    }
+    if ($changing -and (Test-SwSame $render.Delivery 'central-v1')) { Assert-SwCentralReady $render.Central $userHome }
     $configChanged = (-not (Test-SwSame (ConvertTo-SwJson $config) $before))
     if ($configChanged -and -not $PSCmdlet.ShouldProcess('.sw/config.json', 'write configuration after completed sync')) {
         if ($WhatIfPreference) {
@@ -745,9 +757,16 @@ function Update-SwProject {
     if ($changing) {
         # Refusals throw here, before the first backup or removal; anything thrown later is an interruption.
         $null = Sync-SwProject -Root $Root -Config $config -Adopt:$Adopt -Force:$Force -Preflight -FromDelivery $fromDelivery
-        try { $plan = Sync-SwProject -Root $Root -Config $config -Adopt:$Adopt -Force:$Force -FromDelivery $fromDelivery }
-        catch {
-            Write-Warning "PARTIAL: skill delivery change interrupted ($($_.Exception.Message)); configuration and ownership record were not written, so no central availability is claimed. Next safe step: update '$Root' -SkillDelivery $($render.Delivery) -WhatIf, then apply."
+        # The mode is recorded last; any failure up to and including that write is an interruption with no central claim.
+        $unwritten = 'configuration and ownership record were not written'
+        try {
+            $plan = Sync-SwProject -Root $Root -Config $config -Adopt:$Adopt -Force:$Force -FromDelivery $fromDelivery
+            if ($global:LASTEXITCODE -eq 0) {
+                $unwritten = 'the ownership record was committed but configuration was not written'
+                Write-SwFile (Resolve-SwManagedPath $Root '.sw/config.json') (ConvertTo-SwJson $config); $configChanged = $false
+            }
+        } catch {
+            Write-Warning "PARTIAL: skill delivery change interrupted ($($_.Exception.Message)); $unwritten, so no central availability is claimed. Next safe step: update '$Root' -SkillDelivery $($render.Delivery) -WhatIf, then apply."
             $global:LASTEXITCODE = 1; return
         }
     } else { $plan = Sync-SwProject -Root $Root -Config $config -Adopt:$Adopt -Force:$Force -FromDelivery $fromDelivery }
