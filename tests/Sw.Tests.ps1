@@ -6094,25 +6094,28 @@ Describe 'E6 project skill delivery migration' {
         $r.Output | Should -Match 'retained copy: \.claude/skills/work/SKILL\.md'
         $r.Output | Should -Match 'Skill delivery preview: project-copy -> central-v1; nothing was written'
         Get-E6Tree $dir | Should -Be $before
-        # Declined consent, answered by an in-memory host in a fresh runspace (no Pester mocks there).
-        $fixtureHost = [SwAuditPromptHost]::new($Host, 'write configuration after completed sync')
-        $space = [Management.Automation.Runspaces.RunspaceFactory]::CreateRunspace($fixtureHost)
-        $space.Open(); $ps = [Management.Automation.PowerShell]::Create(); $ps.Runspace = $space
-        try {
-            $null = $ps.AddScript({
-                param($Lib, $UserHome, $Root)
-                Import-Module (Join-Path $Lib 'Sw.Project.psm1') -Force -DisableNameChecking
-                Import-Module (Join-Path $Lib 'Sw.Kit.psm1') -Force -DisableNameChecking
-                & (Get-Module Sw.Kit) { param($u) $script:SwTestUserHome = $u; function script:Get-SwUserHome { $script:SwTestUserHome } } $UserHome
-                Update-SwProject -Path $Root -SkillDelivery central-v1 -Confirm 3>$null | Out-Null
-                $global:LASTEXITCODE
-            }.ToString()).AddArgument((Join-Path $RepoRoot 'lib')).AddArgument($global:SwCentralHome).AddArgument($dir)
-            $values = @($ps.Invoke())
-            if ($ps.HadErrors) { throw ($ps.Streams.Error -join "`n") }
-            $values[-1] | Should -Be 1
-            $fixtureHost.Denied | Should -Be 1
-        } finally { $ps.Dispose(); $space.Dispose() }
-        Get-E6Tree $dir | Should -Be $before
+        # Declined consent, answered by an in-memory host in a fresh runspace (no Pester mocks there): the first
+        # prompt, and a later removal prompt after the configuration and ownership prompts were accepted.
+        foreach ($deny in 'write configuration after completed sync', '\.claude/skills/work/SKILL\.md') {
+            $fixtureHost = [SwAuditPromptHost]::new($Host, $deny)
+            $space = [Management.Automation.Runspaces.RunspaceFactory]::CreateRunspace($fixtureHost)
+            $space.Open(); $ps = [Management.Automation.PowerShell]::Create(); $ps.Runspace = $space
+            try {
+                $null = $ps.AddScript({
+                    param($Lib, $UserHome, $Root)
+                    Import-Module (Join-Path $Lib 'Sw.Project.psm1') -Force -DisableNameChecking
+                    Import-Module (Join-Path $Lib 'Sw.Kit.psm1') -Force -DisableNameChecking
+                    & (Get-Module Sw.Kit) { param($u) $script:SwTestUserHome = $u; function script:Get-SwUserHome { $script:SwTestUserHome } } $UserHome
+                    Update-SwProject -Path $Root -SkillDelivery central-v1 -Confirm 3>$null | Out-Null
+                    $global:LASTEXITCODE
+                }.ToString()).AddArgument((Join-Path $RepoRoot 'lib')).AddArgument($global:SwCentralHome).AddArgument($dir)
+                $values = @($ps.Invoke())
+                if ($ps.HadErrors) { throw ($ps.Streams.Error -join "`n") }
+                $values[-1] | Should -Be 1 -Because $deny
+                $fixtureHost.Denied | Should -Be 1 -Because $deny
+            } finally { $ps.Dispose(); $space.Dispose() }
+            Get-E6Tree $dir | Should -Be $before -Because $deny
+        }
         foreach ($bad in 'Central-V1', 'central', 'PROJECT-COPY', '') {
             { Update-SwProject -Path $dir -SkillDelivery $bad } | Should -Throw '*exact case*'
         }
@@ -6346,6 +6349,64 @@ Describe 'E6 project skill delivery migration' {
         $before = Get-E6Tree $dir
         { Update-SwProject -Path $dir -SkillDelivery central-v1 } | Should -Throw '*ownerless central link:*work (no record entry; left as found)*'
         Get-E6Tree $dir | Should -Be $before
+    }
+
+    It 'review: a repair of retained copies under central-v1 runs the central preflight and refuses with no writes' {
+        $dir = New-E6Project rep
+        $c = Get-SwConfig $dir; $c['skillDelivery'] = 'central-v1'; Write-SwFile (Join-Path $dir '.sw/config.json') (ConvertTo-SwJson $c)
+        $before = Get-E6Tree $dir
+        { Update-SwProject -Path $dir -SkillDelivery central-v1 } | Should -Throw '*central prerequisites missing*'
+        Get-E6Tree $dir | Should -Be $before
+        { Update-SwProject -Path $dir } | Should -Throw '*central prerequisites missing*'
+        Get-E6Tree $dir | Should -Be $before
+    }
+
+    It 'review: a product source behind a redirected ancestor junction refuses' {
+        $dir = New-E6Project redir; $product = New-E6Product; New-E6Central -ProductRoot $product
+        $skills = Join-Path $product 'project/base/.agents/skills'; $outside = Join-Path $TestDrive "outside$(New-Id)"
+        Move-Item -LiteralPath $skills -Destination $outside
+        New-E6Link $skills $outside
+        $before = Get-E6Tree $dir
+        { Update-SwProject -Path $dir -SkillDelivery central-v1 } | Should -Throw '*central source redirected: *'
+        Get-E6Tree $dir | Should -Be $before
+    }
+
+    It 'review: a personal namesake does not satisfy a selected product skill' {
+        $dir = New-E6Project name; New-E6Central
+        $recordPath = Join-Path $global:SwCentralHome '.sw/global.json'
+        $personal = Join-Path $global:SwCentralHome '.sw/skills/work'
+        New-Item -ItemType Directory -Path (Split-Path $personal -Parent) | Out-Null
+        Copy-Item -LiteralPath (Join-Path $RepoRoot 'project/base/.agents/skills/work') -Destination $personal -Recurse
+        Add-Content -LiteralPath (Join-Path $personal 'SKILL.md') "`nDifferent personal instructions."
+        $leaf = Join-Path $global:SwCentralHome '.agents/skills/work'
+        [IO.Directory]::Delete($leaf, $false); New-E6Link $leaf $personal
+        $r = Read-SwJson $recordPath
+        $h = $r['homes'][(Join-Path $global:SwCentralHome '.agents')]
+        $e = $h['entries']['skills/work']
+        $e['sourceTier'] = 'personal'; $e['sourcePath'] = $personal; $e['normalizedTarget'] = $personal; $e['rawReparseTarget'] = $personal
+        foreach ($s in 'claude', 'codex-skills') { $h['selection'][$s]['productSkills'] = @($h['selection'][$s]['productSkills'] | Where-Object { $_ -ne 'work' }); $h['selection'][$s]['personalSkills'] = @('work') }
+        Write-SwFile $recordPath (ConvertTo-SwJson $r)
+        $before = Get-E6Tree $dir
+        { Update-SwProject -Path $dir -SkillDelivery central-v1 } | Should -Throw '*not the product skill: work*'
+        Get-E6Tree $dir | Should -Be $before
+    }
+
+    It 'review: a configuration write failure after the removals exits nonzero, claims nothing and recovers' {
+        $dir = New-E6Project ro; New-E6Central
+        $config = Join-Path $dir '.sw/config.json'
+        [IO.File]::SetAttributes($config, [IO.FileAttributes]::ReadOnly)
+        try { $r = Invoke-E6Update $dir @{ SkillDelivery = 'central-v1' } } finally { [IO.File]::SetAttributes($config, [IO.FileAttributes]::Normal) }
+        $r.ExitCode | Should -Be 1 -Because $r.Output
+        $r.Output | Should -Match 'PARTIAL: skill delivery change interrupted \(.+\); the ownership record was committed but configuration was not written, so no central availability is claimed'
+        $r.Output | Should -Not -Match 'Central availability \('
+        Get-E6Delivery $dir | Should -BeNullOrEmpty
+        $r = Invoke-E6Update $dir @{ SkillDelivery = 'central-v1'; WhatIf = $true }
+        $r.ExitCode | Should -Be 0 -Because $r.Output
+        $r.Output | Should -Match 'Next safe step: re-run without -WhatIf to apply'
+        $r = Invoke-E6Update $dir @{ SkillDelivery = 'central-v1' }
+        $r.ExitCode | Should -Be 0 -Because $r.Output
+        $r.Output | Should -Match 'Skill delivery: central-v1\. Central availability'
+        Get-E6Delivery $dir | Should -BeExactly 'central-v1'
     }
 }
 
