@@ -513,9 +513,33 @@ function Sync-SwProject {
     }
     $partial = $false
     $manifest = [ordered]@{ kitVersion = $kitVersion; kitCommit = Get-SwKitCommit; files = $original }
-    # In a delivery change or repair the profile is written after every removal, with config and manifest last.
+    # In a delivery change or repair the managed blocks and profile follow every other effect, with config and manifest
+    # last; once any effect did not complete they are held with the ownership record, so nothing claims the new state.
     $order = if ($transition) { @($plan | Where-Object { -not (Test-SwSame $_.Path '.sw/profile.json') }) + @($plan | Where-Object { Test-SwSame $_.Path '.sw/profile.json' }) } else { $plan }
+    # Managed blocks in files the project also owns (content validated above).
+    $agentsNote = $managed.AgentsNote
+    $setBlocks = {
+        foreach ($b in $managed.Blocks.GetEnumerator()) {
+            $t = Join-Path $Root $b.Key
+            $same = (Test-Path -LiteralPath $t) -and (Test-SwSame (Read-SwText $t) $b.Value)
+            $item = [pscustomobject]@{ Path = $b.Key; Action = $(if ($same) { 'same' } else { 'block' }); Hash = $null; Note = $(if (Test-SwSame $b.Key 'AGENTS.md' -IgnoreCase) { $agentsNote } else { $null }) }
+            $plan.Add($item)
+            if (-not $same) {
+                if ($transition -and $partial) { $item.Action = 'held'; continue }
+                if ($consented.Contains("$($b.Key)`nset managed block") -or $PSCmdlet.ShouldProcess($b.Key, 'set managed block')) {
+                    if (-not (Test-SwConsentFreshness $Root @($b.Key) $observed $item)) { $partial = $true; continue }
+                    $null = Resolve-SwManagedPath $Root $b.Key; Write-SwFile $t $b.Value
+                }
+                else { $partial = $true }
+            }
+        }
+    }
+    $blocksSet = $false
     foreach ($p in $order) {
+        if ($transition -and (Test-SwSame $p.Path '.sw/profile.json')) {
+            if (-not $blocksSet) { . $setBlocks; $blocksSet = $true }
+            if ($partial -and (Test-SwIn $p.Action 'add', 'update', 'adopt' -IgnoreCase)) { $p.Action = 'held'; continue }
+        }
         $target = Resolve-SwManagedPath $Root $p.Path
         if ($movedFrom.Contains($p.Path)) {
             $sourceRel = $movedFrom[$p.Path]
@@ -572,25 +596,15 @@ function Sync-SwProject {
         }
     }
 
-    # Managed blocks in files the project also owns (content validated above).
-    $blocks = $managed.Blocks
-    $agentsNote = $managed.AgentsNote
-    foreach ($b in $blocks.GetEnumerator()) {
-        $t = Join-Path $Root $b.Key
-        $same = (Test-Path -LiteralPath $t) -and (Test-SwSame (Read-SwText $t) $b.Value)
-        $item = [pscustomobject]@{ Path = $b.Key; Action = $(if ($same) { 'same' } else { 'block' }); Hash = $null; Note = $(if (Test-SwSame $b.Key 'AGENTS.md' -IgnoreCase) { $agentsNote } else { $null }) }
-        $plan.Add($item)
-        if (-not $same) {
-            if ($consented.Contains("$($b.Key)`nset managed block") -or $PSCmdlet.ShouldProcess($b.Key, 'set managed block')) {
-                if (-not (Test-SwConsentFreshness $Root @($b.Key) $observed $item)) { $partial = $true; continue }
-                $null = Resolve-SwManagedPath $Root $b.Key; Write-SwFile $t $b.Value
-            }
-            else { $partial = $true }
-        }
+    if (-not $blocksSet) { . $setBlocks }
+    $global:LASTEXITCODE = $(if ($partial) { 1 } else { 0 })
+    if ($transition -and $partial) {
+        $open = @($plan | Where-Object { Test-SwIn $_.Action 'stale', 'declined', 'orphan-kept' -IgnoreCase } | ForEach-Object Path)
+        Write-Warning "PARTIAL: skill delivery change incomplete; $($open.Count) effect(s) did not complete and were left as found ($($open -join ', ')), so the managed blocks, profile, ownership record and configuration were not written."
+        return $plan
     }
     $null = Resolve-SwManagedPath $Root '.sw/manifest.json'
     Write-SwFile $manifestPath (ConvertTo-SwJson $manifest)
-    $global:LASTEXITCODE = $(if ($partial) { 1 } else { 0 })
     if ($partial) { Write-Warning 'PARTIAL: unresolved/declined effects retained in ownership; configuration and adapter continuation must stop.' }
     $plan
 }
