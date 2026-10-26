@@ -1,6 +1,6 @@
 {
   "kitVersion": "0.4.0-dev",
-  "kitCommit": "c8473c81f05a02b3802266178d2c3f0a844f8bfd",
+  "kitCommit": "648cc9c252c05a7375ba3315de0b3fdc724bc042",
   "files": {
     ".agents/skills/agent-documentation/SKILL.md": "5eda615d5be5ab3d5b83f9e0184b168c1df75276d7e9513bd3e922db573dc6a5",
     ".agents/skills/minimal-change/SKILL.md": "313c02f0b203634f62fea4ec327e6352270877228a6c1348ba29780b664fae75",
@@ -19,7 +19,7 @@
     ".github/workflows/sw-validate.yml": "e7bfaf0ae79943405738b5240e8129065ebd1bbfd99316ad0496b98b3df41be3",
     ".sw/profile.json": "284dab397f6f1590c4b90e5ef4c73eb760444cb172e2813279a7dc41bc0f9caf",
     ".sw/sw.ps1": "10c148af67713966230d32f6ec0e538bd809830b65b692f6a8afc2e9b519818c",
-    ".sw/lib/Sw.Project.psm1": "bb0fb5b7125931db1d1d3681ccda700fdc8da728e0c3f6e5736c5f4138f6659e",
+    ".sw/lib/Sw.Project.psm1": "c21601d8c70a367fd0f3b84f140b01bc236706b24e72214f3d1e8abbbde50386",
     ".sw/LICENSE": "d55a3271bc03627b824422342139578dff055237c5f2f2db748aa66ebf08cc43",
     ".sw/THIRD_PARTY_NOTICES.md": "853828b12212a36828f8a19e4c7478f282ca176539f753542a3d884a6638cabc",
     ".sw/selection.json": "8db987020d5e9b28d6e66014fcf52e789cb2e8028eb140db9f7e8e1945e55dae",
