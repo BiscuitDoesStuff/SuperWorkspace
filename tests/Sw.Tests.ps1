@@ -6492,6 +6492,87 @@ Describe 'E6 project skill delivery migration' {
         [IO.File]::ReadAllText($skill) | Should -Match 'local edit'
         Get-E6Delivery $dir | Should -BeNullOrEmpty
     }
+    It 'review 5: <Label> made stale at its consent prompt holds every managed block and the profile' -ForEach @(
+        @{ Label = 'the profile'; EditOn = 'update.*\.sw/profile\.json'; Edited = '.sw/profile.json'; EditText = ' '; Prepare = $null }
+        @{ Label = 'a later managed block'; EditOn = 'set managed block.*\.gitignore'; Edited = '.gitignore'; EditText = "`nmine`n"; Prepare = "local-only`n" }
+    ) {
+        $dir = New-E6Project mta -Capabilities research; New-E6Central
+        # Without its managed block, .gitignore is set after AGENTS.md, so a stale .gitignore follows a pending AGENTS.md write.
+        if ($Prepare) { Write-SwFile (Join-Path $dir $Edited) $Prepare }
+        $files = @('.sw/profile.json', 'AGENTS.md', '.gitignore', '.sw/config.json', '.sw/manifest.json')
+        $state = { foreach ($f in $files) { if (-not (Test-SwSame $f $Edited)) { Get-SwByteHash ([IO.File]::ReadAllBytes((Join-Path $dir $f))) } } }
+        $before = & $state
+        $editedPath = Join-Path $dir $Edited
+        $editedBefore = [IO.File]::ReadAllText($editedPath)
+        $r = Invoke-E6Declined $dir '(?!)' @{ SkillDelivery = 'central-v1'; Capabilities = '' } $EditOn $editedPath $EditText
+        $r.Edited | Should -Be 1
+        $r.ExitCode | Should -Be 1 -Because $r.Output
+        $r.Output | Should -Match "PARTIAL: skill delivery change incomplete; 1 effect\(s\) did not complete and were left as found \($([regex]::Escape($Edited))\), so the managed blocks, profile, ownership record and configuration were not written"
+        & $state | Should -Be $before
+        [IO.File]::ReadAllText($editedPath) | Should -BeExactly ($editedBefore + $EditText)
+        Get-E6Delivery $dir | Should -BeNullOrEmpty
+    }
+
+    It 'review 5: a return interrupted at the ownership record recovers through its preview and apply' {
+        $dir = New-E6Project rro; New-E6Central
+        (Invoke-E6Update $dir @{ SkillDelivery = 'central-v1' }).ExitCode | Should -Be 0
+        $manifestPath = Join-Path $dir '.sw/manifest.json'
+        $recorded = Get-SwByteHash ([IO.File]::ReadAllBytes($manifestPath))
+        [IO.File]::SetAttributes($manifestPath, [IO.FileAttributes]::ReadOnly)
+        try { $r = Invoke-E6Update $dir @{ SkillDelivery = 'project-copy' } } finally { [IO.File]::SetAttributes($manifestPath, [IO.FileAttributes]::Normal) }
+        $r.ExitCode | Should -Be 1 -Because $r.Output
+        $r.Output | Should -Match 'PARTIAL: skill delivery change interrupted'
+        Get-E6Delivery $dir | Should -BeExactly 'central-v1'
+        Get-SwByteHash ([IO.File]::ReadAllBytes($manifestPath)) | Should -Be $recorded
+        Test-Path -LiteralPath (Join-Path $dir '.claude/skills/work/SKILL.md') | Should -BeTrue
+        # The restored copies are unrecorded but byte-identical to the generator output, so the retry completes them.
+        $r = Invoke-E6Update $dir @{ SkillDelivery = 'project-copy'; WhatIf = $true }
+        $r.ExitCode | Should -Be 0 -Because $r.Output
+        $r.Output | Should -Not -Match 'collision'
+        $r = Invoke-E6Update $dir @{ SkillDelivery = 'project-copy' }
+        $r.ExitCode | Should -Be 0 -Because $r.Output
+        Get-E6Delivery $dir | Should -BeExactly 'project-copy'
+        $files = (Read-SwJson $manifestPath)['files']
+        foreach ($d in '.agents/skills', '.claude/skills') { foreach ($id in $E6Core) { $files.Contains("$d/$id/SKILL.md") | Should -BeTrue -Because "$d/$id" } }
+        $v = Test-SwValidate $dir; $v.ExitCode | Should -Be 0 -Because ($v.Output -join "`n")
+    }
+
+    It 'review 5: an unrecorded copy that differs by any byte from the generator output still refuses as a collision' {
+        $dir = New-E6Project rrb; New-E6Central
+        (Invoke-E6Update $dir @{ SkillDelivery = 'central-v1' }).ExitCode | Should -Be 0
+        $manifestPath = Join-Path $dir '.sw/manifest.json'
+        [IO.File]::SetAttributes($manifestPath, [IO.FileAttributes]::ReadOnly)
+        try { $r = Invoke-E6Update $dir @{ SkillDelivery = 'project-copy' } } finally { [IO.File]::SetAttributes($manifestPath, [IO.FileAttributes]::Normal) }
+        $r.ExitCode | Should -Be 1 -Because $r.Output
+        # Line endings alone: the normalized text hash still matches, the bytes do not.
+        $skill = Join-Path $dir '.claude/skills/work/SKILL.md'
+        [IO.File]::WriteAllText($skill, [IO.File]::ReadAllText($skill).Replace("`n", "`r`n"))
+        $before = Get-E6Tree $dir
+        $e = { Update-SwProject -Path $dir -SkillDelivery project-copy -WhatIf } | Should -Throw -PassThru
+        $e.Exception.Message | Should -Match '\.claude/skills/work/SKILL\.md \(collision: project-owned entry'
+        $e.Exception.Message | Should -Not -Match '\.agents/skills/work/SKILL\.md|review/SKILL\.md'
+        { Update-SwProject -Path $dir -SkillDelivery project-copy } | Should -Throw '*collision: project-owned entry*'
+        Get-E6Tree $dir | Should -Be $before
+        Get-E6Delivery $dir | Should -BeExactly 'central-v1'
+    }
+
+    It 'review 5: a conversion interrupted at the ownership record recovers through its preview and apply' {
+        $dir = New-E6Project fro; New-E6Central
+        $manifestPath = Join-Path $dir '.sw/manifest.json'
+        [IO.File]::SetAttributes($manifestPath, [IO.FileAttributes]::ReadOnly)
+        try { $r = Invoke-E6Update $dir @{ SkillDelivery = 'central-v1' } } finally { [IO.File]::SetAttributes($manifestPath, [IO.FileAttributes]::Normal) }
+        $r.ExitCode | Should -Be 1 -Because $r.Output
+        Get-E6Delivery $dir | Should -BeNullOrEmpty
+        (Get-E6Files $dir '.claude/skills/work').Count | Should -Be 0
+        # The old record still lists the removed copies; they are missing, never collisions, so the retry completes.
+        $r = Invoke-E6Update $dir @{ SkillDelivery = 'central-v1'; WhatIf = $true }
+        $r.ExitCode | Should -Be 0 -Because $r.Output
+        $r.Output | Should -Match 'missing copy: \.(agents|claude)/skills/'
+        $r = Invoke-E6Update $dir @{ SkillDelivery = 'central-v1' }
+        $r.ExitCode | Should -Be 0 -Because $r.Output
+        Get-E6Delivery $dir | Should -BeExactly 'central-v1'
+    }
+
 
     It 'review 2: a same-mode repair -WhatIf reports retained copies as a preview and the next safe step' {
         $dir = New-E6Project rwi; New-E6Central
