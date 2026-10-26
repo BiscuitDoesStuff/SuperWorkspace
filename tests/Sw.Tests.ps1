@@ -6479,15 +6479,15 @@ Describe 'E6 project skill delivery migration' {
         Get-E6Delivery $dir | Should -BeNullOrEmpty
     }
 
-    It 'review 4: a removal made stale at the consent prompt leaves profile.json, config and manifest unchanged' {
+    It 'review 4: a removal made stale at the consent prompt leaves profile.json, AGENTS.md, config and manifest unchanged' {
         $dir = New-E6Project stl -Capabilities research; New-E6Central
-        $state = { foreach ($f in 'profile.json', 'config.json', 'manifest.json') { Get-SwByteHash ([IO.File]::ReadAllBytes((Join-Path $dir ".sw/$f"))) } }
+        $state = { foreach ($f in '.sw/profile.json', 'AGENTS.md', '.sw/config.json', '.sw/manifest.json') { Get-SwByteHash ([IO.File]::ReadAllBytes((Join-Path $dir $f))) } }
         $before = & $state
         $skill = Join-Path $dir '.agents/skills/research/SKILL.md'
         $r = Invoke-E6Declined $dir '(?!)' @{ SkillDelivery = 'central-v1'; Capabilities = '' } 'remove.*\.agents/skills/research/SKILL\.md' $skill "`nlocal edit`n"
         $r.Edited | Should -Be 1
         $r.ExitCode | Should -Be 1 -Because $r.Output
-        $r.Output | Should -Match 'PARTIAL'
+        $r.Output | Should -Match 'PARTIAL: skill delivery change incomplete; 1 effect\(s\) did not complete.*research/SKILL\.md'
         & $state | Should -Be $before
         [IO.File]::ReadAllText($skill) | Should -Match 'local edit'
         Get-E6Delivery $dir | Should -BeNullOrEmpty
