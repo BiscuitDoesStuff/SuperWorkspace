@@ -5983,7 +5983,6 @@ Describe 'D1b C1/C2 prompt-time edit protection (selected contract, evidence onl
         $r = Invoke-D1bFixture 'D1c migration target changes after move'; $d = $r.Data
         $legacy = '.opencode/skills/minimal-change/d1b-target.txt'
         $item = @($d.Output | Where-Object { $_.PSObject.Properties['Action'] -and $_.Path -ceq $r.Relative })
-        Write-Host ('D1C-EVIDENCE ' + ([ordered]@{ Plan=@($d.Plan | Where-Object Path -CEQ $r.Relative); Item=$item; Exit=$d.InProcessLastExitCode; Warnings=$r.Warnings; Prompts=$r.Host.Prompts; EditedPrompt=$r.Host.EditedPrompt; OwnershipDelta=$d.OwnershipDelta; TreeChanges=$d.TreeChanges } | ConvertTo-Json -Depth 10 -Compress))
         $item.Count | Should -Be 1
         $item[0].Action | Should -BeExactly 'skip-modified'
         $d.After.Exists | Should -BeFalse
