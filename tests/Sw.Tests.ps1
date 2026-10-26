@@ -6588,8 +6588,7 @@ Describe 'E6 project skill delivery migration' {
     ) {
         $dir = if ($Profile) { New-E6Project pfb -Capabilities $Profile } else { New-E6Project pfb }
         New-E6Central
-        $edited = Join-Path $dir $Edited
-        [IO.File]::AppendAllText($edited, ' ')
+        [IO.File]::AppendAllText((Join-Path $dir $Edited), ' ')
         $before = Get-E6Tree $dir
         $e = { Update-SwProject -Path $dir @Options } | Should -Throw -PassThru
         $e.Exception.Message | Should -Match "Skill delivery change blocked; nothing was written.*$([regex]::Escape($Edited))"
