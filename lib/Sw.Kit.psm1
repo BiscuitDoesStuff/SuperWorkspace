@@ -257,12 +257,14 @@ function Assert-SwDeliveryTransition([string]$Root, $Render, [string]$From) {
             $found = try { @(Get-SwPhysicalFiles $full) } catch { $blocked.Add("$rel (nested link)"); continue }
             $files = @($found | ForEach-Object { "$rel/$((Get-SwRelativePath $full $_.FullName).Replace('\', '/'))" })
             $mine = @($files | Where-Object { $owned.Contains($_) })
+            # Identical bytes prove content, not ownership: such a copy is still a collision, but may be what an
+            # interrupted return left behind, so the line names the recovery. Any differing file withholds the advice.
+            $kitCopy = $restore -and -not $mine.Count -and -not @($files | Where-Object { -not ($Render.Files.Contains($_) -and (Test-SwSame (Get-SwByteHash ([IO.File]::ReadAllBytes((Join-Path $Root $_)))) (Get-SwByteHash (Get-SwTextBytes $Render.Files[$_])))) }).Count
             foreach ($f in $files | Sort-Object) {
                 if ($owned.Contains($f)) {
                     if (-not (Test-SwSame (Get-SwHash (Read-SwText (Join-Path $Root $f))) $owned[$f] -IgnoreCase)) { $blocked.Add("$f (changed baseline: differs from its ownership record)") }
                 }
-                # A restore whose ownership record was not committed: byte-identical to the generator output, so recording it is a no-op.
-                elseif ($restore -and $Render.Files.Contains($f) -and (Test-SwSame (Get-SwByteHash ([IO.File]::ReadAllBytes((Join-Path $Root $f)))) (Get-SwByteHash (Get-SwTextBytes $Render.Files[$f])))) { }
+                elseif ($kitCopy) { $blocked.Add("$f (collision: project-owned entry, identical to the kit copy: if an earlier return to project-copy was interrupted, remove $rel yourself and re-run; otherwise it is project-owned; never replaced, renamed or overridden)") }
                 elseif ($restore) { $blocked.Add("$f (collision: project-owned entry; never replaced, renamed or overridden)") }
                 elseif (-not $mine.Count) { $blocked.Add("$f (project-owned skill with the same name; never renamed or overridden)") }
                 else { $blocked.Add("$f (extra: not in the ownership record)") }
@@ -524,8 +526,9 @@ function Sync-SwProject {
     $partial = $false
     $manifest = [ordered]@{ kitVersion = $kitVersion; kitCommit = Get-SwKitCommit; files = $original }
     # In a delivery change or repair the managed blocks and profile follow every other effect, with config and manifest
-    # last; they are written together only when every effect completed and each is still as observed, otherwise all are
-    # held with the ownership record, so nothing claims the new state.
+    # last. They are rechecked together and written only when every effect completed and each is still as observed,
+    # otherwise all are held with the ownership record, so nothing claims the new state. The writes themselves are
+    # sequential (AGENTS.md, .gitignore, .gitattributes, then the profile): one that fails leaves the earlier ones written.
     $order = if ($transition) { @($plan | Where-Object { -not (Test-SwSame $_.Path '.sw/profile.json') }) + @($plan | Where-Object { Test-SwSame $_.Path '.sw/profile.json' }) } else { $plan }
     # Managed blocks in files the project also owns (content validated above).
     $agentsNote = $managed.AgentsNote
@@ -546,7 +549,7 @@ function Sync-SwProject {
         }
         if ($transition) {
             # Every changed block and the profile are rechecked before any is written; one stale effect, or any earlier
-            # incomplete one, holds all of them with the ownership record.
+            # incomplete one, holds all of them with the ownership record. The blocks are written here, the profile next.
             $pending = @($changed) + @($plan | Where-Object { (Test-SwSame $_.Path '.sw/profile.json') -and (Test-SwIn $_.Action 'add', 'update', 'adopt' -IgnoreCase) })
             if (-not $partial) { foreach ($m in $pending) { if (-not (Test-SwConsentFreshness $Root @($m.Path) $observed $m)) { $partial = $true } } }
             if ($partial) { foreach ($m in $pending) { if (-not (Test-SwSame $m.Action 'stale')) { $m.Action = 'held' } } }
@@ -619,7 +622,7 @@ function Sync-SwProject {
     $global:LASTEXITCODE = $(if ($partial) { 1 } else { 0 })
     if ($transition -and $partial) {
         $open = @($plan | Where-Object { Test-SwIn $_.Action 'stale', 'declined', 'orphan-kept' -IgnoreCase } | ForEach-Object Path)
-        Write-Warning "PARTIAL: skill delivery change incomplete; $($open.Count) effect(s) did not complete and were left as found ($($open -join ', ')), so the managed blocks, profile, ownership record and configuration were not written."
+        Write-Warning "PARTIAL: skill delivery change incomplete; $($open.Count) effect(s) did not complete and were left as found ($($open -join ', ')), so the managed blocks, profile, ownership record and configuration were not written.$(if ((Test-SwSame $FromDelivery 'central-v1') -and -not (Test-SwSame $render.Delivery 'central-v1')) { ' If a retry refuses restored copies as collisions identical to the kit copy, remove those skill directories yourself and re-run.' })"
         return $plan
     }
     $null = Resolve-SwManagedPath $Root '.sw/manifest.json'
@@ -820,7 +823,7 @@ function Update-SwProject {
                 Write-SwFile (Resolve-SwManagedPath $Root '.sw/config.json') (ConvertTo-SwJson $config); $configChanged = $false
             }
         } catch {
-            Write-Warning "PARTIAL: skill delivery change interrupted ($($_.Exception.Message)); $unwritten, so no central availability is claimed. Next safe step: update '$Root' -SkillDelivery $($render.Delivery) -WhatIf, then apply."
+            Write-Warning "PARTIAL: skill delivery change interrupted ($($_.Exception.Message)); $unwritten, so no central availability is claimed. Next safe step: update '$Root' -SkillDelivery $($render.Delivery) -WhatIf, then apply$(if ((Test-SwSame $fromDelivery 'central-v1') -and -not (Test-SwSame $render.Delivery 'central-v1')) { '; if the preview refuses restored copies as collisions identical to the kit copy, remove those skill directories yourself and re-run' })."
             $global:LASTEXITCODE = 1; return
         }
     } else { $plan = Sync-SwProject -Root $Root -Config $config -Adopt:$Adopt -Force:$Force -FromDelivery $fromDelivery }
