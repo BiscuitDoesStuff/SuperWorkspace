@@ -222,7 +222,10 @@ linked every selected skill for both Claude and Codex skills. The update reads
 only the local record `~/.sw/global.json` and its links; it never scans the
 machine and never installs anything. A missing record or link reports
 `central prerequisites missing`, `central link missing` or
-`central source missing`, and nothing is written.
+`central source missing`, and nothing is written. Each link must be the
+recorded junction to the product skill: a personal skill of the same name does
+not count (`central source is not the product skill`), and a source reached
+through another link or junction is refused (`central source redirected`).
 
 ```powershell
 # From the kit clone, with the project's absolute root; preview, then apply.
@@ -237,7 +240,9 @@ powershell -NoProfile -ExecutionPolicy Bypass -File sw.ps1 update 'C:\path\to\pr
 Both skill trees are checked before anything is removed. A copy converts only
 when every file is in the ownership record and unchanged; each converted copy
 is backed up under `.sw/backup/<operation>/` before removal, and
-`.sw/config.json` and the ownership record are written last. The run is
+`.sw/config.json` and the ownership record are written last. Every removal
+is confirmed before the first backup; declining any prompt writes nothing (no
+backup, removal, ownership record or configuration). The run is
 refused, with nothing written, when a copy is edited (`changed baseline`),
 holds a file the record does not own (`extra`), is a link (`ownerless link`)
 or contains one (`nested link`), or is a project-owned skill with the same
@@ -252,9 +257,15 @@ with `central-v1`, availability depends on the central links, which
 `validate` re-checks. `validate` also fails on a kit copy retained under
 `central-v1` (`Stray kit copy retained`); an explicit
 `update <path> -SkillDelivery central-v1` converts owned copies with a backup.
+Any update that would remove such copies, including one that keeps the
+current mode, runs the same central prerequisite checks first and is refused
+with nothing written if they fail.
 
 An interrupted change exits 1, prints `PARTIAL`, writes neither the
 configuration nor the ownership record and claims no central availability.
+If only the final configuration write fails, the removals and the ownership
+record are already committed but the mode is still the old one; the
+`PARTIAL` line says so, and the same preview then apply finishes the change.
 Re-run the preview: it names each copy already removed (`missing copy`),
 each retained copy and any link or source problem, then the next safe step.
 There is no automatic cleanup and no background service; empty skill folders
