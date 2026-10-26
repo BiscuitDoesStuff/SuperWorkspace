@@ -6464,6 +6464,20 @@ Describe 'E6 project skill delivery migration' {
         $r.Output | Should -Not -Match 'converted copy|restored copy'
     }
 
+    It 'review 3: an interrupted compound transition leaves profile.json, config and manifest unchanged' {
+        $dir = New-E6Project cmp -Capabilities research; New-E6Central
+        $state = { foreach ($f in 'profile.json', 'config.json', 'manifest.json') { Get-SwByteHash ([IO.File]::ReadAllBytes((Join-Path $dir ".sw/$f"))) } }
+        $before = & $state
+        Test-Path -LiteralPath (Join-Path $dir '.agents/skills/research/SKILL.md') | Should -BeTrue
+        Mock -ModuleName Sw.Kit Remove-Item { throw 'interrupted' } -ParameterFilter { "$LiteralPath" -match 'skills' }
+        $r = Invoke-E6Update $dir @{ SkillDelivery = 'central-v1'; Capabilities = '' }
+        $r.ExitCode | Should -Be 1 -Because $r.Output
+        $r.Output | Should -Match 'PARTIAL: skill delivery change interrupted \(interrupted\)'
+        & $state | Should -Be $before
+        Test-Path -LiteralPath (Join-Path $dir '.agents/skills/research/SKILL.md') | Should -BeTrue
+        Get-E6Delivery $dir | Should -BeNullOrEmpty
+    }
+
     It 'review 2: a same-mode repair -WhatIf reports retained copies as a preview and the next safe step' {
         $dir = New-E6Project rwi; New-E6Central
         $c = Get-SwConfig $dir; $c['skillDelivery'] = 'central-v1'; Write-SwFile (Join-Path $dir '.sw/config.json') (ConvertTo-SwJson $c)
