@@ -247,7 +247,15 @@ interrupted), the managed blocks, profile, configuration and ownership record
 are not written, the affected files are left as found, and the run exits 1
 with `PARTIAL` and the next safe step. The managed blocks and profile are
 rechecked together and written only when every one is still as it was when
-its prompt was answered; otherwise none of them is written. In a delivery
+its prompt was answered; otherwise none of them is written. After that
+recheck they are written one at a time: `AGENTS.md`, `.gitignore`,
+`.gitattributes`, then `.sw/profile.json`. If one of those writes fails, the
+earlier ones stay written, the configuration and ownership record are not
+written, and the run exits 1 with `PARTIAL`. A delivery change is refused
+before any effect, with nothing written, when `.sw/profile.json` or
+`.sw/selection.json` was edited locally and so would not reach its planned
+content; keep a copy of your edits, remove the file so the kit writes it
+afresh, then re-run. In a delivery
 change, or an update that removes retained copies, every prompt (removals,
 restorations, updates, additions and managed blocks) is answered before the
 first write; declining any of them writes nothing (no backup, removal,
@@ -258,9 +266,11 @@ or contains one (`nested link`), or is a project-owned skill with the same
 name. `-Adopt` and `-Force` cannot bypass this; resolve the named paths
 yourself, then re-run. The return path refuses the same way when a
 project-owned entry already sits where a copy would be restored
-(`collision`). A retried return accepts an unrecorded copy that is
-byte-identical to what the kit would write there (a restore whose ownership
-record was not committed); any byte difference is still a `collision`.
+(`collision`), even when that entry is byte-identical to what the kit would
+write: identical content does not prove the kit wrote it. Such a collision
+says so; if an earlier return to `project-copy` was interrupted, remove the
+named skill directory yourself and re-run, otherwise it is project-owned. The
+`PARTIAL` message of an interrupted return names the same step.
 
 The two routes are not equivalent: with `project-copy`, a skill that is also
 linked centrally is loaded twice (`duplicate risk`, reported by the update);
