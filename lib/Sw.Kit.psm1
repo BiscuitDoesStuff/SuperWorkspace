@@ -486,7 +486,8 @@ function Sync-SwProject {
     # A delivery change, or a repair that removes copies, asks for every effect before the first write; one decline
     # leaves the project untouched. Ordinary updates keep asking at each effect.
     $consented = [Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal)
-    if ($converting.Count -or ($FromDelivery -and -not (Test-SwSame $render.Delivery $FromDelivery))) {
+    $transition = $converting.Count -or ($FromDelivery -and -not (Test-SwSame $render.Delivery $FromDelivery))
+    if ($transition) {
         $asks = [Collections.Generic.List[object]]::new()
         foreach ($p in $plan) {
             if ($movedFrom.Contains($p.Path)) { $asks.Add([pscustomobject]@{ Item = $p; Target = $p.Path; Op = "move from $($movedFrom[$p.Path])" }) }
@@ -512,7 +513,9 @@ function Sync-SwProject {
     }
     $partial = $false
     $manifest = [ordered]@{ kitVersion = $kitVersion; kitCommit = Get-SwKitCommit; files = $original }
-    foreach ($p in $plan) {
+    # In a delivery change or repair the profile is written after every removal, with config and manifest last.
+    $order = if ($transition) { @($plan | Where-Object { -not (Test-SwSame $_.Path '.sw/profile.json') }) + @($plan | Where-Object { Test-SwSame $_.Path '.sw/profile.json' }) } else { $plan }
+    foreach ($p in $order) {
         $target = Resolve-SwManagedPath $Root $p.Path
         if ($movedFrom.Contains($p.Path)) {
             $sourceRel = $movedFrom[$p.Path]
