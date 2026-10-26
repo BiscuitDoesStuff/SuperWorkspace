@@ -241,7 +241,11 @@ Both skill trees are checked before anything is removed. A copy converts only
 when every file is in the ownership record and unchanged; each converted copy
 is backed up under `.sw/backup/<operation>/` before removal, and
 `.sw/profile.json`, `.sw/config.json` and the ownership record are written
-last, after every removal. In a delivery
+last, after every removal. If any removal, restore or other effect does not
+complete (a file changed while its prompt was open, or the run is
+interrupted), the managed blocks, profile, configuration and ownership record
+are not written, the affected files are left as found, and the run exits 1
+with `PARTIAL` and the next safe step. In a delivery
 change, or an update that removes retained copies, every prompt (removals,
 restorations, updates, additions and managed blocks) is answered before the
 first write; declining any of them writes nothing (no backup, removal,
