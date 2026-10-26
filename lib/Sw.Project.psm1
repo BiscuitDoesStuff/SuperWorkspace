@@ -372,6 +372,17 @@ function Get-SwCentralAvailability([string[]]$Ids, [string]$UserHome) {
             if (-not $linked) { "central link missing: $id ($leaf)"; continue }
             $target = [string]$e['normalizedTarget']
             if (-not $target -or -not (Test-SwIn ([string]@($item.Target)[0]) @([string]$e['rawReparseTarget']) -IgnoreCase)) { "central link changed: $id ($leaf)"; continue }
+            if (-not (Test-SwSame ([string]$item.LinkType) 'Junction' -IgnoreCase)) { "central link changed: $id ($leaf is not a junction)"; continue }
+            # Only the product source satisfies a selected kit skill; a personal namesake carries other instructions.
+            $expected = if (Test-SwSame $id 'unreal-validation' -IgnoreCase) { 'project/profiles/unreal/files/.agents/skills/unreal-validation' } else { "project/base/.agents/skills/$id" }
+            $productRoot = [string]$record['productRoot']
+            $source = [string]$e['sourcePath']
+            if (-not $productRoot -or -not $source -or -not (Test-SwSame ([string]$e['sourceTier']) 'product') -or
+                -not (Test-SwSame ([IO.Path]::GetFullPath($source)) ([IO.Path]::GetFullPath((Join-Path $productRoot $expected))) -IgnoreCase) -or
+                -not (Test-SwSame ([IO.Path]::GetFullPath($target)) ([IO.Path]::GetFullPath($source)) -IgnoreCase)) { "central source is not the product skill: $id ($target; a personal namesake does not count)"; continue }
+            # The recorded leaf junction is the only link allowed; a redirected ancestor or source path is refused before any source is read.
+            $redirect = try { Assert-SwPhysicalPath (Split-Path $leaf -Parent); Assert-SwPhysicalPath (Join-Path $target 'SKILL.md'); Assert-SwPhysicalPath (Join-Path $target 'agents/openai.yaml'); $null } catch { $_.Exception.Message }
+            if ($redirect) { "central source redirected: $id ($redirect)"; continue }
             if (-not (Test-Path -LiteralPath (Join-Path $target 'SKILL.md') -PathType Leaf)) { "central source missing: $id ($target)"; continue }
             if (Test-SwIn $id $script:UserInvoked) {
                 $data = try { Read-SwFrontmatter (Join-Path $target 'SKILL.md') @('name', 'description', 'disable-model-invocation') } catch { @{} }
