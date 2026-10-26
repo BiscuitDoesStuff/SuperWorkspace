@@ -462,6 +462,15 @@ function Sync-SwProject {
     $converting = @(if (Test-SwSame $render.Delivery 'central-v1') { $plan | Where-Object { (Test-SwSame $_.Action 'remove') -and (Test-SwCentralCopy $_.Path $render.Central) } })
     # Any conversion or repair that removes copies, same-mode included, first proves central delivery.
     if ($converting.Count) { Assert-SwCentralReady $render.Central (Get-SwUserHome) }
+    $transition = $converting.Count -or ($FromDelivery -and -not (Test-SwSame $render.Delivery $FromDelivery))
+    # A delivery change must leave the profile and selection catalogue at their planned content, or validation fails
+    # once the new mode is recorded; a locally edited one blocks the run before any effect.
+    if ($transition) {
+        $edited = @($plan | Where-Object { (Test-SwIn $_.Path '.sw/profile.json', '.sw/selection.json') -and (Test-SwIn $_.Action 'kept-local', 'skip-modified' -IgnoreCase) })
+        if ($edited.Count) {
+            throw "Skill delivery change blocked; nothing was written. These kit files were edited locally and would not reach their planned content, so the new mode would fail validation: $(($edited.Path) -join ', '). Keep a copy of your edits, remove each file so the kit writes it afresh, then re-run; -Force and -Adopt cannot bypass this."
+        }
+    }
     if (@($plan | Where-Object { Test-SwIn $_.Action 'adopt', 'skip-modified' -IgnoreCase }).Count -or $converting.Count) { Assert-SwPhysicalPath $backupRoot }
     # The same read-only plan guards init before directory creation or git init.
     if ($Preflight) {
@@ -488,7 +497,6 @@ function Sync-SwProject {
     # A delivery change, or a repair that removes copies, asks for every effect before the first write; one decline
     # leaves the project untouched. Ordinary updates keep asking at each effect.
     $consented = [Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal)
-    $transition = $converting.Count -or ($FromDelivery -and -not (Test-SwSame $render.Delivery $FromDelivery))
     if ($transition) {
         $asks = [Collections.Generic.List[object]]::new()
         foreach ($p in $plan) {
