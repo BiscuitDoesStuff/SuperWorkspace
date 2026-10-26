@@ -240,9 +240,11 @@ powershell -NoProfile -ExecutionPolicy Bypass -File sw.ps1 update 'C:\path\to\pr
 Both skill trees are checked before anything is removed. A copy converts only
 when every file is in the ownership record and unchanged; each converted copy
 is backed up under `.sw/backup/<operation>/` before removal, and
-`.sw/config.json` and the ownership record are written last. Every removal
-is confirmed before the first backup; declining any prompt writes nothing (no
-backup, removal, ownership record or configuration). The run is
+`.sw/config.json` and the ownership record are written last. In a delivery
+change, or an update that removes retained copies, every prompt (removals,
+restorations, updates, additions and managed blocks) is answered before the
+first write; declining any of them writes nothing (no backup, removal,
+restore, ownership record or configuration). The run is
 refused, with nothing written, when a copy is edited (`changed baseline`),
 holds a file the record does not own (`extra`), is a link (`ownerless link`)
 or contains one (`nested link`), or is a project-owned skill with the same
@@ -259,7 +261,8 @@ with `central-v1`, availability depends on the central links, which
 `update <path> -SkillDelivery central-v1` converts owned copies with a backup.
 Any update that would remove such copies, including one that keeps the
 current mode, runs the same central prerequisite checks first and is refused
-with nothing written if they fail.
+with nothing written if they fail. Its `-WhatIf` preview lists each such copy
+as one that would be backed up and removed on apply, then the next safe step.
 
 An interrupted change exits 1, prints `PARTIAL`, writes neither the
 configuration nor the ownership record and claims no central availability.
