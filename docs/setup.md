@@ -202,6 +202,14 @@ follows into the source.
 A failure to record a receipt after the link was created exits 1 and names
 the unrecorded link; later runs keep it and report it as unowned.
 
+Verification limits (2026-10-26, Claude Code 2.1.302 and Codex CLI 0.164.0,
+disposable homes): Claude Code listed the linked skills as user skills, but
+invoking one was not tested. Codex was checked at repository scope only: it
+does not follow a redirected home, so whether it loads the links in
+`~/.agents/skills` is not yet verified natively. `/review` and `/status` are
+also Claude Code built-in command names; which one typing them runs was not
+tested.
+
 ### Project migration (skill delivery)
 
 A project's `.sw/config.json` field `skillDelivery` picks how its selected kit
@@ -272,11 +280,15 @@ says so; if an earlier return to `project-copy` was interrupted, remove the
 named skill directory yourself and re-run, otherwise it is project-owned. The
 `PARTIAL` message of an interrupted return names the same step.
 
-The two routes are not equivalent: with `project-copy`, a skill that is also
-linked centrally is loaded twice (`duplicate risk`, reported by the update);
-with `central-v1`, availability depends on the central links, which
-`validate` re-checks. `validate` also fails on a kit copy retained under
-`central-v1` (`Stray kit copy retained`); an explicit
+The two routes are not equivalent. With `project-copy`, a skill that is also
+linked centrally exists twice, as a user skill and a project skill
+(`duplicate risk`, reported by the update); avoid that overlap. In a
+listing-only check (2026-10-26, Claude Code 2.1.302), Claude Code listed the
+user-level link and not the same-name project copy; which copy an invocation
+runs, and how Codex treats the pair, are not verified. With `central-v1`,
+availability depends on the central links, which `validate` re-checks.
+`validate` also fails on a kit copy retained under `central-v1`
+(`Stray kit copy retained`); an explicit
 `update <path> -SkillDelivery central-v1` converts owned copies with a backup.
 Any update that would remove such copies, including one that keeps the
 current mode, runs the same central prerequisite checks first and is refused
@@ -635,7 +647,10 @@ in this order:
    remotes and settings alone; commit the removal like any other change.
 6. If you also used global setup, remove each home's block from
    `<!-- sw:begin global -->` through `<!-- sw:end global -->`; the backups
-   under `~/.sw/backups/` stay until you delete them.
+   under `~/.sw/backups/` stay until you delete them. `global remove` strips
+   the block but leaves a rules file the kit created in place, empty, and a
+   later `global check` warns that the block is missing; delete the file if
+   it is empty and you do not use it.
 
 ## Troubleshooting and support
 
