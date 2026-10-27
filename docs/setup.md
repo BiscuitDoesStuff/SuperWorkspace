@@ -206,9 +206,9 @@ Verification limits (2026-10-26, Claude Code 2.1.302 and Codex CLI 0.164.0,
 disposable homes): Claude Code listed the linked skills as user skills, but
 invoking one was not tested. Codex skill discovery was checked at repository
 scope only: Codex ignored `HOME` and `USERPROFILE` overrides, so whether it
-loads the links in `~/.agents/skills` is not yet verified natively. `/review` and `/status` are
-also Claude Code built-in command names; which one typing them runs was not
-tested.
+loads the links in `~/.agents/skills` is not yet verified natively.
+`/review` and `/status` are also Claude Code built-in command names; which
+one typing them runs was not tested.
 
 ### Project migration (skill delivery)
 
