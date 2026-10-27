@@ -61,8 +61,13 @@ work around a rule.
   under the `review` skill.
 - **Models** are chosen per thread in T3; no model is pinned in tracked files.
   An optional, git-ignored `.sw/models.local.md` may hold your own tier table
-  (a mid model for normal work, the top model for architecture and hard
-  debugging, a small model for exploration). Switching provider or model
+  (small, mid, top). Coordination and planning use the mid-to-top tier at
+  moderate effort, raised only for consequential or hard problems;
+  implementation from a written, scoped spec and exploration use the mid tier
+  (the small tier only for non-agentic lookups). Set model and effort
+  explicitly on every thread and delegate launch instead of inheriting the
+  coordinator's; no max effort and no fast or priority modes by default; use
+  the top tier for hard work only after cheaper tiers fail. Switching provider or model
   inside a thread is a handoff: treat it as a new session and reconcile the
   task record.
 - **Quota.** On provider quota or rate-limit errors (429, session or weekly
