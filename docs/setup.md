@@ -204,9 +204,9 @@ the unrecorded link; later runs keep it and report it as unowned.
 
 Verification limits (2026-10-26, Claude Code 2.1.302 and Codex CLI 0.164.0,
 disposable homes): Claude Code listed the linked skills as user skills, but
-invoking one was not tested. Codex was checked at repository scope only: it
-does not follow a redirected home, so whether it loads the links in
-`~/.agents/skills` is not yet verified natively. `/review` and `/status` are
+invoking one was not tested. Codex skill discovery was checked at repository
+scope only: Codex ignored `HOME` and `USERPROFILE` overrides, so whether it
+loads the links in `~/.agents/skills` is not yet verified natively. `/review` and `/status` are
 also Claude Code built-in command names; which one typing them runs was not
 tested.
 
@@ -647,10 +647,11 @@ in this order:
    remotes and settings alone; commit the removal like any other change.
 6. If you also used global setup, remove each home's block from
    `<!-- sw:begin global -->` through `<!-- sw:end global -->`; the backups
-   under `~/.sw/backups/` stay until you delete them. `global remove` strips
-   the block but leaves a rules file the kit created in place, empty, and a
-   later `global check` warns that the block is missing; delete the file if
-   it is empty and you do not use it.
+   under `~/.sw/backups/` stay until you delete them. For central delivery,
+   `global remove -Delivery central-v1 -Harness both -Component rules` strips
+   the rules blocks; a file the kit created that held only the block is left
+   in place, empty, and a later `global check` warns that the block is
+   missing. Delete the file if it is empty and you do not use it.
 
 ## Troubleshooting and support
 
