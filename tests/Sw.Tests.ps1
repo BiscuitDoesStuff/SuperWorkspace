@@ -6733,7 +6733,7 @@ Describe 'Windows PowerShell 5.1 and PowerShell 7 parity' {
         $command = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes("& { $($script:ParityScript.ToString()) } '$RepoRoot'"))
         $mine = (& $script:Shell -NoProfile -ExecutionPolicy Bypass -EncodedCommand $command) -join ''
         $theirs = (& $exe.Source -NoProfile -ExecutionPolicy Bypass -EncodedCommand $command) -join ''
-        $mine | Should -Match '^([0-9a-f]{64},){15}[0-9a-f]{64}$'
+        $mine | Should -Match '^([0-9a-f]{64},){16}[0-9a-f]{64}$'
         $theirs | Should -BeExactly $mine
     }
 }
