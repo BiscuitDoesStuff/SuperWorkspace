@@ -47,8 +47,9 @@ completed setup or task approval.
 - Host configuration conflicts **stop before writes**. There is no automatic
   JSON/JSONC merge. `-Adopt` is an explicit **backup-and-replace** decision, not a
   preservation switch. Managed blocks update; project text outside them stays.
-- Generic, research and Unreal presets select skills; `research` is an
-  optional capability. Use `-NoGitHub` to omit GitHub
+- Generic, research and Unreal presets select skills; all include the
+  10-skill default catalogue, and `research` is an optional capability adding
+  its guidance and checks. Use `-NoGitHub` to omit GitHub
   scaffolding. Global setup is an optional, separate operation, never a
   quickstart prerequisite. Claude and Codex files (`.claude/`, `.codex/`) are
   tracked generated files; no adapter step is needed. The kit configures no
