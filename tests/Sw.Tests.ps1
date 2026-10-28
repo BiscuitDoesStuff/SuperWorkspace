@@ -4522,7 +4522,7 @@ Describe 'Generated copies and current guidance' {
         }
         @($files.Keys | Where-Object { $_ -like '*/agents/openai.yaml' }).Count | Should -Be 14
         $generic = (Get-SwRender ([ordered]@{ project = 'G'; profile = 'generic'; github = $true; users = @(); selection = [ordered]@{ version = 1; capabilities = @() } })).Files
-        foreach ($root in '.agents', '.claude') { $generic.Contains("$root/skills/research/agents/openai.yaml") | Should -BeFalse }
+        foreach ($root in '.agents', '.claude') { $generic.Contains("$root/skills/research/agents/openai.yaml") | Should -BeTrue }
     }
 
     It 'core and global rules cap ordinary repair at three attempts and stop at once on quota, rate or permission failures' {
@@ -5056,6 +5056,16 @@ Describe 'Profile selection v1' {
             foreach ($p in 'lib', 'project', 'sw.ps1', 'VERSION', 'LICENSE', 'THIRD_PARTY_NOTICES.md') { Copy-Item -LiteralPath (Join-Path $RepoRoot $p) -Destination (Join-Path $kit $p) -Recurse }
             $kit
         }
+        function New-CapKit([string]$Name) {
+            # Kit whose catalogue keeps research as a capability-owned skill, to exercise deselection removal now that
+            # the shipped catalogue has it as core.
+            $kit = New-KitCopy $Name
+            $cat = Read-SwJson (Join-Path $kit 'project/selection.json')
+            $cat['core']['skills'] = @($cat['core']['skills'] | Where-Object { $_ -ne 'research' })
+            $cat['capabilities']['research']['skills'] = @('research')
+            Write-SwFile (Join-Path $kit 'project/selection.json') (ConvertTo-SwJson $cat)
+            $kit
+        }
         function Use-Kit([string]$Kit, [scriptblock]$Action) {
             $saved = InModuleScope Sw.Kit { $script:Kit }
             InModuleScope Sw.Kit -Parameters @{ K = $Kit } { param($K) $script:Kit = $K }
@@ -5064,11 +5074,11 @@ Describe 'Profile selection v1' {
         function Get-V1Config([string]$Profile = 'generic', [string[]]$Capabilities = @()) {
             [ordered]@{ project = 'P'; profile = $Profile; githubTier = 0; github = $true; startupBudgetBytes = 12100; users = @(); selection = [ordered]@{ version = 1; capabilities = @($Capabilities) } }
         }
-        $script:Generic = @('agent-documentation', 'handoff', 'minimal-change', 'resume', 'review', 'status', 'structured-debugging', 'validate', 'work')
+        $script:Generic = @('agent-documentation', 'handoff', 'minimal-change', 'research', 'resume', 'review', 'status', 'structured-debugging', 'validate', 'work')
     }
 
     Context 'A1 fresh generic default' {
-        It 'installs exactly the nine core skills in both skill directories; no research' {
+        It 'installs exactly the ten core skills in both skill directories; no research capability' {
             $dir = New-SelProject "a1$(New-Id)"
             (Get-SwConfig $dir)['selection']['version'] | Should -Be 1
             Get-SkillNames $dir | Should -Be $script:Generic
@@ -5105,12 +5115,11 @@ Describe 'Profile selection v1' {
     }
 
     Context 'A2 research preset and capability' {
-        It 'the research preset and generic + research add exactly the research skill, both copies, guidance and checks' {
+        It 'the research preset and generic + research add guidance and checks; the research skill is already core' {
             $base = Get-SwRender (Get-V1Config)
             foreach ($cfg in (Get-V1Config research), (Get-V1Config generic @('research'))) {
                 $r = Get-SwRender $cfg
-                @($r.Files.Keys | Where-Object { -not $base.Files.Contains($_) } | Sort-Object) | Should -Be @('.agents/skills/research/agents/openai.yaml', '.agents/skills/research/SKILL.md',
-                    '.claude/skills/research/agents/openai.yaml', '.claude/skills/research/SKILL.md')
+                @($r.Files.Keys | Where-Object { -not $base.Files.Contains($_) }).Count | Should -Be 0
                 @($base.Files.Keys | Where-Object { -not $r.Files.Contains($_) }).Count | Should -Be 0
                 @($r.Selection.checks) | Should -Contain 'research-evidence'
                 @($r.Selection.context) | Should -Contain 'research'
@@ -5203,7 +5212,7 @@ Describe 'Profile selection v1' {
 
         It 'missing <Name> fails before git init or any write; no download or fallback' -ForEach @(
             @{ Name = 'core skill'; Rel = 'project/base/.agents/skills/work/SKILL.md'; Caps = @() }
-            @{ Name = 'capability skill (unselected)'; Rel = 'project/base/.agents/skills/research/SKILL.md'; Caps = @() }
+            @{ Name = 'research core skill'; Rel = 'project/base/.agents/skills/research/SKILL.md'; Caps = @() }
             @{ Name = 'capability context resource'; Rel = 'project/capabilities/research/AGENTS.section.md'; Caps = @('research') }
         ) {
             $kit = New-KitCopy "kitMissing$(New-Id)"
@@ -5218,7 +5227,7 @@ Describe 'Profile selection v1' {
 
         It 'a capability naming a skill the kit lacks fails' {
             $kit = New-KitCopy "kitDep$(New-Id)"
-            $cat = Read-SwJson (Join-Path $kit 'project/selection.json'); $cat['capabilities']['research']['skills'] = @('research', 'ghost-skill')
+            $cat = Read-SwJson (Join-Path $kit 'project/selection.json'); $cat['capabilities']['research']['skills'] = @('ghost-skill')
             Write-SwFile (Join-Path $kit 'project/selection.json') (ConvertTo-SwJson $cat)
             Use-Kit $kit { { Get-SwRender (Get-V1Config) } | Should -Throw '*ghost-skill*' }
         }
@@ -5252,12 +5261,14 @@ Describe 'Profile selection v1' {
 
     Context 'A8 transitions' {
         It 'explicit legacy-to-v1 removes only unedited owned deselected files and records the selection' {
-            $dir = New-SwProject "a8$(New-Id)" generic -Legacy
-            Update-SwProject -Path $dir -SelectionV1 | Out-Null
-            Get-SkillNames $dir | Should -Be $script:Generic
-            foreach ($p in '.agents/skills/research/SKILL.md', '.claude/skills/research/SKILL.md') { Test-Path (Join-Path $dir $p) | Should -BeFalse }
-            (Get-SwConfig $dir)['selection']['version'] | Should -Be 1
-            (Test-SwValidate $dir).ExitCode | Should -Be 0
+            Use-Kit (New-CapKit "kitCap$(New-Id)") {
+                $dir = New-SwProject "a8$(New-Id)" generic -Legacy
+                Update-SwProject -Path $dir -SelectionV1 | Out-Null
+                Get-SkillNames $dir | Should -Be @($script:Generic | Where-Object { $_ -ne 'research' })
+                foreach ($p in '.agents/skills/research/SKILL.md', '.claude/skills/research/SKILL.md') { Test-Path (Join-Path $dir $p) | Should -BeFalse }
+                (Get-SwConfig $dir)['selection']['version'] | Should -Be 1
+                (Test-SwValidate $dir).ExitCode | Should -Be 0
+            }
         }
 
         It 'a <Name> deselected file blocks legacy-to-v1 with nothing written, even with -Force -Adopt' -ForEach @(
@@ -5265,12 +5276,14 @@ Describe 'Profile selection v1' {
             @{ Name = 'modified Claude copy'; Prep = { param($d) Write-SwFile (Join-Path $d '.claude/skills/research/SKILL.md') ((Read-SwText (Join-Path $d '.claude/skills/research/SKILL.md')) + "`nlocal edit`n") }; Expect = '*.claude/skills/research/SKILL.md (modified)*' }
             @{ Name = 'unowned resource'; Prep = { param($d) Write-SwFile (Join-Path $d '.agents/skills/research/notes.md') "mine`n" }; Expect = '*research/notes.md (unowned*' }
         ) {
-            $dir = New-SwProject "a8b$(New-Id)" generic -Legacy
-            & $Prep $dir
-            $tree = Get-Tree $dir
-            { Update-SwProject -Path $dir -SelectionV1 } | Should -Throw $Expect
-            { Update-SwProject -Path $dir -SelectionV1 -Force -Adopt } | Should -Throw '*Selection change blocked*'
-            Get-Tree $dir | Should -Be $tree
+            Use-Kit (New-CapKit "kitCap$(New-Id)") {
+                $dir = New-SwProject "a8b$(New-Id)" generic -Legacy
+                & $Prep $dir
+                $tree = Get-Tree $dir
+                { Update-SwProject -Path $dir -SelectionV1 } | Should -Throw $Expect
+                { Update-SwProject -Path $dir -SelectionV1 -Force -Adopt } | Should -Throw '*Selection change blocked*'
+                Get-Tree $dir | Should -Be $tree
+            }
         }
 
         It 'a linked deselected skill directory blocks with nothing written' {
@@ -5287,7 +5300,7 @@ Describe 'Profile selection v1' {
         }
 
         It 'v1 capability-off removes multi-file capability skills as a unit from both directories; an edit blocks it' {
-            $kit = New-KitCopy "kitRes$(New-Id)"
+            $kit = New-CapKit "kitRes$(New-Id)"
             Write-SwFile (Join-Path $kit 'project/base/.agents/skills/research/reference.md') "extra resource`n"
             Use-Kit $kit {
                 $dir = New-SelProject "a8off$(New-Id)" generic @('research')
@@ -5316,12 +5329,14 @@ Describe 'Profile selection v1' {
         }
 
         It 'existing update -WhatIf with an opt-in reports the plan and changes nothing' {
-            $dir = New-SwProject "a9e$(New-Id)" generic -Legacy
-            $tree = Get-Tree $dir
-            $out = (Update-SwProject -Path $dir -SelectionV1 -WhatIf 6> $null) -join "`n"
-            $out | Should -Match 'selection: v1 profile=generic capabilities=\[\]'
-            $out | Should -Match '(?m)^remove\s+.*\.agents/skills/research/SKILL\.md'
-            Get-Tree $dir | Should -Be $tree
+            Use-Kit (New-CapKit "kitCap$(New-Id)") {
+                $dir = New-SwProject "a9e$(New-Id)" generic -Legacy
+                $tree = Get-Tree $dir
+                $out = (Update-SwProject -Path $dir -SelectionV1 -WhatIf 6> $null) -join "`n"
+                $out | Should -Match 'selection: v1 profile=generic capabilities=\[\]'
+                $out | Should -Match '(?m)^remove\s+.*\.agents/skills/research/SKILL\.md'
+                Get-Tree $dir | Should -Be $tree
+            }
         }
     }
 
@@ -5350,14 +5365,16 @@ Describe 'Profile selection v1' {
         }
 
         It 'flags a known deselected skill and blocks the update' {
-            $dir = New-SelProject "a11k$(New-Id)"
-            Copy-Item -LiteralPath (Join-Path $RepoRoot 'project/base/.agents/skills/research') -Destination (Join-Path $dir '.agents/skills/research') -Recurse
-            $out = Test-SwValidate $dir
-            $out.ExitCode | Should -Be 1
-            ($out.Output -join "`n") | Should -Match 'Deselected kit component installed: \.agents/skills/research/'
-            $tree = Get-Tree $dir
-            { Update-SwProject -Path $dir } | Should -Throw '*Selection change blocked*'
-            Get-Tree $dir | Should -Be $tree
+            Use-Kit (New-CapKit "kitCap$(New-Id)") {
+                $dir = New-SelProject "a11k$(New-Id)"
+                Copy-Item -LiteralPath (Join-Path $RepoRoot 'project/base/.agents/skills/research') -Destination (Join-Path $dir '.agents/skills/research') -Recurse
+                $out = Test-SwValidate $dir
+                $out.ExitCode | Should -Be 1
+                ($out.Output -join "`n") | Should -Match 'Deselected kit component installed: \.agents/skills/research/'
+                $tree = Get-Tree $dir
+                { Update-SwProject -Path $dir } | Should -Throw '*Selection change blocked*'
+                Get-Tree $dir | Should -Be $tree
+            }
         }
 
         It 'a mismatched effectiveSelection is reported' {
@@ -6006,7 +6023,7 @@ Describe 'E6 project skill delivery migration' {
     # Temp projects and a synthetic central home only; the real profile and this checkout are never written.
     BeforeAll {
         $script:E6SavedProviderHomes = @{ CLAUDE_CONFIG_DIR=$env:CLAUDE_CONFIG_DIR; CODEX_HOME=$env:CODEX_HOME }
-        $script:E6Core = @('agent-documentation', 'handoff', 'minimal-change', 'resume', 'review', 'status', 'structured-debugging', 'validate', 'work')
+        $script:E6Core = @('agent-documentation', 'handoff', 'minimal-change', 'research', 'resume', 'review', 'status', 'structured-debugging', 'validate', 'work')
         $global:E6Links = [Collections.Generic.List[string]]::new()
         function New-E6Project {
             param([string]$Name, [string]$Profile = 'generic', [string[]]$Capabilities)
@@ -6218,7 +6235,7 @@ Describe 'E6 project skill delivery migration' {
 
     It 'A12 <Label> keeps its selection, guidance and checks under central-v1' -TestCases @(
         @{ Label = 'generic'; Profile = 'generic'; Capabilities = @(); Extra = @(); Kept = @() }
-        @{ Label = 'research'; Profile = 'research'; Capabilities = @('research'); Extra = @('research'); Kept = @() }
+        @{ Label = 'research'; Profile = 'research'; Capabilities = @('research'); Extra = @(); Kept = @() }
         @{ Label = 'unreal'; Profile = 'unreal'; Capabilities = @(); Extra = @(); Kept = @('unreal-validation') }
     ) {
         param($Label, $Profile, $Capabilities, $Extra, $Kept)
