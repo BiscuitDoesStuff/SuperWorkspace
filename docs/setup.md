@@ -202,13 +202,16 @@ follows into the source.
 A failure to record a receipt after the link was created exits 1 and names
 the unrecorded link; later runs keep it and report it as unowned.
 
-Verification limits (2026-10-26, Claude Code 2.1.302 and Codex CLI 0.164.0,
-disposable homes): Claude Code listed the linked skills as user skills, but
-invoking one was not tested. Codex skill discovery was checked at repository
-scope only: Codex ignored `HOME` and `USERPROFILE` overrides, so whether it
-loads the links in `~/.agents/skills` is not yet verified natively.
-`/review` and `/status` are also Claude Code built-in command names; which
-one typing them runs was not tested.
+Native verification (2026-10-28, Claude Code 2.1.302 and Codex CLI 0.164.0,
+real user homes, Windows): Codex loads the links in `~/.agents/skills` as
+user skills, with `CODEX_HOME` unset and set to another home, because
+`~/.agents/skills` is shared. In a `project-copy` project whose skills are
+also linked centrally, Codex lists each skill twice and a `$skill` mention
+loaded the repo copy; Claude Code lists it once, and invoking it loaded the
+user-level link. Remaining limits: `/review` and `/status` are also Claude
+Code built-in command names, and its headless (SDK) listing showed only the
+skill entries for them, but which one typing them runs interactively was not
+tested; macOS and Linux were not tested.
 
 ### Project migration (skill delivery)
 
@@ -282,10 +285,11 @@ named skill directory yourself and re-run, otherwise it is project-owned. The
 
 The two routes are not equivalent. With `project-copy`, a skill that is also
 linked centrally exists twice, as a user skill and a project skill
-(`duplicate risk`, reported by the update); avoid that overlap. In a
-listing-only check (2026-10-26, Claude Code 2.1.302), Claude Code listed the
-user-level link and not the same-name project copy; which copy an invocation
-runs, and how Codex treats the pair, are not verified. With `central-v1`,
+(`duplicate risk`, reported by the update); avoid that overlap. In the
+2026-10-28 check above, Claude Code used the user-level link, while Codex
+listed both and used the repo copy, so the two resolve the overlap in
+opposite directions. Migrate the project to `central-v1`, or do not link
+those skills centrally. With `central-v1`,
 availability depends on the central links, which `validate` re-checks.
 `validate` also fails on a kit copy retained under `central-v1`
 (`Stray kit copy retained`); an explicit
