@@ -6294,6 +6294,15 @@ Describe 'E6 project skill delivery migration' {
         ($v.Output -join "`n") | Should -Match 'central prerequisites missing: no valid central delivery record'
     }
 
+    It 'G3 a plain update on central-v1 refuses before writing when a selected skill has no central link' {
+        $product = New-E6Product; $dir = New-E6Project g3c; New-E6Central -ProductRoot $product
+        (Invoke-E6Update $dir @{ SkillDelivery = 'central-v1' }).ExitCode | Should -Be 0
+        [IO.Directory]::Delete((Join-Path $global:SwCentralHome '.agents/skills/research'), $false)
+        $before = Get-E6Tree $dir
+        { Update-SwProject -Path $dir } | Should -Throw '*central link missing: research*'
+        Get-E6Tree $dir | Should -Be $before
+    }
+
     It 'A12 project-copy parity: an explicit project-copy on a project-copy project changes nothing' {
         $dir = New-E6Project par
         Update-SwProject -Path $dir | Out-Null
