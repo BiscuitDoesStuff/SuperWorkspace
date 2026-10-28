@@ -202,6 +202,17 @@ follows into the source.
 A failure to record a receipt after the link was created exits 1 and names
 the unrecorded link; later runs keep it and report it as unowned.
 
+Native verification (2026-10-28, Claude Code 2.1.302 and Codex CLI 0.164.0,
+real user homes, Windows): Codex loads the links in `~/.agents/skills` as
+user skills, with `CODEX_HOME` unset and set to another home, because
+`~/.agents/skills` is shared. In a `project-copy` project whose skills are
+also linked centrally, Codex lists each skill twice and a `$skill` mention
+loaded the repo copy; Claude Code lists it once, and invoking it loaded the
+user-level link. Remaining limits: `/review` and `/status` are also Claude
+Code built-in command names, and its headless (SDK) listing showed only the
+skill entries for them, but which one typing them runs interactively was not
+tested; macOS and Linux were not tested.
+
 ### Project migration (skill delivery)
 
 A project's `.sw/config.json` field `skillDelivery` picks how its selected kit
@@ -272,11 +283,16 @@ says so; if an earlier return to `project-copy` was interrupted, remove the
 named skill directory yourself and re-run, otherwise it is project-owned. The
 `PARTIAL` message of an interrupted return names the same step.
 
-The two routes are not equivalent: with `project-copy`, a skill that is also
-linked centrally is loaded twice (`duplicate risk`, reported by the update);
-with `central-v1`, availability depends on the central links, which
-`validate` re-checks. `validate` also fails on a kit copy retained under
-`central-v1` (`Stray kit copy retained`); an explicit
+The two routes are not equivalent. With `project-copy`, a skill that is also
+linked centrally exists twice, as a user skill and a project skill
+(`duplicate risk`, reported by the update); avoid that overlap. In the
+2026-10-28 check above, Claude Code used the user-level link, while Codex
+listed both and used the repo copy, so the two resolve the overlap in
+opposite directions. Migrate the project to `central-v1`, or do not link
+those skills centrally. With `central-v1`,
+availability depends on the central links, which `validate` re-checks.
+`validate` also fails on a kit copy retained under `central-v1`
+(`Stray kit copy retained`); an explicit
 `update <path> -SkillDelivery central-v1` converts owned copies with a backup.
 Any update that would remove such copies, including one that keeps the
 current mode, runs the same central prerequisite checks first and is refused
@@ -655,7 +671,11 @@ in this order:
    remotes and settings alone; commit the removal like any other change.
 6. If you also used global setup, remove each home's block from
    `<!-- sw:begin global -->` through `<!-- sw:end global -->`; the backups
-   under `~/.sw/backups/` stay until you delete them.
+   under `~/.sw/backups/` stay until you delete them. For central delivery,
+   `global remove -Delivery central-v1 -Harness both -Component rules` strips
+   the rules blocks; a file the kit created that held only the block is left
+   in place, empty, and a later `global check` warns that the block is
+   missing. Delete the file if it is empty and you do not use it.
 
 ## Troubleshooting and support
 
