@@ -518,6 +518,28 @@ auto-merge under workspace policy follow the
 effective permissions before consequential work; static validation is not
 runtime verification. See [T3 Code threads](../.sw/workspace.md#t3-code-threads).
 
+### Optional: reduce Claude usage in the provider environment
+
+These settings go in the environment of your T3 Code **Claude provider
+instance** (Settings > Providers). The kit changes none of them. Thread and
+sub-agent runs started afterwards use them; sessions already running keep the
+old environment until restarted.
+
+| Variable | Value | Effect |
+| --- | --- | --- |
+| `ENABLE_TOOL_SEARCH` | `true` | Defers MCP tool definitions so only tool names enter context until a tool is used. Current Claude Code versions already do this by default; setting it makes the choice explicit and covers older versions behind a gateway. |
+| `CLAUDE_CODE_SUBAGENT_MODEL` | `<your mid-tier model ID>` | Default model for subagents. By itself it does not move the built-in Explore and Plan subagents. |
+| `CLAUDE_CODE_SUBAGENT_MODEL_FORCE` | `1` | Applies the model above to subagents, including Explore and Plan (not forks or `model: inherit` skills; see below). |
+
+Tradeoff: with `CLAUDE_CODE_SUBAGENT_MODEL_FORCE` on, Claude Code also ignores
+the `model` field in agent definitions, and Claude cannot choose a model when
+it starts a subagent. Forks and `model: inherit` skills running in a subagent
+stay on the main conversation's model. Leave it unset if you rely on
+per-agent models. Use your
+own model ID; the kit names none. Check the result with `/tasks` while a
+subagent runs. Background and sources:
+[research 17](research/17-usage-limits.md).
+
 ### First approved tasks
 
 Start with a bounded task and state what the result should preserve. These

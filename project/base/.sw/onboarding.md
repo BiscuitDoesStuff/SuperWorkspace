@@ -32,9 +32,11 @@ or an absent legacy field, accepts `main` or a T3 Code `t3/<name>` thread branch
 ## Models
 
 You pick each thread's model in T3 Code; the project pins none. Optionally
-keep your own tier table in the git-ignored `.sw/models.local.md` (a mid model
-for normal work, the top model for architecture and hard debugging, a small
-model for exploration). No credentials belong in shared files or task records.
+keep your own tier table in the git-ignored `.sw/models.local.md` (small, mid,
+top). Plan on the mid-to-top tier at moderate effort; run implementation from a
+written spec and exploration on the mid tier; set model and effort explicitly
+per thread; use no max effort or fast modes by default and the top tier only
+after cheaper ones fail. No credentials belong in shared files or task records.
 
 ## T3 Code settings
 

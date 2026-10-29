@@ -6726,7 +6726,7 @@ Describe 'Windows PowerShell 5.1 and PowerShell 7 parity' {
 
     It 'every shipped global rules hash is the block hash of global/rules.md at its commit' {
         $lines = @((Read-SwText (Join-Path $RepoRoot 'lib/Sw.Kit.psm1')) -split "`n" | Where-Object { $_ -match "^\s+'([0-9a-f]{64})' # ([0-9a-f]{7,})\s*$" })
-        $lines.Count | Should -Be 10
+        $lines.Count | Should -Be 11
         # A squashed public clone lacks most cited commits: verify those present, and always tie the newest entry to the current rules.
         $null = $lines[-1] -match "^\s+'([0-9a-f]{64})'"
         InModuleScope Sw.Kit -Parameters @{ T = (Read-SwText (Join-Path $RepoRoot 'global/rules.md')) } { param($T) Get-SwHash (Get-SwGlobalBody $T) } | Should -Be $Matches[1] -Because 'the newest shipped hash is the current global/rules.md'
@@ -6759,7 +6759,7 @@ Describe 'Windows PowerShell 5.1 and PowerShell 7 parity' {
         $command = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes("& { $($script:ParityScript.ToString()) } '$RepoRoot'"))
         $mine = (& $script:Shell -NoProfile -ExecutionPolicy Bypass -EncodedCommand $command) -join ''
         $theirs = (& $exe.Source -NoProfile -ExecutionPolicy Bypass -EncodedCommand $command) -join ''
-        $mine | Should -Match '^([0-9a-f]{64},){15}[0-9a-f]{64}$'
+        $mine | Should -Match '^([0-9a-f]{64},){16}[0-9a-f]{64}$'
         $theirs | Should -BeExactly $mine
     }
 }

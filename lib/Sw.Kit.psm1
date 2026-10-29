@@ -957,6 +957,7 @@ $script:GlobalShipped = @(
     '9032a5829e56e6d48aeb47c3b1c5d52629ee5c0d0f5bb1f2526098377097e943' # 92a6ea3
     'bcfa0cb415554b42fd4bd6978a2dd1cc7fba710d301add78a19fe43497dd94f4' # 8d598dc
     '0c0b81d62952b0cff11398d5133a625b46ecc739062420bf0f7bcbf0398abd5e' # 9ca5907
+    'fa86147a7c0b9c84a3531c46383d0baf834df869bbd68620cc1cd8eb4962a305' # c7a9752
 )
 $script:GlobalEntry = [ordered]@{ claude = 'CLAUDE.md#global'; codex = 'AGENTS.md#global' }
 
