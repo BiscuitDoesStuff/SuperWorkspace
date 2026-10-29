@@ -20,9 +20,16 @@ work runs on this machine.
   around it or bypass it.
 
 ## Models and cost
-- No tracked model pins. An optional local `.sw/models.local.md` maps tiers:
-  a mid model for normal work, the top model for architecture and hard
-  debugging, a small model for exploration and verbose subagent work.
+- No tracked model pins. An optional local `.sw/models.local.md` maps the
+  small, mid and top tiers to your models.
+- Coordination and planning run on the mid-to-top tier at moderate effort;
+  raise effort only for consequential or hard problems. Implementation from a
+  written, scoped spec runs on the mid tier. Exploration and subagents run on
+  the mid tier; the small tier is for non-agentic lookups only.
+- Set model and effort explicitly on every thread and delegate launch; never
+  inherit the coordinator's. No max effort and no fast or priority service
+  modes by default. Use the top tier for hard work only after cheaper tiers
+  fail.
 - Never switch a running session's model.
 - Smallest working change, shortest diff (`minimal-change`).
 - Minimize tokens: batch tool calls, never re-read files already in context,

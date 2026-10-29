@@ -1,6 +1,6 @@
 {
   "kitVersion": "0.4.0-dev",
-  "kitCommit": "648cc9c252c05a7375ba3315de0b3fdc724bc042",
+  "kitCommit": "5da5f130854de047790c15eb2444773131e4673f",
   "files": {
     ".agents/skills/agent-documentation/SKILL.md": "5eda615d5be5ab3d5b83f9e0184b168c1df75276d7e9513bd3e922db573dc6a5",
     ".agents/skills/minimal-change/SKILL.md": "313c02f0b203634f62fea4ec327e6352270877228a6c1348ba29780b664fae75",
@@ -8,8 +8,8 @@
     ".agents/skills/structured-debugging/SKILL.md": "cb8facf81e9f262c4ddfab0a92964683bae8a07832057f3f1b21dda5a868a2e8",
     ".sw/collaboration.md": "59c6275311f3ffa65eb182fb985fbdea88c2c39d90b97d2f7aa0b4e255db2d87",
     ".sw/comms/README.md": "bd1bb6f2f74d9fb7c1775d12842c0754a418f159f8244648f3ee10a033d89668",
-    ".sw/onboarding.md": "ebc9e75c7c65127a185c4b0574d64b83af04a22dd1339b1122bd5f592f45ce53",
-    ".sw/workspace.md": "0d79b191b92fb4d79ed4b9da30c9d7e0815cd60588cd5f5c8493029abbdca39c",
+    ".sw/onboarding.md": "c0658718c2c5106ec871b293726e0b707d6adce0990e202e9a35ea4d652d519a",
+    ".sw/workspace.md": "e1f24c96731380dff27ef627953e12722b287c2f67ec54bfb2a1de4bfdbff4b7",
     ".github/ISSUE_TEMPLATE/bug.yml": "e7de622917a8dae97ea09f15ac7835ac8c2ae6c2c5af5af58a8770972735f942",
     ".github/ISSUE_TEMPLATE/config.yml": "1f103c6a9dd07cd13a9a6f17ace6b813f47747eb9cb7e00488cb2073caaf91bb",
     ".github/ISSUE_TEMPLATE/decision.yml": "8196b2852dcd751860543d375804ba9046bfd8b1112a0339f3a071ed969e78e0",
