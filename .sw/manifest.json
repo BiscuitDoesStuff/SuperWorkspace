@@ -1,6 +1,6 @@
 {
   "kitVersion": "0.4.0-dev",
-  "kitCommit": "5da5f130854de047790c15eb2444773131e4673f",
+  "kitCommit": "3eccd3c408ccf034119da369c866dda1df5f2ff5",
   "files": {
     ".agents/skills/agent-documentation/SKILL.md": "5eda615d5be5ab3d5b83f9e0184b168c1df75276d7e9513bd3e922db573dc6a5",
     ".agents/skills/minimal-change/SKILL.md": "313c02f0b203634f62fea4ec327e6352270877228a6c1348ba29780b664fae75",
@@ -22,7 +22,7 @@
     ".sw/lib/Sw.Project.psm1": "c21601d8c70a367fd0f3b84f140b01bc236706b24e72214f3d1e8abbbde50386",
     ".sw/LICENSE": "d55a3271bc03627b824422342139578dff055237c5f2f2db748aa66ebf08cc43",
     ".sw/THIRD_PARTY_NOTICES.md": "853828b12212a36828f8a19e4c7478f282ca176539f753542a3d884a6638cabc",
-    ".sw/selection.json": "8db987020d5e9b28d6e66014fcf52e789cb2e8028eb140db9f7e8e1945e55dae",
+    ".sw/selection.json": "19c262a67588c82059521811875742d63bd19683f014bba2e3ff157bc40cf3c6",
     ".agents/skills/handoff/SKILL.md": "34906b2742cb806140faf3aadd5694e5416abefdec1815ccb64a9f233c982a41",
     ".agents/skills/resume/SKILL.md": "e0d4c2e68fcc0fc20e2bed9ce420125d8fdf3b41faf7c928ee184c3f6341b57c",
     ".agents/skills/review/SKILL.md": "c32c19a5746f82f098e00246ad90360cf1e6b6adb52a4eb7a8d444be2e87c7ce",

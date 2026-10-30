@@ -50,7 +50,7 @@ can contain code not represented by that commit. Use a clean clone for adoption.
 | `-Profile generic` | Application/code projects, project-discovered build/test commands |
 | `-Profile research` | Research/evidence projects, cited findings and evidence checks |
 | `-Profile unreal` | Unreal projects, engine/build constraints and managed LFS patterns; does not install the engine or initialize LFS |
-| `-Capabilities research` | Add the outside-research skill and checks to another preset |
+| `-Capabilities research` | Add the research guidance and checks to another preset (the `research` skill is in every preset) |
 | `-Name <name>` | Project name recorded in `.sw/config.json` (default: the folder name) |
 | `-NoGitHub` | Omit kit GitHub workflows/templates; existing project-owned GitHub files are not deleted |
 | `-GitHubTier 0\|1\|2` | Stated GitHub access for agents (default 0, read-only); see [Git flow](../.sw/workspace.md#git-flow) |
@@ -159,7 +159,20 @@ from one central source into each harness: product skills from the kit's
 Windows junction at `<claude home>/skills/<id>` for every Claude home, and at
 `~/.agents/skills/<id>` for Codex (shared, whatever `-CodexHome` says). Nothing
 is copied, no whole directory is linked and nothing is elevated or installed.
-Each link's owner is recorded in `~/.sw/global.json`:
+Each link's owner is recorded in `~/.sw/global.json`.
+
+The default catalogue is the same 10 skills for project copies and central
+installs: `work`, `resume`, `handoff`, `review`, `validate`, `status`,
+`research`, `minimal-change`, `structured-debugging` and `agent-documentation`.
+The first seven are explicit-only (you invoke them; models do not trigger them
+implicitly); the last three are model-invocable. To link all 10:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File sw.ps1 global install -Delivery central-v1 -Harness both -Component skills -Skills 'work,resume,handoff,review,validate,status,research,minimal-change,structured-debugging,agent-documentation' -WhatIf
+powershell -NoProfile -ExecutionPolicy Bypass -File sw.ps1 global install -Delivery central-v1 -Harness both -Component skills -Skills 'work,resume,handoff,review,validate,status,research,minimal-change,structured-debugging,agent-documentation'
+```
+
+Other commands, with a smaller example selection:
 
 ```powershell
 # preview, then apply; the first install names its skills explicitly

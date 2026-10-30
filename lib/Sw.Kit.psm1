@@ -798,8 +798,10 @@ function Update-SwProject {
     if ($deliveryBound -and -not (Test-SwSame $SkillDelivery $fromDelivery)) { $config['skillDelivery'] = $SkillDelivery }
     $render = Get-SwRender $config
     $changing = -not (Test-SwSame $render.Delivery $fromDelivery)
-    $userHome = if ($deliveryBound -or $changing) { Get-SwUserHome }
-    if ($changing -and (Test-SwSame $render.Delivery 'central-v1')) { Assert-SwCentralReady $render.Central $userHome }
+    $centralDelivery = Test-SwSame $render.Delivery 'central-v1'
+    $userHome = if ($deliveryBound -or $changing -or $centralDelivery) { Get-SwUserHome }
+    # Every central update proves availability first: a catalogue change (a skill newly selected) must not succeed without its link.
+    if ($centralDelivery) { Assert-SwCentralReady $render.Central $userHome }
     $configChanged = (-not (Test-SwSame (ConvertTo-SwJson $config) $before))
     if ($configChanged -and -not $PSCmdlet.ShouldProcess('.sw/config.json', 'write configuration after completed sync')) {
         if ($WhatIfPreference) {
